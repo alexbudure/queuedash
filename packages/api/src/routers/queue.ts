@@ -1,6 +1,6 @@
 import { procedure, router } from "../trpc";
 import { z } from "zod";
-import { findQueueInCtxOrFail, opts } from "../utils/global.utils";
+import { findQueueInCtxOrFail } from "../utils/global.utils";
 import Queue from "bull";
 import { parse } from "redis-info";
 import { TRPCError } from "@trpc/server";
@@ -12,7 +12,7 @@ const generateQueueMutationProcedure = (action: (job: Queue.Queue) => void) => {
         queueName: z.string(),
       })
     )
-    .mutation(async ({ input: { queueName }, ctx: { queues } }) => {
+    .mutation(async ({ input: { queueName }, ctx: { queues, opts } }) => {
       const queueInCtx = findQueueInCtxOrFail({
         queues,
         queueName,
@@ -50,29 +50,31 @@ export const queueRouter = router({
         ] as const),
       })
     )
-    .mutation(async ({ input: { queueName, status }, ctx: { queues } }) => {
-      const queueInCtx = findQueueInCtxOrFail({
-        queues,
-        queueName,
-      });
-
-      const bullQueue = new Queue(queueInCtx.name, opts);
-
-      try {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        await bullQueue.clean(0, status);
-      } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+    .mutation(
+      async ({ input: { queueName, status }, ctx: { queues, opts } }) => {
+        const queueInCtx = findQueueInCtxOrFail({
+          queues,
+          queueName,
         });
-      }
 
-      return {
-        name: queueName,
-      };
-    }),
+        const bullQueue = new Queue(queueInCtx.name, opts);
+
+        try {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-ignore
+          await bullQueue.clean(0, status);
+        } catch (e) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+
+        return {
+          name: queueName,
+        };
+      }
+    ),
   empty: generateQueueMutationProcedure((queue) => queue.empty()),
   pause: generateQueueMutationProcedure((queue) => queue.pause()),
   resume: generateQueueMutationProcedure((queue) => queue.resume()),
@@ -84,7 +86,7 @@ export const queueRouter = router({
         queueName: z.string(),
       })
     )
-    .query(async ({ input: { queueName }, ctx: { queues } }) => {
+    .query(async ({ input: { queueName }, ctx: { queues, opts } }) => {
       const queueInCtx = findQueueInCtxOrFail({
         queues,
         queueName,

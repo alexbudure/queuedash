@@ -2,7 +2,7 @@ import { procedure, router } from "../trpc";
 import Queue from "bull";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { findQueueInCtxOrFail, formatJob, opts } from "../utils/global.utils";
+import { findQueueInCtxOrFail, formatJob } from "../utils/global.utils";
 
 const generateJobMutationProcedure = (
   action: (job: Queue.Job) => Promise<unknown>
@@ -14,37 +14,39 @@ const generateJobMutationProcedure = (
         jobId: z.string(),
       })
     )
-    .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
-      const queueInCtx = findQueueInCtxOrFail({
-        queues,
-        queueName,
-      });
-
-      const bullQueue = new Queue(queueInCtx.name, opts);
-
-      const job = await bullQueue.getJob(jobId);
-
-      if (!job) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
+    .mutation(
+      async ({ input: { jobId, queueName }, ctx: { queues, opts } }) => {
+        const queueInCtx = findQueueInCtxOrFail({
+          queues,
+          queueName,
         });
-      }
 
-      try {
-        await action(job);
-      } catch (e) {
-        if (e instanceof TRPCError) {
-          throw e;
-        } else {
+        const bullQueue = new Queue(queueInCtx.name, opts);
+
+        const job = await bullQueue.getJob(jobId);
+
+        if (!job) {
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            code: "BAD_REQUEST",
           });
         }
-      }
 
-      return formatJob({ job, queueInCtx });
-    });
+        try {
+          await action(job);
+        } catch (e) {
+          if (e instanceof TRPCError) {
+            throw e;
+          } else {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: e instanceof Error ? e.message : undefined,
+            });
+          }
+        }
+
+        return formatJob({ job, queueInCtx });
+      }
+    );
 };
 
 export const jobRouter = router({
@@ -79,7 +81,7 @@ export const jobRouter = router({
     .query(
       async ({
         input: { queueName, status, limit, cursor },
-        ctx: { queues },
+        ctx: { queues, opts },
       }) => {
         const queueInCtx = findQueueInCtxOrFail({
           queues,

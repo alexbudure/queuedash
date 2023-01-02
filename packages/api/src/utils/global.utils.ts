@@ -1,7 +1,6 @@
 import type Queue from "bull";
 import { TRPCError } from "@trpc/server";
 import type { Context } from "../trpc";
-import Redis from "ioredis";
 
 export const formatJob = ({
   job,
@@ -44,27 +43,4 @@ export const findQueueInCtxOrFail = ({
     });
   }
   return queueInCtx;
-};
-
-const createRedisClient = () => {
-  return new Redis(process.env.REDIS_URL as string, {
-    tls: {},
-    connectTimeout: 30000,
-  });
-};
-
-const client = createRedisClient();
-const subscriber = createRedisClient();
-
-export const opts: Queue.QueueOptions = {
-  createClient: function (type) {
-    switch (type) {
-      case "client":
-        return client;
-      case "subscriber":
-        return subscriber;
-      default:
-        return createRedisClient();
-    }
-  },
 };
