@@ -5,6 +5,7 @@ import { test, expect } from "vitest";
 
 test("list queues", async () => {
   const ctx: Context = {
+    opts: {},
     queues: [
       {
         name: "test",
