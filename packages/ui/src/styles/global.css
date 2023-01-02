@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.data-json-renderer * {
+    font-family: monospace;
+}
+
+.data-json-renderer > ul {
+    padding: 4px 16px 12px 16px !important;
+    overflow-y: scroll;
+    border-radius: 8px;
+    margin: 0 !important;
+    border: 1px solid #e2e8f0 !important;
+}

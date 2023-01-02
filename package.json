@@ -1,0 +1,28 @@
+{
+  "name": "@queuedash/root",
+  "version": "0.0.0",
+  "description": "A dashboard for Bull, BullMQ, and Bee-Queue",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexbudure/queuedash.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alexbudure/queuedash/issues"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "dev": "turbo run dev",
+    "preinstall": "npx only-allow pnpm",
+    "release": "pnpm build && changeset publish"
+  },
+  "keywords": [],
+  "author": "Alex Budure",
+  "license": "MIT",
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.4.8",
+    "@changesets/cli": "^2.26.0",
+    "turbo": "^1.6.3"
+  }
+}

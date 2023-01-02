@@ -1,0 +1,14 @@
+# Dependencies
+node_modules
+package-lock.json
+.pnpm-store/
+.next
+
+# Editors
+**/.#*
+.nvmrc
+**/.vscode
+dist
+.turbo
+.rollup.cache
+.idea
