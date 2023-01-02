@@ -53,7 +53,7 @@ importers:
 
   packages/ui:
     specifiers:
-      '@queuedash/api': workspace:^0.2.0
+      '@queuedash/api': workspace:^0.3.0
       '@radix-ui/react-alert-dialog': ^1.0.2
       '@radix-ui/react-checkbox': ^1.0.1
       '@radix-ui/react-dialog': ^1.0.2
