@@ -17,7 +17,7 @@
     "lint": "eslint ./ --fix"
   },
   "dependencies": {
-    "@queuedash/api": "workspace:^0.1.0",
+    "@queuedash/api": "workspace:^0.2.0",
     "@radix-ui/react-alert-dialog": "^1.0.2",
     "@radix-ui/react-checkbox": "^1.0.1",
     "@radix-ui/react-dialog": "^1.0.2",
@@ -50,8 +50,11 @@
     "eslint": "^8.29.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-tailwindcss": "^3.7.1",
+    "next": "^13.0.6",
     "postcss": "^8.4.20",
     "prettier": "^2.8.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "rollup-plugin-typescript-paths": "^1.4.0",
     "tailwindcss": "^3.2.4",
     "tailwindcss-radix": "^2.6.1",
