@@ -20,11 +20,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "composite": true,
     "declaration": true,
     "declarationMap": true,
@@ -35,8 +30,6 @@
     "baseUrl": "."
   },
   "include": [
-    "next-env.d.ts",
-    ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx",
     "vite.config.ts"

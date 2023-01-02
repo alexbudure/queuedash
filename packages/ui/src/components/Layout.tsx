@@ -1,8 +1,7 @@
 import type { FC, PropsWithChildren } from "react";
 import type { RouterOutput } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import Link from "next/link";
-import { useRouter } from "next/router";
+import { NavLink } from "react-router-dom";
 import { Skeleton } from "./Skeleton";
 import * as Toast from "@radix-ui/react-toast";
 import {
@@ -17,20 +16,19 @@ type QueueNavLinkProps = {
   queue: RouterOutput["queue"]["list"]["0"];
 };
 const QueueNavLink = ({ queue }: QueueNavLinkProps) => {
-  const router = useRouter();
-  const isActive = router.query.slug?.[0] === queue.name;
-
   return (
-    <Link
-      href={`/queue-dash/${queue.name}`}
-      className={`relative -ml-px flex w-full items-center space-x-3 border-l pl-4 text-slate-500 transition duration-150 ease-in-out dark:text-slate-400 ${
-        isActive
-          ? "border-brand-500 font-medium text-brand-500 dark:border-brand-300 dark:text-brand-300"
-          : "border-slate-100 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
-      }`}
+    <NavLink
+      to={`/queue-dash/${queue.name}`}
+      className={({ isActive }) =>
+        `relative -ml-px flex w-full items-center space-x-3 border-l pl-4 text-slate-500 transition duration-150 ease-in-out dark:text-slate-400 ${
+          isActive
+            ? "border-brand-500 font-medium text-brand-500 dark:border-brand-300 dark:text-brand-300"
+            : "border-slate-100 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
+        }`
+      }
     >
       <span className="truncate">{queue.displayName}</span>
-    </Link>
+    </NavLink>
   );
 };
 

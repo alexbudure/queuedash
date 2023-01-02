@@ -1,10 +1,9 @@
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { clsx } from "clsx";
 import { Button } from "./Button";
 import { TrashIcon } from "@radix-ui/react-icons";
 import type { Status, RouterOutput } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import { useRouter } from "next/router";
 import { Toast } from "./Toast";
 import { Alert } from "./Alert";
 
@@ -52,7 +51,6 @@ export const QueueStatusTabs = ({
   status,
   queue,
 }: QueueStatusTabsProps) => {
-  const router = useRouter();
   const {
     mutate: cleanQueue,
     isLoading: isLoadingCleanQueue,
@@ -66,7 +64,7 @@ export const QueueStatusTabs = ({
           const isActive = tab.status === status;
           return (
             <Link
-              href={`${router.asPath.split("?")[0]}?status=${tab.status}`}
+              to={`?status=${tab.status}`}
               key={tab.name}
               className={clsx(
                 "flex items-center space-x-2 rounded-md px-3 py-1 font-medium transition duration-150 ease-in-out",
