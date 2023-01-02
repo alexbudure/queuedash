@@ -17,7 +17,7 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: [],
+      external: ["react", "react-dom", "next"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

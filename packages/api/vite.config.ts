@@ -15,7 +15,7 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: [],
+      external: ["ioredis", "bull"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
