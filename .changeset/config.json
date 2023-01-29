@@ -1,11 +1,16 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@2.3.0/schema.json",
-  "changelog": ["@changesets/changelog-github", {"repo": "alexbudure/queuedash"}],
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "alexbudure/queuedash"
+    }
+  ],
   "commit": false,
   "fixed": [],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": ["@queuedash/dev"]
 }

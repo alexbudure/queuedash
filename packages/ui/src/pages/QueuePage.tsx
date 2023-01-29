@@ -118,17 +118,3 @@ export const QueuePage = () => {
     </Layout>
   );
 };
-
-/**
- * TODO: High priority
- *   - Redis client options
- *   - Reassure when cleaning all (test wait)
- *   - Resume / pause / add queue
- *   - Toast for confirmation
- *
- * TODO: Before launch
- *   - Error screens
- *   - Offline indicator
- *   - Premium button
- *   - +1 to dates like plane tickets and add year if not this year
- */

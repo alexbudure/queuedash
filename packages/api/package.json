@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/api",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",
@@ -30,7 +30,6 @@
     "@types/redis-info": "^3.0.0",
     "@typescript-eslint/eslint-plugin": "^5.46.1",
     "@typescript-eslint/parser": "^5.46.1",
-    "bull": "^4.10.2",
     "eslint": "^8.29.0",
     "eslint-config-prettier": "^8.5.0",
     "prettier": "^2.8.1",

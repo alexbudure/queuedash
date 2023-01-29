@@ -18,7 +18,7 @@ type QueueNavLinkProps = {
 const QueueNavLink = ({ queue }: QueueNavLinkProps) => {
   return (
     <NavLink
-      to={queue.name}
+      to={`../${queue.name}`}
       className={({ isActive }) =>
         `relative -ml-px flex w-full items-center space-x-3 border-l pl-4 text-slate-500 transition duration-150 ease-in-out dark:text-slate-400 ${
           isActive

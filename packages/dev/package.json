@@ -1,0 +1,32 @@
+{
+  "name": "@queuedash/dev",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "next dev",
+    "build-next": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "node server.js"
+  },
+  "dependencies": {
+    "@queuedash/api": "workspace:^0.4.2",
+    "@queuedash/ui": "workspace:^0.4.2",
+    "@trpc/server": "^10.5.0",
+    "bull": "^4.10.2",
+    "ioredis": "^5.3.0",
+    "next": "^13.1.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.14",
+    "@types/react": "^18.0.26",
+    "@typescript-eslint/eslint-plugin": "^5.46.1",
+    "@typescript-eslint/parser": "^5.46.1",
+    "eslint": "^8.29.0",
+    "eslint-config-next": "^13.0.6",
+    "eslint-config-prettier": "^8.5.0",
+    "prettier": "^2.8.1",
+    "typescript": "^4.9.4"
+  }
+}

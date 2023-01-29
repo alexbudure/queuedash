@@ -11,3 +11,5 @@ dist
 .turbo
 .rollup.cache
 .idea
+.next
+.env

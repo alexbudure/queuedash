@@ -3,7 +3,6 @@
   "compilerOptions": {
     "target": "es5",
     "lib": ["dom", "dom.iterable", "esnext"],
-    "outDir": "dist",
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -16,15 +15,32 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "composite": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "composite": false,
     "declaration": true,
     "declarationMap": true,
     "inlineSources": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@queuedash/api": ["../api/src/main"],
+      "@queuedash/ui": ["../ui/src/main"]
+    }
   },
-  "include": ["**/*.ts", "**/*.tsx", "vite.config.ts"],
+  "references": [
+    {
+      "path": "../api"
+    },
+    {
+      "path": "../ui"
+    }
+  ],
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }
