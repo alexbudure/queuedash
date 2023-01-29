@@ -20,6 +20,7 @@ importers:
       '@types/redis-info': ^3.0.0
       '@typescript-eslint/eslint-plugin': ^5.46.1
       '@typescript-eslint/parser': ^5.46.1
+      bull: ^4.10.2
       eslint: ^8.29.0
       eslint-config-prettier: ^8.5.0
       prettier: ^2.8.1
@@ -31,6 +32,7 @@ importers:
       zod: ^3.20.2
     dependencies:
       '@trpc/server': 10.7.0
+      bull: 4.10.2
       redis-info: 3.1.0
       zod: 3.20.2
     devDependencies:
