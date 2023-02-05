@@ -5,7 +5,6 @@ import { typescriptPaths } from "rollup-plugin-typescript-paths";
 
 export default defineConfig({
   build: {
-    manifest: true,
     minify: true,
     reportCompressedSize: true,
     lib: {
@@ -15,7 +14,7 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["bull"],
+      external: ["bull", "express"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

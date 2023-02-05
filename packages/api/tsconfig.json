@@ -25,6 +25,6 @@
     "preserveWatchOutput": true,
     "baseUrl": "."
   },
-  "include": ["**/*.ts", "**/*.tsx", "vite.config.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "vite.config.ts", "package.json"],
   "exclude": ["node_modules"]
 }

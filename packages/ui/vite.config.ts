@@ -10,18 +10,13 @@ export default defineConfig({
     minify: true,
     reportCompressedSize: true,
     lib: {
-      entry: {
-        main: path.resolve(__dirname, "src/main.ts"),
-        standalone: path.resolve(__dirname, "src/standalone.tsx"),
-      },
+      entry: path.resolve(__dirname, "src/main.tsx"),
       name: "QueueDash App",
-      formats: ["cjs", "es"],
+      fileName: "main",
+      formats: ["cjs", "es", "umd"],
     },
     rollupOptions: {
       external: ["react", "react-dom"],
-      output: {
-        manualChunks: () => "app",
-      },
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
