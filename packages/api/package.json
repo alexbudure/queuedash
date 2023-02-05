@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/api",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",

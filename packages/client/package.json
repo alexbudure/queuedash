@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/client",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "files": [
     "dist"
   ],
@@ -13,7 +13,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@queuedash/ui": "workspace:^0.4.5",
+    "@queuedash/ui": "workspace:^0.4.6",
     "@rollup/plugin-typescript": "^10.0.1",
     "@types/react": "^18.0.26",
     "@types/react-dom": "^18.0.10",

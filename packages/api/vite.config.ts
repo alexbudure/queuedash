@@ -4,6 +4,9 @@ import path from "path";
 import { typescriptPaths } from "rollup-plugin-typescript-paths";
 
 export default defineConfig({
+  define: {
+    "process.env.NODE_ENV": JSON.stringify("production"),
+  },
   build: {
     minify: true,
     reportCompressedSize: true,
@@ -14,7 +17,7 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["bull", "express"],
+      external: ["bull"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
