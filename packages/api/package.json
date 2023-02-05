@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/api",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",
@@ -38,5 +38,6 @@
     "typescript": "^4.9.4",
     "vite": "^4.0.1",
     "vitest": "^0.25.8"
-  }
+  },
+  "license": "MIT"
 }

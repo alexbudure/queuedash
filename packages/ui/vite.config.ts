@@ -7,17 +7,21 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   build: {
-    manifest: true,
     minify: true,
     reportCompressedSize: true,
     lib: {
-      entry: path.resolve(__dirname, "src/main.ts"),
-      fileName: "main",
+      entry: {
+        main: path.resolve(__dirname, "src/main.ts"),
+        standalone: path.resolve(__dirname, "src/standalone.tsx"),
+      },
       name: "QueueDash App",
       formats: ["cjs", "es"],
     },
     rollupOptions: {
       external: ["react", "react-dom"],
+      output: {
+        manualChunks: () => "app",
+      },
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

@@ -1,16 +1,15 @@
 {
   "name": "@queuedash/dev",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "scripts": {
     "dev": "next dev",
     "build-next": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "test": "node server.js"
+    "lint": "next lint"
   },
   "dependencies": {
-    "@queuedash/api": "workspace:^0.4.2",
-    "@queuedash/ui": "workspace:^0.4.2",
+    "@queuedash/api": "workspace:^0.4.3",
+    "@queuedash/ui": "workspace:^0.4.3",
     "@trpc/server": "^10.5.0",
     "bull": "^4.10.2",
     "ioredis": "^5.3.0",
