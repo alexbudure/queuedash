@@ -4,13 +4,39 @@ import { TRPCError } from "@trpc/server";
 import type { Context } from "../trpc";
 import type BeeQueue from "bee-queue";
 
+type QueueDashOptions = {
+  priority?: number;
+  delay?: number;
+  attempts?: number;
+  backoff?: number;
+  lifo?: boolean;
+  timeout?: number;
+  removeOnComplete?: boolean | number;
+  removeOnFail?: boolean | number;
+  stackTraceLimit?: number;
+  preventParsingData?: boolean;
+};
+
+type QueueDashJob = {
+  id: string;
+  name: string;
+  data: object;
+  opts: QueueDashOptions;
+  createdAt: Date;
+  processedAt: Date | null;
+  finishedAt: Date | null;
+  failedReason?: string;
+  stacktrace?: string[];
+  retriedAt: Date | null;
+};
+
 export const formatJob = ({
   job,
   queueInCtx,
 }: {
   job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>;
   queueInCtx: Context["queues"][0];
-}) => {
+}): QueueDashJob => {
   if ("status" in job) {
     // TODO:
     return {
@@ -22,11 +48,13 @@ export const formatJob = ({
         : job.id,
       data: job.data as object,
       opts: job.options,
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       createdAt: new Date(),
       processedAt: new Date(),
       finishedAt: new Date(),
       failedReason: "",
-      stacktrace: "",
+      stacktrace: [""],
       retriedAt: new Date(),
     };
   }
@@ -39,6 +67,8 @@ export const formatJob = ({
       ? "Default"
       : job.name,
     data: job.data as object,
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
     opts: job.opts,
     createdAt: new Date(job.timestamp),
     processedAt: job.processedOn ? new Date(job.processedOn) : null,
@@ -48,7 +78,7 @@ export const formatJob = ({
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     retriedAt: job.retriedOn ? new Date(job.retriedOn) : null,
-  };
+  } as QueueDashJob;
 };
 
 export const findQueueInCtxOrFail = ({

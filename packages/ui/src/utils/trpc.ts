@@ -9,8 +9,6 @@ export type Job = RouterOutput["job"]["list"]["jobs"][0];
 export type Queue = RouterOutput["queue"]["byName"];
 export type Status = RouterInput["job"]["list"]["status"];
 
-// eslint-disable-next-line
-// @ts-ignore
 export const trpc = createTRPCReact<AppRouter>({
   unstable_overrides: {
     useMutation: {

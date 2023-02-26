@@ -125,34 +125,36 @@ const columns = [
       row: {
         original: { opts },
       },
-    }) => (
-      <div className="flex items-center space-x-2">
-        {opts.priority ? (
-          <JobOptionTag
-            icon={<ExclamationTriangleIcon width={12} height={12} />}
-            label={opts.priority}
-          />
-        ) : null}
-        {opts.attempts && opts.attempts > 1 ? (
-          <JobOptionTag
-            icon={<CounterClockwiseClockIcon width={12} height={12} />}
-            label={opts.attempts}
-          />
-        ) : null}
-        {opts.lifo ? (
-          <JobOptionTag
-            icon={<TargetIcon width={12} height={12} />}
-            label="LIFO"
-          />
-        ) : null}
-        {opts.delay ? (
-          <JobOptionTag
-            icon={<LapTimerIcon width={12} height={12} />}
-            label={opts.delay}
-          />
-        ) : null}
-      </div>
-    ),
+    }) => {
+      return (
+        <div className="flex items-center space-x-2">
+          {opts.priority ? (
+            <JobOptionTag
+              icon={<ExclamationTriangleIcon width={12} height={12} />}
+              label={opts.priority}
+            />
+          ) : null}
+          {opts.attempts && opts.attempts > 1 ? (
+            <JobOptionTag
+              icon={<CounterClockwiseClockIcon width={12} height={12} />}
+              label={opts.attempts}
+            />
+          ) : null}
+          {opts.lifo ? (
+            <JobOptionTag
+              icon={<TargetIcon width={12} height={12} />}
+              label="LIFO"
+            />
+          ) : null}
+          {opts.delay ? (
+            <JobOptionTag
+              icon={<LapTimerIcon width={12} height={12} />}
+              label={opts.delay}
+            />
+          ) : null}
+        </div>
+      );
+    },
   }),
 ];
 

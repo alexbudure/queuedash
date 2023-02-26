@@ -17,7 +17,7 @@
     "bull"
   ],
   "dependencies": {
-    "@trpc/server": "^10.5.0",
+    "@trpc/server": "^10.12.0",
     "redis-info": "^3.1.0",
     "zod": "^3.20.2"
   },

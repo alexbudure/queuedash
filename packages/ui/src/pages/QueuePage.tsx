@@ -1,4 +1,4 @@
-import type { Job, Status } from "../utils/trpc";
+import type {  Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Layout } from "../components/Layout";
 import { JobTable } from "../components/JobTable";
@@ -64,7 +64,7 @@ export const QueuePage = () => {
     }
   );
 
-  const jobs: Job[] =
+  const jobs =
     data?.pages
       .map((page) => {
         return page.jobs;

@@ -11,7 +11,7 @@
     "@faker-js/faker": "^7.6.0",
     "@queuedash/api": "workspace:^0.5.0",
     "@queuedash/ui": "workspace:^0.5.0",
-    "@trpc/server": "^10.5.0",
+    "@trpc/server": "^10.12.0",
     "bull": "^4.10.2",
     "ioredis": "^5.3.0",
     "next": "^13.1.6",

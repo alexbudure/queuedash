@@ -27,20 +27,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
-    "baseUrl": ".",
-    "paths": {
-      "@queuedash/api": ["../api/src/main"],
-      "@queuedash/ui": ["../ui/src/main"]
-    }
+    "baseUrl": "."
   },
-  "references": [
-    {
-      "path": "../api"
-    },
-    {
-      "path": "../ui"
-    }
-  ],
   "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }
