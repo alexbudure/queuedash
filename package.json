@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/root",
   "version": "0.0.0",
-  "description": "A dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
   "repository": {
     "type": "git",
     "url": "https://github.com/alexbudure/queuedash.git"
@@ -15,7 +15,8 @@
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "preinstall": "npx only-allow pnpm",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "docker": "docker-compose up -d"
   },
   "keywords": [],
   "author": "Alex Budure",

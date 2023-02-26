@@ -6,8 +6,9 @@ import { clsx } from "clsx";
 type ToastProps = {
   message: string;
   variant: "success" | "error";
+  onDismiss?: () => void;
 };
-export const Toast = ({ variant, message }: ToastProps) => {
+export const Toast = ({ variant, message, onDismiss }: ToastProps) => {
   const [open, setOpen] = useState(true);
 
   const icon =
@@ -26,7 +27,12 @@ export const Toast = ({ variant, message }: ToastProps) => {
         }
       )}
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          onDismiss?.();
+        }
+        setOpen(isOpen);
+      }}
     >
       {icon}
       <RadixToast.Description asChild>

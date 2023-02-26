@@ -12,7 +12,6 @@ import { Skeleton } from "../components/Skeleton";
 import { ErrorCard } from "../components/ErrorCard";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
-import { JobOptionTag } from "../components/JobOptionTag";
 import { useParams, useSearchParams } from "react-router-dom";
 
 export const QueuePage = () => {
@@ -88,10 +87,12 @@ export const QueuePage = () => {
                 <Skeleton className="h-8 w-52 rounded-md" />
               )}
             </h1>
-
             {queueReq.data ? <QueueActionMenu queue={queueReq.data} /> : null}
-            {/*TODO:*/}
-            {queueReq.data?.paused ? <JobOptionTag label="Paused" /> : null}
+            {queueReq.data?.paused ? (
+              <div className="flex cursor-default items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 py-1 text-sm text-yellow-900 transition duration-150 ease-in-out">
+                <span>Paused</span>
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-4">

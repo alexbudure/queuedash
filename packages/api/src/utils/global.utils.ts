@@ -1,14 +1,36 @@
-import type Queue from "bull";
+import type Bull from "bull";
+import type BullMQ from "bullmq";
 import { TRPCError } from "@trpc/server";
 import type { Context } from "../trpc";
+import type BeeQueue from "bee-queue";
 
 export const formatJob = ({
   job,
   queueInCtx,
 }: {
-  job: Queue.Job;
+  job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>;
   queueInCtx: Context["queues"][0];
 }) => {
+  if ("status" in job) {
+    // TODO:
+    return {
+      id: job.id as string,
+      name: queueInCtx.jobName
+        ? queueInCtx.jobName(job.data)
+        : job.id === "__default__"
+        ? "Default"
+        : job.id,
+      data: job.data as object,
+      opts: job.options,
+      createdAt: new Date(),
+      processedAt: new Date(),
+      finishedAt: new Date(),
+      failedReason: "",
+      stacktrace: "",
+      retriedAt: new Date(),
+    };
+  }
+
   return {
     id: job.id as string,
     name: queueInCtx.jobName
@@ -36,7 +58,7 @@ export const findQueueInCtxOrFail = ({
   queueName: string;
   queues: Context["queues"];
 }) => {
-  const queueInCtx = queues.find((q) => q.name === queueName);
+  const queueInCtx = queues.find((q) => q.queue.name === queueName);
   if (!queueInCtx) {
     throw new TRPCError({
       code: "NOT_FOUND",

@@ -1,15 +1,16 @@
 import type { Context } from "../trpc";
 import { appRouter } from "./_app";
 import { test, expect } from "vitest";
+import Bull from "bull";
 // import type { inferProcedureInput } from "@trpc/server";
 
 test("list queues", async () => {
   const ctx: Context = {
-    opts: {},
     queues: [
       {
-        name: "test",
+        queue: new Bull("test"),
         displayName: "Test",
+        type: "bull",
       },
     ],
   };

@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/ui",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",
   "types": "./dist/src/main.d.ts",
@@ -16,7 +16,8 @@
     "lint": "eslint ./ --fix"
   },
   "dependencies": {
-    "@queuedash/api": "workspace:^0.4.1",
+    "@monaco-editor/react": "^4.4.6",
+    "@queuedash/api": "workspace:^0.5.0",
     "@radix-ui/react-alert-dialog": "^1.0.2",
     "@radix-ui/react-checkbox": "^1.0.1",
     "@radix-ui/react-dialog": "^1.0.2",
@@ -33,6 +34,7 @@
     "@trpc/server": "^10.5.0",
     "clsx": "^1.2.1",
     "date-fns": "^2.29.3",
+    "monaco-editor": "^0.35.0",
     "react-intersection-observer": "^9.4.1",
     "react-json-tree": "^0.17.0",
     "react-router-dom": "^6.6.1",

@@ -1,11 +1,15 @@
 import { procedure, router } from "../trpc";
-import Queue from "bull";
+import type Bull from "bull";
+import type BullMQ from "bullmq";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { findQueueInCtxOrFail, formatJob } from "../utils/global.utils";
+import type BeeQueue from "bee-queue";
 
 const generateJobMutationProcedure = (
-  action: (job: Queue.Job) => Promise<unknown>
+  action: (
+    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>
+  ) => Promise<unknown> | void
 ) => {
   return procedure
     .input(
@@ -14,53 +18,105 @@ const generateJobMutationProcedure = (
         jobId: z.string(),
       })
     )
-    .mutation(
-      async ({ input: { jobId, queueName }, ctx: { queues, opts } }) => {
-        const queueInCtx = findQueueInCtxOrFail({
-          queues,
-          queueName,
+    .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
+      const queueInCtx = findQueueInCtxOrFail({
+        queues,
+        queueName,
+      });
+
+      const job = await queueInCtx.queue.getJob(jobId);
+
+      if (!job) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
         });
+      }
 
-        const bullQueue = new Queue(queueInCtx.name, opts);
-
-        const job = await bullQueue.getJob(jobId);
-
-        if (!job) {
+      try {
+        await action(job);
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
           throw new TRPCError({
-            code: "BAD_REQUEST",
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
           });
         }
-
-        try {
-          await action(job);
-        } catch (e) {
-          if (e instanceof TRPCError) {
-            throw e;
-          } else {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: e instanceof Error ? e.message : undefined,
-            });
-          }
-        }
-
-        return formatJob({ job, queueInCtx });
       }
-    );
+
+      return formatJob({ job, queueInCtx });
+    });
 };
 
 export const jobRouter = router({
   retry: generateJobMutationProcedure(async (job) => {
-    if (await job.isFailed()) {
-      await job.retry();
+    if ("isFailed" in job) {
+      if (await job.isFailed()) {
+        await job.retry();
+      } else {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+        });
+      }
     } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-      });
+      throw new Error(""); // TODO:
     }
   }),
-  discard: generateJobMutationProcedure((job) => job.discard()),
-  promote: generateJobMutationProcedure((job) => job.promote()),
+  discard: generateJobMutationProcedure((job) => {
+    if ("discard" in job) {
+      return job.discard();
+    } else {
+      return job.remove();
+    }
+  }),
+  rerun: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      })
+    )
+    .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
+      const queueInCtx = findQueueInCtxOrFail({
+        queues,
+        queueName,
+      });
+
+      const job = await queueInCtx.queue.getJob(jobId);
+
+      if (!job) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+        });
+      }
+
+      try {
+        if ("add" in queueInCtx.queue) {
+          await queueInCtx.queue.add(job.data, {});
+        } else {
+          await queueInCtx.queue.createJob(job.data);
+        }
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+
+      return formatJob({ job, queueInCtx });
+    }),
+  promote: generateJobMutationProcedure((job) => {
+    if ("promote" in job) {
+      return job.promote();
+    } else {
+      throw new Error(""); // TODO:
+    }
+  }),
   remove: generateJobMutationProcedure((job) => job.remove()),
   list: procedure
     .input(
@@ -81,18 +137,21 @@ export const jobRouter = router({
     .query(
       async ({
         input: { queueName, status, limit, cursor },
-        ctx: { queues, opts },
+        ctx: { queues },
       }) => {
         const queueInCtx = findQueueInCtxOrFail({
           queues,
           queueName,
         });
-        try {
-          const bullQueue = new Queue(queueInCtx.name, opts);
 
+        if (queueInCtx.type === "bee") {
+          throw new Error(""); // TODO:
+        }
+
+        try {
           const [jobs, totalCountWithWrongType] = await Promise.all([
-            bullQueue.getJobs([status], cursor, cursor + limit - 1),
-            bullQueue.getJobCountByTypes(status),
+            queueInCtx.queue.getJobs([status], cursor, cursor + limit - 1),
+            queueInCtx.queue.getJobCountByTypes(status),
           ]);
           const totalCount = totalCountWithWrongType as unknown as number;
 

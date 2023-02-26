@@ -12,5 +12,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["@queuedash/dev"]
+  "ignore": ["@queuedash/dev", "@queuedash/site"]
 }

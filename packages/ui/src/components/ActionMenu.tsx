@@ -1,9 +1,10 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { DotsVerticalIcon, TrashIcon } from "@radix-ui/react-icons";
+import { DotsVerticalIcon } from "@radix-ui/react-icons";
 
 type Action = {
   label: string;
   onSelect: () => void;
+  icon: React.ReactNode;
 };
 type ActionMenuProps = {
   actions: Action[];
@@ -34,7 +35,7 @@ export const ActionMenu = ({ actions }: ActionMenuProps) => {
                 key={action.label}
                 onSelect={action.onSelect}
               >
-                <TrashIcon />
+                {action.icon}
                 <span>{action.label}</span>
               </DropdownMenu.Item>
             );

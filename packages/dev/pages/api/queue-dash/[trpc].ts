@@ -1,34 +1,6 @@
 import * as trpcNext from "@trpc/server/adapters/next";
 import { appRouter } from "@queuedash/api";
-import type { QueueOptions } from "bull";
-import Redis from "ioredis";
-
-type SyncJob = {
-  name: string;
-};
-
-const redisUrl = process.env.REDIS_URL as string;
-
-const createRedisClient = () => {
-  return new Redis(redisUrl, {
-    tls: {},
-    connectTimeout: 30000,
-  });
-};
-const client = createRedisClient();
-const subscriber = createRedisClient();
-const opts = {
-  createClient(type) {
-    switch (type) {
-      case "client":
-        return client;
-      case "subscriber":
-        return subscriber;
-      default:
-        return createRedisClient();
-    }
-  },
-} satisfies QueueOptions;
+import { queues } from "../../../utils/fake-data";
 
 export default trpcNext.createNextApiHandler({
   router: appRouter,
@@ -42,23 +14,13 @@ export default trpcNext.createNextApiHandler({
     enabled: true,
   },
   createContext: () => ({
-    opts,
-    queues: [
-      {
-        name: "report-queue",
-        displayName: "Report Queue",
-      },
-      {
-        name: "notifications-daily-queue",
-        displayName: "Notifications Daily Queue",
-      },
-      {
-        name: "sync-queue",
-        displayName: "Sync Queue",
-        jobName(data) {
-          return (data as SyncJob).name;
-        },
-      },
-    ],
+    queues: queues.map((queue) => {
+      return {
+        queue: queue.queue,
+        displayName: queue.displayName,
+        type: queue.type,
+        jobName: queue.jobName,
+      };
+    }),
   }),
 });

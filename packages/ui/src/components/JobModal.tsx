@@ -1,8 +1,10 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Cross2Icon } from "@radix-ui/react-icons";
+import { CounterClockwiseClockIcon, Cross2Icon } from "@radix-ui/react-icons";
 import type { Job } from "../utils/trpc";
 import { JSONTree } from "react-json-tree";
 import { JobActionMenu } from "./JobActionMenu";
+import { Button } from "./Button";
+import { trpc } from "../utils/trpc";
 
 type JobModalProps = {
   job: Job;
@@ -11,6 +13,8 @@ type JobModalProps = {
 };
 
 export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
+  const { mutate: retry } = trpc.job.retry.useMutation();
+
   return (
     <Dialog.Root
       open={true}
@@ -58,6 +62,19 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                   Error
                 </p>
                 <p className="text-sm text-red-600">{job.failedReason}</p>
+                {/*TODO: Add stacktrace */}
+                <Button
+                  label="Retry"
+                  size="sm"
+                  icon={<CounterClockwiseClockIcon width={14} />}
+                  onClick={() => {
+                    retry({
+                      queueName,
+                      jobId: job.id,
+                    });
+                    onDismiss();
+                  }}
+                />
               </div>
             ) : null}
 

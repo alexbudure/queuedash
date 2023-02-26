@@ -17,7 +17,6 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["bull"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

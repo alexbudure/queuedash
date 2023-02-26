@@ -13,6 +13,9 @@ import {
   DotsHorizontalIcon,
   PlusCircledIcon,
   SlashIcon,
+  LapTimerIcon,
+  ExclamationTriangleIcon,
+  TargetIcon,
 } from "@radix-ui/react-icons";
 import { format, formatDistanceStrict, formatDistanceToNow } from "date-fns";
 import type { Job, Status } from "../utils/trpc";
@@ -124,12 +127,30 @@ const columns = [
       },
     }) => (
       <div className="flex items-center space-x-2">
-        {opts.priority ? <JobOptionTag label={opts.priority} /> : null}
-        {opts.attempts && opts.attempts > 1 ? (
-          <JobOptionTag label={opts.attempts} />
+        {opts.priority ? (
+          <JobOptionTag
+            icon={<ExclamationTriangleIcon width={12} height={12} />}
+            label={opts.priority}
+          />
         ) : null}
-        {opts.lifo ? <JobOptionTag label="LIFO" /> : null}
-        {opts.delay ? <JobOptionTag label={opts.delay} /> : null}
+        {opts.attempts && opts.attempts > 1 ? (
+          <JobOptionTag
+            icon={<CounterClockwiseClockIcon width={12} height={12} />}
+            label={opts.attempts}
+          />
+        ) : null}
+        {opts.lifo ? (
+          <JobOptionTag
+            icon={<TargetIcon width={12} height={12} />}
+            label="LIFO"
+          />
+        ) : null}
+        {opts.delay ? (
+          <JobOptionTag
+            icon={<LapTimerIcon width={12} height={12} />}
+            label={opts.delay}
+          />
+        ) : null}
       </div>
     ),
   }),
@@ -206,6 +227,7 @@ export const JobTable = ({
                 key={row.id}
                 job={row.original}
                 queueName={queueName}
+                isSelected={row.getIsSelected()}
               >
                 {row.getVisibleCells().map((cell, cellIndex) => (
                   <div

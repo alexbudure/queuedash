@@ -1,13 +1,28 @@
 import { initTRPC } from "@trpc/server";
-import type Queue from "bull";
+import type Bull from "bull";
+import type BullMQ from "bullmq";
+import type BeeQueue from "bee-queue";
+
+type Queue = {
+  displayName: string;
+  jobName?: (data: Record<string, unknown>) => string;
+} & (
+  | {
+      queue: Bull.Queue;
+      type: "bull";
+    }
+  | {
+      queue: BullMQ.Queue;
+      type: "bullmq";
+    }
+  | {
+      queue: BeeQueue;
+      type: "bee";
+    }
+);
 
 export type Context = {
-  queues: {
-    name: string;
-    displayName: string;
-    jobName?: (data: Record<string, unknown>) => string;
-  }[];
-  opts: Queue.QueueOptions;
+  queues: Queue[];
 };
 
 const t = initTRPC.context<Context>().create();
