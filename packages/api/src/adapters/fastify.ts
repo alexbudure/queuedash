@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { version } from "../../package.json";
 import type { Context } from "../trpc";
-import { queueDashRouter } from "../routers/_app";
+import { appRouter } from "../routers/_app";
 import * as trpcExpress from "@trpc/server/adapters/fastify";
 
 export function createQueueDashFastifyMiddleware({
@@ -15,7 +15,7 @@ export function createQueueDashFastifyMiddleware({
 }): void {
   server.register(trpcExpress.fastifyTRPCPlugin, {
     prefix: `${baseUrl}/trpc`,
-    trpcOptions: { router: queueDashRouter, createContext: () => ctx },
+    trpcOptions: { router: appRouter, createContext: () => ctx },
   });
 
   server.get(`${baseUrl}/*`, (_, res) => {

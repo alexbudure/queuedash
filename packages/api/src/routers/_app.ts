@@ -3,9 +3,9 @@ import { queueRouter } from "./queue";
 export type { Context } from "../trpc";
 import { router } from "../trpc";
 
-export const queueDashRouter = router({
+export const appRouter = router({
   job: jobRouter,
   queue: queueRouter,
 });
 
-export type QueueDashRouter = typeof queueDashRouter;
+export type AppRouter = typeof appRouter;

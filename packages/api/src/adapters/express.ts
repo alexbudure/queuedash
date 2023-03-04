@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { version } from "../../package.json";
 import type { Context } from "../trpc";
-import { queueDashRouter } from "../routers/_app";
+import { appRouter } from "../routers/_app";
 import * as trpcExpress from "@trpc/server/adapters/express";
 
 export function createQueueDashExpressMiddleware({
@@ -16,7 +16,7 @@ export function createQueueDashExpressMiddleware({
   app.use(
     `${baseUrl}/trpc`,
     trpcExpress.createExpressMiddleware({
-      router: queueDashRouter,
+      router: appRouter,
       createContext: () => ctx,
     })
   );

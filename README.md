@@ -80,10 +80,10 @@ export default QueueDashPages;
 
 // pages/api/queuedash/[trpc].ts
 import * as trpcNext from "@trpc/server/adapters/next";
-import { queueDashRouter } from "@queuedash/api";
+import { appRouter } from "@queuedash/api";
 
 export default trpcNext.createNextApiHandler({
-  router: queueDashRouter,
+  router: appRouter,
   batching: {
     enabled: true,
   },
