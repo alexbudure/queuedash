@@ -114,7 +114,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
                 <GitHubLogoIcon />
               </a>
               <a
-                href="https://queuedash.com/pro"
+                href="https://www.queuedash.com/pro"
                 target="_blank"
                 rel="noreferrer"
                 className="flex h-7 items-center justify-center space-x-1.5 whitespace-nowrap rounded-md bg-amber-100 pl-2 pr-3 text-amber-900 shadow-sm transition duration-150 ease-in-out hover:bg-amber-200 active:bg-amber-300 dark:bg-amber-900 dark:text-amber-50"

@@ -1,7 +1,7 @@
 > **WIP** - This is a work in progress. Please check back later.
 
 <p align="center">
-  <a href="https://www.queuedash.com" target="_blank">
+  <a href="https://www.queuedash.com" target="_blank" rel="noopener">
     <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social.png" alt="QueueDash">
   </a>
 </p>
@@ -21,11 +21,13 @@
 
 ## Features
 
-- Simple and clean UI
-- Add jobs to queue
-- Dark mode support
-- Next.js, Express, and Fastify
-- Bull, BullMQ, and Bee-Queue
+- 😍&nbsp; Simple, clean, and compact UI
+- 🧙&nbsp; Add jobs to queue with ease
+- 🪄&nbsp; Retry, remove, and more actions for jobs
+- 📊&nbsp; Stats for job counts, job durations, and job wait times
+- ✨&nbsp; Top-level overview page of all queues
+- 🔋&nbsp; Next.js, Express.js, and Fastify adapters
+- ⚡️&nbsp; Compatible with Bull, BullMQ, and Bee-Queue
 
 ## Use
 
@@ -42,13 +44,16 @@ const app = express();
 
 createQueueDashExpressMiddleware({
   app,
-  baseUrl: "/admin/queues",
-  queues: [
-    {
-      queue: new Bull("report-queue"),
-      displayName: "Reports",
-    },
-  ],
+  baseUrl: "/queuedash",
+  ctx: {
+    queues: [
+      {
+        queue: new Bull("report-queue"),
+        displayName: "Reports",
+        type: "bull",
+      },
+    ],
+  },
 });
 
 app.listen(3000, () => {
@@ -93,11 +98,7 @@ export default trpcNext.createNextApiHandler({
 });
 ```
 
-See the `examples/` folder for more examples:
-
-- with-next
-- with-fastify
-- with-express
+See the [./examples](./examples) folder for more.
 
 ---
 

@@ -6,12 +6,13 @@ const app = express();
 
 createQueueDashExpressMiddleware({
   app,
-  baseUrl: "/admin/queues",
+  baseUrl: "/queuedash",
   ctx: {
     queues: [
       {
         queue: new Bull("report-queue"),
         displayName: "Reports",
+        type: "bull",
       },
     ],
   },

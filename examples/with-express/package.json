@@ -2,6 +2,8 @@
   "name": "with-express",
   "version": "1.0.0",
   "description": "Example of using QueueDash with Express",
+  "author": "Alex Budure",
+  "license": "MIT",
   "scripts": {
     "start": "ts-node main.ts"
   },

@@ -1,22 +1,23 @@
 import fastify from "fastify";
 import Bull from "bull";
-import { createFastifyMiddleware } from "@queuedash/api";
+import { createQueueDashFastifyMiddleware } from "@queuedash/api";
 
-const app = fastify();
+const server = fastify();
 
-app.use(
-  "/admin/queues",
-  createFastifyMiddleware({
-    apiUrl: "",
-    // queues: [
-    //   {
-    //     queue: new Bull("report-queue"),
-    //     displayName: "Reports",
-    //   },
-    // ],
-  })
-);
+createQueueDashFastifyMiddleware({
+  server,
+  baseUrl: "/queuedash",
+  ctx: {
+    queues: [
+      {
+        queue: new Bull("report-queue"),
+        displayName: "Reports",
+        type: "bull",
+      },
+    ],
+  },
+});
 
-app.listen(3000, () => {
+server.listen(3000, () => {
   console.log("Listening on port 3000");
 });

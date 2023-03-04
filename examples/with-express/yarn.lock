@@ -63,15 +63,15 @@
   integrity sha512-O+6Gs8UeDbyFpbSh2CPEz/UOrrdWPTBYNblZK5CxxLisYt4kGX3Sc+czffFonyjiGSq3jWLwJS/CCJc7tBr4sQ==
 
 "@queuedash/api@^0.6.0":
-  version "0.5.0"
-  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-0.5.0.tgz#5a75f34d7805581311c0057a6acd666a78084aeb"
-  integrity sha512-7brsu775au5rbCwT+BBXz4pT17vulEd3twAWP4zW0hC+iw5HO77ZLZXeGrTtlrC6/MJIZTXCpIhyycjqCrjqVQ==
+  version "0.6.0"
+  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-0.6.0.tgz#6be1d5cc1628631c7a5853eeb22cb0ca8118c371"
+  integrity sha512-C5ngLFls+CITvkTYjOD3BtTQ+2p3GbKtHRj/VasoDyW7ZAr9gjv6Fz/oihqdP8yeO3osmxSbudWEVP3OeyTysg==
   dependencies:
-    "@trpc/server" "^10.12.0"
+    "@trpc/server" "^10.14.0"
     redis-info "^3.1.0"
-    zod "^3.20.2"
+    zod "^3.20.6"
 
-"@trpc/server@^10.12.0":
+"@trpc/server@^10.14.0":
   version "10.14.0"
   resolved "https://registry.yarnpkg.com/@trpc/server/-/server-10.14.0.tgz#0f15ae44f793a6c687737a6ed9f8767226795b8b"
   integrity sha512-hNnvwkSfqpIb89CH8pTV8VkldS9qjd3ZxaCgya7CeCk6QeDajT/bRX9bPmrkEe0UQtrbbPU5h47nuMrBsN2ghQ==
@@ -786,7 +786,7 @@ yn@3.1.1:
   resolved "https://registry.yarnpkg.com/yn/-/yn-3.1.1.tgz#1e87401a09d767c1d5eab26a6e4c185182d2eb50"
   integrity sha512-Ux4ygGWsu2c7isFWe8Yu1YluJmqVhxqK2cLXNQA5AcC3QfbGNpM7fu0Y8b/z16pXLnFxZYvWhd3fhBY9DLmC6Q==
 
-zod@^3.20.2:
+zod@^3.20.6:
   version "3.20.6"
   resolved "https://registry.yarnpkg.com/zod/-/zod-3.20.6.tgz#2f2f08ff81291d47d99e86140fedb4e0db08361a"
   integrity sha512-oyu0m54SGCtzh6EClBVqDDlAYRz4jrVtKwQ7ZnsEmMI9HnzuZFj8QFwAY1M5uniIYACdGvv0PBWPF2kO0aNofA==
