@@ -73,10 +73,12 @@ importers:
       eslint: ^8.35.0
       eslint-config-prettier: ^8.6.0
       eslint-plugin-tailwindcss: ^3.10.1
+      postcss: ^8.4.21
       prettier: ^2.8.4
       react: ^18.2.0
       react-dom: ^18.2.0
       rollup-plugin-typescript-paths: ^1.4.0
+      tailwindcss: ^3.2.7
       typescript: ^4.9.5
       vite: ^4.1.4
     dependencies:
@@ -92,9 +94,11 @@ importers:
       '@vitejs/plugin-react': 3.1.0_vite@4.1.4
       eslint: 8.35.0
       eslint-config-prettier: 8.6.0_eslint@8.35.0
-      eslint-plugin-tailwindcss: 3.10.1
+      eslint-plugin-tailwindcss: 3.10.1_tailwindcss@3.2.7
+      postcss: 8.4.21
       prettier: 2.8.4
       rollup-plugin-typescript-paths: 1.4.0_typescript@4.9.5
+      tailwindcss: 3.2.7_postcss@8.4.21
       typescript: 4.9.5
       vite: 4.1.4
 
@@ -139,43 +143,6 @@ importers:
       eslint-config-prettier: 8.6.0_eslint@8.35.0
       prettier: 2.8.4
       ts-node-dev: 2.0.0_alpjt73dvgv6kni625hu7f2l4m
-      typescript: 4.9.5
-
-  packages/site:
-    specifiers:
-      '@heroicons/react': ^2.0.14
-      '@tailwindcss/forms': ^0.5.3
-      '@types/node': ^18.14.6
-      '@types/react': ^18.0.28
-      '@typescript-eslint/eslint-plugin': ^5.54.0
-      '@typescript-eslint/parser': ^5.54.0
-      eslint: ^8.35.0
-      eslint-config-next: ^13.2.3
-      eslint-config-prettier: ^8.6.0
-      next: ^13.2.3
-      postcss: ^8.4.21
-      prettier: ^2.8.4
-      react: ^18.2.0
-      react-dom: ^18.2.0
-      tailwindcss: ^3.2.7
-      typescript: ^4.9.5
-    dependencies:
-      '@heroicons/react': 2.0.16_react@18.2.0
-      next: 13.2.3_biqbaboplfbrettd7655fr4n2y
-      react: 18.2.0
-      react-dom: 18.2.0_react@18.2.0
-    devDependencies:
-      '@tailwindcss/forms': 0.5.3_tailwindcss@3.2.7
-      '@types/node': 18.14.6
-      '@types/react': 18.0.28
-      '@typescript-eslint/eslint-plugin': 5.54.0_6mj2wypvdnknez7kws2nfdgupi
-      '@typescript-eslint/parser': 5.54.0_ycpbpc6yetojsgtrx3mwntkhsu
-      eslint: 8.35.0
-      eslint-config-next: 13.2.3_ycpbpc6yetojsgtrx3mwntkhsu
-      eslint-config-prettier: 8.6.0_eslint@8.35.0
-      postcss: 8.4.21
-      prettier: 2.8.4
-      tailwindcss: 3.2.7_postcss@8.4.21
       typescript: 4.9.5
 
   packages/ui:
@@ -989,14 +956,6 @@ packages:
       use-isomorphic-layout-effect: 1.1.2_pmekkgnqduwlme35zpnqhenc34
     transitivePeerDependencies:
       - '@types/react'
-    dev: false
-
-  /@heroicons/react/2.0.16_react@18.2.0:
-    resolution: {integrity: sha512-x89rFxH3SRdYaA+JCXwfe+RkE1SFTo9GcOkZettHer71Y3T7V+ogKmfw5CjTazgS3d0ClJ7p1NA+SP7VQLQcLw==}
-    peerDependencies:
-      react: '>= 16'
-    dependencies:
-      react: 18.2.0
     dev: false
 
   /@humanwhocodes/config-array/0.11.8:
@@ -1859,15 +1818,6 @@ packages:
     dependencies:
       tslib: 2.5.0
     dev: false
-
-  /@tailwindcss/forms/0.5.3_tailwindcss@3.2.7:
-    resolution: {integrity: sha512-y5mb86JUoiUgBjY/o6FJSFZSEttfb3Q5gllE4xoKjAAD+vBrnIhE4dViwUuow3va8mpH4s9jyUbUbrRGoRdc2Q==}
-    peerDependencies:
-      tailwindcss: '>=3.0.0 || >= 3.0.0-alpha.1'
-    dependencies:
-      mini-svg-data-uri: 1.4.4
-      tailwindcss: 3.2.7_postcss@8.4.21
-    dev: true
 
   /@tanstack/query-core/4.24.10:
     resolution: {integrity: sha512-2QywqXEAGBIUoTdgn1lAB4/C8QEqwXHj2jrCLeYTk2xVGtLiPEUD8jcMoeB2noclbiW2mMt4+Fq7fZStuz3wAQ==}
@@ -3501,16 +3451,6 @@ packages:
       string.prototype.matchall: 4.0.8
     dev: true
 
-  /eslint-plugin-tailwindcss/3.10.1:
-    resolution: {integrity: sha512-NLPZ6b6nd/8CgGNMQ6NDiPUfBLQpSGu/u9RyX3MCZOwzNs2dFt1OamNAiRuo3Ixh7Gv4t5UcAcdNt8z74UDJkA==}
-    engines: {node: '>=12.13.0'}
-    peerDependencies:
-      tailwindcss: ^3.2.2
-    dependencies:
-      fast-glob: 3.2.12
-      postcss: 8.4.21
-    dev: true
-
   /eslint-plugin-tailwindcss/3.10.1_tailwindcss@3.2.7:
     resolution: {integrity: sha512-NLPZ6b6nd/8CgGNMQ6NDiPUfBLQpSGu/u9RyX3MCZOwzNs2dFt1OamNAiRuo3Ixh7Gv4t5UcAcdNt8z74UDJkA==}
     engines: {node: '>=12.13.0'}
@@ -4774,11 +4714,6 @@ packages:
   /min-indent/1.0.1:
     resolution: {integrity: sha512-I9jwMn07Sy/IwOj3zVkVik2JTvgpaykDZEigL6Rx6N9LbMywwUSMtxET+7lVoDLLd3O3IXwJwvuuns8UB/HeAg==}
     engines: {node: '>=4'}
-    dev: true
-
-  /mini-svg-data-uri/1.4.4:
-    resolution: {integrity: sha512-r9deDe9p5FJUPZAk3A59wGH7Ii9YrjjWw0jmw/liSbHl2CHiyXj6FcDXDu2K3TjVAXqiJdaw3xxwlZZr9E6nHg==}
-    hasBin: true
     dev: true
 
   /minimatch/3.1.2:
