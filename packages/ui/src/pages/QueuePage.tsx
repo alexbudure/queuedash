@@ -1,4 +1,4 @@
-import type {  Status } from "../utils/trpc";
+import type { Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Layout } from "../components/Layout";
 import { JobTable } from "../components/JobTable";
@@ -107,6 +107,7 @@ export const QueuePage = () => {
                 if (isFetchingNextPage || !hasNextPage) return;
                 fetchNextPage();
               }}
+              status={status}
               totalJobs={data?.pages.at(-1)?.totalCount || 0}
               jobs={jobs.map((j) => ({ ...j, status }))}
               isLoading={isLoading}

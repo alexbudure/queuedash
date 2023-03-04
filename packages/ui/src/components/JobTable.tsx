@@ -16,6 +16,7 @@ import {
   LapTimerIcon,
   ExclamationTriangleIcon,
   TargetIcon,
+  TrashIcon,
 } from "@radix-ui/react-icons";
 import { format, formatDistanceStrict, formatDistanceToNow } from "date-fns";
 import type { Job, Status } from "../utils/trpc";
@@ -26,6 +27,9 @@ import { Checkbox } from "./Checkbox";
 import { JobOptionTag } from "./JobOptionTag";
 import * as Progress from "@radix-ui/react-progress";
 import { Tooltip } from "./Tooltip";
+import { JobModal } from "./JobModal";
+import { Button } from "./Button";
+import { trpc } from "../utils/trpc";
 
 const columnHelper = createColumnHelper<Job & { status: Status }>();
 
@@ -165,6 +169,7 @@ type JobTableProps = {
   onBottomInView: () => void;
   isLoading: boolean;
   isFetchingNextPage: boolean;
+  status: Status;
 };
 export const JobTable = ({
   jobs,
@@ -173,6 +178,7 @@ export const JobTable = ({
   isLoading,
   isFetchingNextPage,
   queueName,
+  status,
 }: JobTableProps) => {
   const [rowSelection, setRowSelection] = useState({});
   const { ref } = useInView({
@@ -194,8 +200,21 @@ export const JobTable = ({
   });
   const isEmpty = jobs.length === 0;
   const progress = (jobs.length / (totalJobs || 0)) * 100;
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  const { mutate: retry } = trpc.job.retry.useMutation();
+  const { mutate: rerun } = trpc.job.rerun.useMutation();
+  const { mutate: bulkRemove } = trpc.job.bulkRemove.useMutation();
+
   return (
     <div>
+      {selectedJob ? (
+        <JobModal
+          queueName={queueName}
+          job={selectedJob}
+          onDismiss={() => setSelectedJob(null)}
+        />
+      ) : null}
       <div className="rounded-md border border-slate-200 shadow-sm dark:border-slate-700">
         {isLoading ? (
           <JobTableSkeleton />
@@ -227,9 +246,8 @@ export const JobTable = ({
               <JobTableRow
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
-                job={row.original}
-                queueName={queueName}
                 isSelected={row.getIsSelected()}
+                onClick={() => setSelectedJob(row.original)}
               >
                 {row.getVisibleCells().map((cell, cellIndex) => (
                   <div
@@ -277,6 +295,53 @@ export const JobTable = ({
           </div>
         </div>
       )}
+
+      {table.getSelectedRowModel().rows.length > 0 ? (
+        <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
+          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 py-2 px-3 text-sm shadow-lg backdrop-blur">
+            <p>{table.getSelectedRowModel().rows.length} selected</p>
+            {status === "completed" || status === "failed" ? (
+              <Button
+                label={status === "failed" ? "Retry" : "Rerun"}
+                icon={<CounterClockwiseClockIcon />}
+                size="sm"
+                onClick={() => {
+                  table.getSelectedRowModel().rows.forEach((row) => {
+                    if (status === "failed") {
+                      retry({
+                        queueName,
+                        jobId: row.original.id,
+                      });
+                    } else {
+                      rerun({
+                        queueName,
+                        jobId: row.original.id,
+                      });
+                    }
+                  });
+                }}
+              />
+            ) : null}
+
+            <Button
+              label="Delete"
+              colorScheme="red"
+              icon={<TrashIcon />}
+              size="sm"
+              onClick={() => {
+                bulkRemove({
+                  queueName,
+                  jobIds: table
+                    .getSelectedRowModel()
+                    .rows.map((row) => row.original.id),
+                });
+
+                table.resetRowSelection();
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

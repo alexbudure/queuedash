@@ -35,21 +35,21 @@
 
 ```typescript
 import express from "express";
-import { createExpressMiddleware } from "@queuedash/api";
+import Bull from "bull";
+import { createQueueDashExpressMiddleware } from "@queuedash/api";
 
 const app = express();
 
-app.use(
-  "/admin/queues",
-  createExpressMiddleware({
-    queues: [
-      {
-        queue: new Bull("report-queue"),
-        displayName: "Reports",
-      },
-    ],
-  })
-);
+createQueueDashExpressMiddleware({
+  app,
+  baseUrl: "/admin/queues",
+  queues: [
+    {
+      queue: new Bull("report-queue"),
+      displayName: "Reports",
+    },
+  ],
+});
 
 app.listen(3000, () => {
   console.log("Listening on port 3000");
@@ -61,29 +61,29 @@ app.listen(3000, () => {
 `pnpm install @queuedash/api @queuedash/ui`
 
 ```typescript jsx
-// pages/admin/queue-dash/[[...slug]].tsx
+// pages/admin/queuedash/[[...slug]].tsx
 import { QueueDashApp } from "@queuedash/ui";
 
 function getBaseUrl() {
   if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/queue-dash`;
+    return `https://${process.env.VERCEL_URL}/api/queuedash`;
   }
 
-  return `http://localhost:${process.env.PORT ?? 3000}/api/queue-dash`;
+  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
 }
 
 const QueueDashPages = () => {
-  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queue-dash" />;
+  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queuedash" />;
 };
 
 export default QueueDashPages;
 
-// pages/api/queue-dash/[trpc].ts
+// pages/api/queuedash/[trpc].ts
 import * as trpcNext from "@trpc/server/adapters/next";
-import { appRouter } from "@queuedash/api";
+import { queueDashRouter } from "@queuedash/api";
 
 export default trpcNext.createNextApiHandler({
-  router: appRouter,
+  router: queueDashRouter,
   batching: {
     enabled: true,
   },

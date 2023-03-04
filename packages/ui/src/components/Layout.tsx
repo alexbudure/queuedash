@@ -1,11 +1,11 @@
-import type { FC, PropsWithChildren } from "react";
-import type { RouterOutput } from "../utils/trpc";
+import type { FC, PropsWithChildren, ReactNode } from "react";
 import { trpc } from "../utils/trpc";
 import { NavLink } from "react-router-dom";
 import { Skeleton } from "./Skeleton";
 import * as Toast from "@radix-ui/react-toast";
 import {
   GitHubLogoIcon,
+  DashboardIcon,
   LightningBoltIcon,
   ShadowNoneIcon,
 } from "@radix-ui/react-icons";
@@ -13,21 +13,24 @@ import { ThemeSwitcher } from "./ThemeSwitcher";
 import { ErrorCard } from "./ErrorCard";
 
 type QueueNavLinkProps = {
-  queue: RouterOutput["queue"]["list"]["0"];
+  to: string;
+  label: string;
+  icon?: ReactNode;
 };
-const QueueNavLink = ({ queue }: QueueNavLinkProps) => {
+const QueueNavLink = ({ to, label, icon }: QueueNavLinkProps) => {
   return (
     <NavLink
-      to={`../${queue.name}`}
+      to={to}
       className={({ isActive }) =>
-        `relative -ml-px backdrop-blur-50 flex w-full items-center space-x-3 rounded-md pl-4 py-1 transition duration-150 ease-in-out ${
+        `relative -ml-px backdrop-blur-50 flex w-full items-center space-x-2 rounded-md pl-4 py-1 transition duration-150 ease-in-out ${
           isActive
             ? "bg-slate-100/90 font-medium text-slate-900 dark:border-brand-300 dark:text-brand-300"
             : "text-slate-500 dark:text-slate-400 border-slate-100 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
         }`
       }
     >
-      <span className="truncate">{queue.displayName}</span>
+      {icon}
+      <span className="block truncate">{label}</span>
     </NavLink>
   );
 };
@@ -70,18 +73,34 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
                 <p className="text-lg font-semibold">QueueDash</p>
               </div>
 
-              <div className="w-full space-y-1">
-                {isLoading ? (
-                  [...new Array(10)].map((_, i) => {
-                    return <Skeleton className="h-8" key={i} />;
-                  })
-                ) : isError ? (
-                  <ErrorCard message="Could not fetch queues" />
-                ) : (
-                  data?.map((queue) => {
-                    return <QueueNavLink key={queue.name} queue={queue} />;
-                  })
-                )}
+              <div className="w-full space-y-4">
+                <QueueNavLink
+                  label="Overview"
+                  icon={
+                    <DashboardIcon className="mb-0.5" height={16} width={16} />
+                  }
+                  to={`../`}
+                />
+                <div className="h-px w-full bg-slate-100" />
+                <div className="w-full space-y-1">
+                  {isLoading ? (
+                    [...new Array(10)].map((_, i) => {
+                      return <Skeleton className="h-8" key={i} />;
+                    })
+                  ) : isError ? (
+                    <ErrorCard message="Could not fetch queues" />
+                  ) : (
+                    data?.map((queue) => {
+                      return (
+                        <QueueNavLink
+                          key={queue.name}
+                          to={`../${queue.name}`}
+                          label={queue.displayName}
+                        />
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
 

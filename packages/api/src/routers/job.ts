@@ -118,6 +118,46 @@ export const jobRouter = router({
     }
   }),
   remove: generateJobMutationProcedure((job) => job.remove()),
+  bulkRemove: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobIds: z.array(z.string()),
+      })
+    )
+    .mutation(async ({ input: { jobIds, queueName }, ctx: { queues } }) => {
+      const queueInCtx = findQueueInCtxOrFail({
+        queues,
+        queueName,
+      });
+
+      try {
+        const jobs = await Promise.all(
+          jobIds.map(async (jobId) => {
+            const job = await queueInCtx.queue.getJob(jobId);
+
+            if (!job) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+              });
+            }
+            await job.remove();
+
+            return job;
+          })
+        );
+        return jobs.map((job) => formatJob({ job, queueInCtx }));
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+    }),
   list: procedure
     .input(
       z.object({

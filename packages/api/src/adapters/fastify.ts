@@ -1,26 +1,24 @@
-import type { Express } from "express";
+import type { FastifyInstance } from "fastify";
 import { version } from "../../package.json";
 import type { Context } from "../trpc";
 import { queueDashRouter } from "../routers/_app";
-import * as trpcExpress from "@trpc/server/adapters/express";
+import * as trpcExpress from "@trpc/server/adapters/fastify";
 
-export function createQueueDashExpressMiddleware({
+export function createQueueDashFastifyMiddleware({
   baseUrl,
-  app,
+  server,
   ctx,
 }: {
-  app: Express;
+  server: FastifyInstance;
   ctx: Context;
   baseUrl: string;
 }): void {
-  app.use(
-    `${baseUrl}/trpc`,
-    trpcExpress.createExpressMiddleware({
-      router: queueDashRouter,
-      createContext: () => ctx,
-    })
-  );
-  app.use(baseUrl, (_, res) => {
+  server.register(trpcExpress.fastifyTRPCPlugin, {
+    prefix: `${baseUrl}/trpc`,
+    trpcOptions: { router: queueDashRouter, createContext: () => ctx },
+  });
+
+  server.get(`${baseUrl}/*`, (_, res) => {
     res.send(/* HTML */ `<!DOCTYPE html>
       <html lang="en">
         <head>

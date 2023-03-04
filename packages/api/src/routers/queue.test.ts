@@ -1,5 +1,5 @@
 import type { Context } from "../trpc";
-import { appRouter } from "./_app";
+import { queueDashRouter } from "./_app";
 import { test, expect } from "vitest";
 import Bull from "bull";
 // import type { inferProcedureInput } from "@trpc/server";
@@ -15,7 +15,7 @@ test("list queues", async () => {
     ],
   };
 
-  const caller = appRouter.createCaller(ctx);
+  const caller = queueDashRouter.createCaller(ctx);
 
   // const input: inferProcedureInput<AppRouter["post"]["add"]> = {
   //   text: "hello test",

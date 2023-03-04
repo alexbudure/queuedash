@@ -1,9 +1,9 @@
 import * as trpcNext from "@trpc/server/adapters/next";
-import { appRouter } from "@queuedash/api";
+import { queueDashRouter } from "@queuedash/api";
 import { queues } from "../../../utils/fake-data";
 
 export default trpcNext.createNextApiHandler({
-  router: appRouter,
+  router: queueDashRouter,
   onError({ error }) {
     if (error.code === "INTERNAL_SERVER_ERROR") {
       // send to bug reporting

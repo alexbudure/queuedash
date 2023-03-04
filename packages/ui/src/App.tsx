@@ -5,6 +5,7 @@ import { trpc } from "./utils/trpc";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueuePage } from "./pages/QueuePage";
 import type { UserPreferences } from "./components/ThemeSwitcher";
+import { HomePage } from "./pages/HomePage";
 
 type QueueDashPagesProps = {
   apiUrl: string;
@@ -55,6 +56,10 @@ export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {
 
   const router = createBrowserRouter(
     [
+      {
+        path: "/",
+        element: <HomePage />,
+      },
       {
         path: "/:id",
         element: <QueuePage />,
