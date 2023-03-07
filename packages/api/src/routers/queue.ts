@@ -3,7 +3,6 @@ import { z } from "zod";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 import type Bull from "bull";
 import type BullMQ from "bullmq";
-import { parse } from "redis-info";
 import { TRPCError } from "@trpc/server";
 import type BeeQueue from "bee-queue";
 
@@ -25,10 +24,14 @@ const generateQueueMutationProcedure = (
       try {
         await action(queueInCtx.queue);
       } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
-        });
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
       }
 
       return {
@@ -58,6 +61,13 @@ export const queueRouter = router({
         queueName,
       });
 
+      if (queueInCtx.type === "bee") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot clean Bee-Queue queues",
+        });
+      }
+
       try {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
@@ -79,21 +89,30 @@ export const queueRouter = router({
     } else if ("drain" in queue) {
       return queue.drain();
     } else {
-      return queue.destroy(); // TODO:
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Cannot empty Bee-Queue queues",
+      });
     }
   }),
   pause: generateQueueMutationProcedure((queue) => {
     if ("pause" in queue) {
       return queue.pause();
     } else {
-      return queue.destroy(); // TODO:
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Cannot pause Bee-Queue queues",
+      });
     }
   }),
   resume: generateQueueMutationProcedure((queue) => {
     if ("resume" in queue) {
       return queue.resume();
     } else {
-      return queue.destroy(); // TODO:
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Cannot resume Bee-Queue queues",
+      });
     }
   }),
   addJob: procedure
@@ -113,7 +132,7 @@ export const queueRouter = router({
         if ("add" in queueInCtx.queue) {
           await queueInCtx.queue.add(data, {});
         } else {
-          await queueInCtx.queue.createJob(data);
+          await queueInCtx.queue.createJob(data).save();
         }
       } catch (e) {
         throw new TRPCError({
@@ -141,29 +160,30 @@ export const queueRouter = router({
 
       const isBee = queueInCtx.type === "bee";
 
-      const client = isBee
-        ? queueInCtx.queue.settings.redis
-        : await queueInCtx.queue.client;
-
       try {
-        const [counts, info, isPaused] = await Promise.all([
+        const [counts, isPaused] = await Promise.all([
           isBee
             ? queueInCtx.queue.checkHealth()
             : queueInCtx.queue.getJobCounts(),
-          client.info(),
           isBee ? queueInCtx.queue.paused : queueInCtx.queue.isPaused(),
         ]);
-        const parsedInfo = parse(info);
+        // TODO: Redis info
+        // import { parse } from "redis-info";
+        // const client = isBee
+        //         ? queueInCtx.queue.settings.redis
+        //         : await queueInCtx.queue.client;
+        // const info = client.info(),
+        // const parsedInfo = isBee ? {} : parse(info);
+        // client: {
+        //   connectedClients: parsedInfo.connected_clients,
+        //   blockedClients: parsedInfo.blocked_clients,
+        //   version: parsedInfo.redis_version,
+        // }
 
         return {
           displayName: queueInCtx.displayName,
           name: queueInCtx.queue.name,
           paused: isPaused,
-          client: {
-            connectedClients: parsedInfo.connected_clients,
-            blockedClients: parsedInfo.blocked_clients,
-            version: parsedInfo.redis_version,
-          },
           counts: {
             active: counts.active,
             completed:

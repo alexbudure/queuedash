@@ -18,7 +18,13 @@
     "release": "pnpm build && changeset publish",
     "docker": "docker-compose up -d"
   },
-  "keywords": [],
+  "keywords": [
+    "bull",
+    "bee-queue",
+    "queue",
+    "bullmq",
+    "dashboard"
+  ],
   "author": "Alex Budure",
   "license": "MIT",
   "devDependencies": {

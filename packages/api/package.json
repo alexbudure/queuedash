@@ -4,7 +4,10 @@
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",
-    "test": "vitest run",
+    "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bee",
+    "test:bull": "QUEUE_TYPE=bull vitest run",
+    "test:bullmq": "QUEUE_TYPE=bull vitest run",
+    "test:bee": "QUEUE_TYPE=bee vitest run",
     "lint": "eslint ./ --fix"
   },
   "main": "./dist/main.js",
@@ -14,14 +17,20 @@
     "dist"
   ],
   "keywords": [
-    "bull"
+    "bull",
+    "bee-queue",
+    "queue",
+    "bullmq",
+    "dashboard"
   ],
   "dependencies": {
     "@trpc/server": "^10.14.0",
+    "redis": "^4.6.5",
     "redis-info": "^3.1.0",
     "zod": "^3.20.6"
   },
   "devDependencies": {
+    "@faker-js/faker": "^7.6.0",
     "@rollup/plugin-typescript": "^10.0.1",
     "@types/express": "^4.17.17",
     "@types/express-serve-static-core": "^4.17.33",

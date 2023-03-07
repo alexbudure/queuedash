@@ -8,7 +8,9 @@ import type { UserPreferences } from "./components/ThemeSwitcher";
 import { HomePage } from "./pages/HomePage";
 
 type QueueDashPagesProps = {
+  // URL to the API
   apiUrl: string;
+  // Base path for the app
   basename: string;
 };
 export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {

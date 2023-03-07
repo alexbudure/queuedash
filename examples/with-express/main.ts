@@ -12,7 +12,7 @@ createQueueDashExpressMiddleware({
       {
         queue: new Bull("report-queue"),
         displayName: "Reports",
-        type: "bull",
+        type: "bull" as const,
       },
     ],
   },

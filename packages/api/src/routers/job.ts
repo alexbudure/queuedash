@@ -5,7 +5,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { findQueueInCtxOrFail, formatJob } from "../utils/global.utils";
 import type BeeQueue from "bee-queue";
-
+import { createClient } from "redis";
 const generateJobMutationProcedure = (
   action: (
     job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>
@@ -60,7 +60,10 @@ export const jobRouter = router({
         });
       }
     } else {
-      throw new Error(""); // TODO:
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Bee-Queue does not support retrying jobs",
+      });
     }
   }),
   discard: generateJobMutationProcedure((job) => {
@@ -92,10 +95,10 @@ export const jobRouter = router({
       }
 
       try {
-        if ("add" in queueInCtx.queue) {
-          await queueInCtx.queue.add(job.data, {});
+        if (queueInCtx.type === "bee") {
+          await queueInCtx.queue.createJob(job.data).save();
         } else {
-          await queueInCtx.queue.createJob(job.data);
+          await queueInCtx.queue.add(job.data, {});
         }
       } catch (e) {
         if (e instanceof TRPCError) {
@@ -114,7 +117,10 @@ export const jobRouter = router({
     if ("promote" in job) {
       return job.promote();
     } else {
-      throw new Error(""); // TODO:
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Bee-Queue does not support promoting jobs",
+      });
     }
   }),
   remove: generateJobMutationProcedure((job) => job.remove()),
@@ -185,7 +191,39 @@ export const jobRouter = router({
         });
 
         if (queueInCtx.type === "bee") {
-          throw new Error(""); // TODO:
+          try {
+            const normalizedStatus =
+              status === "completed" ? "succeeded" : status;
+            const client = createClient(queueInCtx.queue.settings.redis);
+
+            const [jobs] = await Promise.all([
+              queueInCtx.queue.getJobs(normalizedStatus, {
+                start: cursor,
+                end: cursor + limit - 1,
+              }),
+              client.connect(),
+            ]);
+
+            const totalCount = await client.sCard(
+              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`
+            );
+
+            await client.disconnect();
+
+            const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
+
+            return {
+              totalCount,
+              numOfPages: Math.ceil(totalCount / limit),
+              nextCursor: hasNextPage ? cursor + limit : undefined,
+              jobs: jobs.map((job) => formatJob({ job, queueInCtx })),
+            };
+          } catch (e) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: e instanceof Error ? e.message : undefined,
+            });
+          }
         }
 
         try {
