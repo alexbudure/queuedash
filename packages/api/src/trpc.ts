@@ -4,7 +4,9 @@ import type BullMQ from "bullmq";
 import type BeeQueue from "bee-queue";
 
 type Queue = {
+  // Display name of the queue in the UI
   displayName: string;
+  // Function to get the job name from the job data
   jobName?: (data: Record<string, unknown>) => string;
 } & (
   | {
@@ -22,6 +24,7 @@ type Queue = {
 );
 
 export type Context = {
+  // List of queues to expose
   queues: Queue[];
 };
 

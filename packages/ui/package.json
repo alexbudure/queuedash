@@ -8,7 +8,11 @@
     "dist"
   ],
   "keywords": [
-    "bull"
+    "bull",
+    "bee-queue",
+    "queue",
+    "bullmq",
+    "dashboard"
   ],
   "scripts": {
     "build": "tsc && vite build && npx tailwindcss -i src/styles/global.css -o ./dist/styles.css",

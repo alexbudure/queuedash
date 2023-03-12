@@ -1,3 +1,5 @@
+> **WIP** - This is a work in progress. Please check back later.
+
 <p align="center">
   <a href="https://www.queuedash.com" target="_blank" rel="noopener">
     <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social.png" alt="QueueDash">
@@ -5,7 +7,7 @@
 </p>
 
 <p align="center">
-  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue.
+  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue
 <p>
 
 <p align="center">
@@ -20,14 +22,14 @@
 ## Features
 
 - 😍&nbsp; Simple, clean, and compact UI
-- 🧙&nbsp; Add jobs to your queue with ease
-- 🪄&nbsp; Retry, remove, and more convenient actions for your jobs
+- 🧙&nbsp; Add jobs to queue with ease
+- 🪄&nbsp; Retry, remove, and more actions for jobs
 - 📊&nbsp; Stats for job counts, job durations, and job wait times
 - ✨&nbsp; Top-level overview page of all queues
-- 🔋&nbsp; Integrates with Next.js, Express.js, and Fastify
+- 🔋&nbsp; Next.js, Express.js, and Fastify adapters
 - ⚡️&nbsp; Compatible with Bull, BullMQ, and Bee-Queue
 
-## Getting Started
+## Use
 
 ### Express
 
@@ -109,26 +111,6 @@ See the [./examples](./examples) folder for more.
 
 ## API Reference
 
-### `createQueueDash<*>Middleware`
-
-```typescript
-type QueueDashMiddlewareOptions = {
-  app: express.Application | FastifyInstance; // Express or Fastify app
-  baseUrl: string; // Base path for the API and UI
-  ctx: QueueDashContext; // Context for the UI
-};
-
-type QueueDashContext = {
-  queues: QueueDashQueue[]; // Array of queues to display
-};
-
-type QueueDashQueue = {
-  queue: Bull.Queue | BullMQ.Queue | BeeQueue; // Queue instance
-  displayName: string; // Display name for the queue
-  type: "bull" | "bullmq" | "bee"; // Queue type
-};
-```
-
 ### `<QueueDashApp />`
 
 ```typescript jsx
@@ -138,10 +120,8 @@ type QueueDashAppProps = {
 };
 ```
 
-## Acknowledgements
+### `Context`
 
-QueueDash was inspired by some great open source projects. Here's a few of them:
-
-- [bull-board](https://github.com/vcapretz/bull-board)
-- [bull-monitor](https://github.com/s-r-x/bull-monitor)
-- [bull-arena](https://github.com/bee-queue/arena)
+- `queues` - Array of queues to display
+  - `queue` - Queue instance
+  - `displayName` - Display name for the queue

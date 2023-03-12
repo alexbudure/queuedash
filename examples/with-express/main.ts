@@ -12,7 +12,7 @@ createQueueDashExpressMiddleware({
       {
         queue: new Bull("report-queue"),
         displayName: "Reports",
-        type: "bull",
+        type: "bull" as const,
       },
     ],
   },
@@ -20,4 +20,5 @@ createQueueDashExpressMiddleware({
 
 app.listen(3000, () => {
   console.log("Listening on port 3000");
+  console.log("Visit http://localhost:3000/queuedash");
 });

@@ -58,7 +58,7 @@ const QueueCard = ({ queueName }: { queueName: string }) => {
       to={`../${queueReq.data.name}`}
       className="group flex items-center justify-between transition"
     >
-      <p className="py-3 text-lg font-medium text-slate-900 transition group-hover:text-brand-900">
+      <p className="py-3 text-lg font-medium text-slate-900 transition group-hover:text-brand-900 dark:text-slate-200 dark:group-hover:text-brand-100">
         {queueReq.data.displayName}
       </p>
       <div className="flex space-x-5">
@@ -85,7 +85,9 @@ export const HomePage = () => {
               <div
                 key={queue.name}
                 className={
-                  data?.length - 1 !== index ? "border-b border-slate-100" : ""
+                  data?.length - 1 !== index
+                    ? "border-b border-slate-100 dark:border-slate-700"
+                    : ""
                 }
               >
                 <QueueCard key={queue.name} queueName={queue.name} />

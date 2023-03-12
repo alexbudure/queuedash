@@ -24,8 +24,8 @@ const QueueNavLink = ({ to, label, icon }: QueueNavLinkProps) => {
       className={({ isActive }) =>
         `relative -ml-px backdrop-blur-50 flex w-full items-center space-x-2 rounded-md pl-4 py-1 transition duration-150 ease-in-out ${
           isActive
-            ? "bg-slate-100/90 font-medium text-slate-900 dark:border-brand-300 dark:text-brand-300"
-            : "text-slate-500 dark:text-slate-400 border-slate-100 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
+            ? "bg-slate-100/90 font-medium text-slate-900 dark:bg-slate-900 dark:text-brand-300"
+            : "text-slate-500 dark:text-slate-400 border-slate-100 hover:bg-slate-50 dark:hover:bg-slate-900 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
         }`
       }
     >
@@ -81,7 +81,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
                   }
                   to={`../`}
                 />
-                <div className="h-px w-full bg-slate-100" />
+                <div className="h-px w-full bg-slate-100 dark:bg-slate-700" />
                 <div className="w-full space-y-1">
                   {isLoading ? (
                     [...new Array(10)].map((_, i) => {
