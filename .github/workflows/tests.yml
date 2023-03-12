@@ -3,7 +3,7 @@ on: push
 
 jobs:
   tests:
-    name: Release
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo

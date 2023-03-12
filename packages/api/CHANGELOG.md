@@ -4,7 +4,7 @@
 
 ### Major Changes
 
-- [#1](https://github.com/alexbudure/queuedash/pull/1) [`c96b93d`](https://github.com/alexbudure/queuedash/commit/c96b93d9659bbb34248ab377e6659ebfb1fc3dd8) Thanks [@alexbudure](https://github.com/alexbudure)! - ## QueueDash v1 🎉
+- [#1](https://github.com/alexbudure/queuedash/pull/1) [`c96b93d`](https://github.com/alexbudure/queuedash/commit/c96b93d9659bbb34248ab377e6659ebfb1fc3dd8) Thanks [@alexbudure](https://github.com/alexbudure)! - QueueDash v1 🎉
 
   - 😍&nbsp; Simple, clean, and compact UI
   - 🧙&nbsp; Add jobs to your queue with ease
