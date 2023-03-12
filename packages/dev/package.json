@@ -1,6 +1,7 @@
 {
   "name": "@queuedash/dev",
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only -O \"{\\\"module\\\":\\\"commonjs\\\"}\" utils/worker.ts & next dev",
     "build-next": "next build",
