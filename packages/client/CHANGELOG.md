@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 1.0.1
+
+### Patch Changes
+
+- [#3](https://github.com/alexbudure/queuedash/pull/3) [`a385f9f`](https://github.com/alexbudure/queuedash/commit/a385f9f9e76df4cea8e69d7e218b65915acef3bf) Thanks [@alexbudure](https://github.com/alexbudure)! - Tighten adapter types to work with NestJS
+
 ## 1.0.0
 
 ### Major Changes
