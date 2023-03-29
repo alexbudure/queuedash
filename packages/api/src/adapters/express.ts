@@ -9,7 +9,7 @@ export function createQueueDashExpressMiddleware({
   app,
   ctx,
 }: {
-  app: Express;
+  app: Pick<Express, "use">;
   ctx: Context;
   baseUrl: string;
 }): void {

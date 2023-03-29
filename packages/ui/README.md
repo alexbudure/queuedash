@@ -40,13 +40,15 @@ import { createQueueDashExpressMiddleware } from "@queuedash/api";
 
 const app = express();
 
+const reportQueue = new Bull("report-queue");
+
 createQueueDashExpressMiddleware({
   app,
   baseUrl: "/queuedash",
   ctx: {
     queues: [
       {
-        queue: new Bull("report-queue"),
+        queue: reportQueue,
         displayName: "Reports",
         type: "bull" as const,
       },
@@ -86,6 +88,8 @@ export default QueueDashPages;
 import * as trpcNext from "@trpc/server/adapters/next";
 import { appRouter } from "@queuedash/api";
 
+const reportQueue = new Bull("report-queue");
+
 export default trpcNext.createNextApiHandler({
   router: appRouter,
   batching: {
@@ -94,7 +98,7 @@ export default trpcNext.createNextApiHandler({
   createContext: () => ({
     queues: [
       {
-        queue: new Bull("report-queue"),
+        queue: reportQueue,
         displayName: "Reports",
         type: "bull" as const,
       },

@@ -1,5 +1,3 @@
-> **WIP** - This is a work in progress. Please check back later.
-
 <p align="center">
   <a href="https://www.queuedash.com" target="_blank" rel="noopener">
     <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social.png" alt="QueueDash">
@@ -7,7 +5,7 @@
 </p>
 
 <p align="center">
-  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue
+  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue.
 <p>
 
 <p align="center">
@@ -22,14 +20,14 @@
 ## Features
 
 - 😍&nbsp; Simple, clean, and compact UI
-- 🧙&nbsp; Add jobs to queue with ease
-- 🪄&nbsp; Retry, remove, and more actions for jobs
+- 🧙&nbsp; Add jobs to your queue with ease
+- 🪄&nbsp; Retry, remove, and more convenient actions for your jobs
 - 📊&nbsp; Stats for job counts, job durations, and job wait times
 - ✨&nbsp; Top-level overview page of all queues
-- 🔋&nbsp; Next.js, Express.js, and Fastify adapters
+- 🔋&nbsp; Integrates with Next.js, Express.js, and Fastify
 - ⚡️&nbsp; Compatible with Bull, BullMQ, and Bee-Queue
 
-## Use
+## Getting Started
 
 ### Express
 
@@ -42,13 +40,15 @@ import { createQueueDashExpressMiddleware } from "@queuedash/api";
 
 const app = express();
 
+const reportQueue = new Bull("report-queue");
+
 createQueueDashExpressMiddleware({
   app,
   baseUrl: "/queuedash",
   ctx: {
     queues: [
       {
-        queue: new Bull("report-queue"),
+        queue: reportQueue,
         displayName: "Reports",
         type: "bull" as const,
       },
@@ -88,6 +88,8 @@ export default QueueDashPages;
 import * as trpcNext from "@trpc/server/adapters/next";
 import { appRouter } from "@queuedash/api";
 
+const reportQueue = new Bull("report-queue");
+
 export default trpcNext.createNextApiHandler({
   router: appRouter,
   batching: {
@@ -96,7 +98,7 @@ export default trpcNext.createNextApiHandler({
   createContext: () => ({
     queues: [
       {
-        queue: new Bull("report-queue"),
+        queue: reportQueue,
         displayName: "Reports",
         type: "bull" as const,
       },
@@ -111,6 +113,26 @@ See the [./examples](./examples) folder for more.
 
 ## API Reference
 
+### `createQueueDash<*>Middleware`
+
+```typescript
+type QueueDashMiddlewareOptions = {
+  app: express.Application | FastifyInstance; // Express or Fastify app
+  baseUrl: string; // Base path for the API and UI
+  ctx: QueueDashContext; // Context for the UI
+};
+
+type QueueDashContext = {
+  queues: QueueDashQueue[]; // Array of queues to display
+};
+
+type QueueDashQueue = {
+  queue: Bull.Queue | BullMQ.Queue | BeeQueue; // Queue instance
+  displayName: string; // Display name for the queue
+  type: "bull" | "bullmq" | "bee"; // Queue type
+};
+```
+
 ### `<QueueDashApp />`
 
 ```typescript jsx
@@ -120,8 +142,10 @@ type QueueDashAppProps = {
 };
 ```
 
-### `Context`
+## Acknowledgements
 
-- `queues` - Array of queues to display
-  - `queue` - Queue instance
-  - `displayName` - Display name for the queue
+QueueDash was inspired by some great open source projects. Here's a few of them:
+
+- [bull-board](https://github.com/vcapretz/bull-board)
+- [bull-monitor](https://github.com/s-r-x/bull-monitor)
+- [bull-arena](https://github.com/bee-queue/arena)
