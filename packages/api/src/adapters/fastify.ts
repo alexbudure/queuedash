@@ -9,7 +9,7 @@ export function createQueueDashFastifyMiddleware({
   server,
   ctx,
 }: {
-  server: FastifyInstance;
+  server: Pick<FastifyInstance, "register" | "get">;
   ctx: Context;
   baseUrl: string;
 }): void {
