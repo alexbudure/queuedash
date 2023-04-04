@@ -142,6 +142,26 @@ type QueueDashAppProps = {
 };
 ```
 
+## Roadmap
+
+- Supports Celery and other queueing systems
+- Command+K bar and shortcuts
+- Display Redis information
+- Ability to whitelabel the UI
+
+## Pro Version
+
+Right now, QueueDash simply taps into your Redis instance, making it very easy to set up, but also limited in functionality.
+
+I'm thinking about building a free-to-host version on top of this which will require external services (db, auth, etc.), but it will make the following features possible:
+
+- Alerts and notifications
+- Quick search and filtering
+- Queue trends and analytics
+- Invite team members
+
+If you're interested in this version, please let me know!
+
 ## Acknowledgements
 
 QueueDash was inspired by some great open source projects. Here's a few of them:
