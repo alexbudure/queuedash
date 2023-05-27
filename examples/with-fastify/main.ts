@@ -1,11 +1,10 @@
 import fastify from "fastify";
 import Bull from "bull";
-import { createQueueDashFastifyMiddleware } from "@queuedash/api";
+import { fastifyQueueDashPlugin } from "@queuedash/api";
 
 const server = fastify();
 
-createQueueDashFastifyMiddleware({
-  server,
+server.register(fastifyQueueDashPlugin, {
   baseUrl: "/queuedash",
   ctx: {
     queues: [

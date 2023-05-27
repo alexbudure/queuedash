@@ -5,6 +5,8 @@ import type Bull from "bull";
 import type BullMQ from "bullmq";
 import { TRPCError } from "@trpc/server";
 import type BeeQueue from "bee-queue";
+import type { RedisInfo } from "redis-info";
+import { parse } from "redis-info";
 
 const generateQueueMutationProcedure = (
   action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue) => void
@@ -167,23 +169,22 @@ export const queueRouter = router({
             : queueInCtx.queue.getJobCounts(),
           isBee ? queueInCtx.queue.paused : queueInCtx.queue.isPaused(),
         ]);
-        // TODO: Redis info
-        // import { parse } from "redis-info";
-        // const client = isBee
-        //         ? queueInCtx.queue.settings.redis
-        //         : await queueInCtx.queue.client;
-        // const info = client.info(),
-        // const parsedInfo = isBee ? {} : parse(info);
-        // client: {
-        //   connectedClients: parsedInfo.connected_clients,
-        //   blockedClients: parsedInfo.blocked_clients,
-        //   version: parsedInfo.redis_version,
-        // }
+
+        const client = isBee
+          ? queueInCtx.queue.settings.redis
+          : await queueInCtx.queue.client;
+        const info = await client.info();
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        const parsedInfo: RedisInfo & {
+          maxclients: string;
+        } = parse(info);
 
         return {
           displayName: queueInCtx.displayName,
           name: queueInCtx.queue.name,
           paused: isPaused,
+          type: queueInCtx.type,
           counts: {
             active: counts.active,
             completed:
@@ -192,6 +193,20 @@ export const queueRouter = router({
             failed: counts.failed,
             waiting: counts.waiting,
             paused: "paused" in counts ? counts.paused : 0,
+          },
+          client: {
+            usedMemoryPercentage:
+              Number(parsedInfo.used_memory) /
+              Number(parsedInfo.total_system_memory),
+            usedMemoryHuman: parsedInfo.used_memory_human,
+            totalMemoryHuman: parsedInfo.total_system_memory_human,
+            uptimeInSeconds: Number(parsedInfo.uptime_in_seconds),
+            connectedClients: Number(parsedInfo.connected_clients),
+            blockedClients: Number(parsedInfo.blocked_clients),
+            maxClients: parsedInfo.maxclients
+              ? Number(parsedInfo.maxclients)
+              : 0,
+            version: parsedInfo.redis_version,
           },
         };
       } catch (e) {

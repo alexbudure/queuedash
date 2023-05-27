@@ -6,7 +6,6 @@ import * as Toast from "@radix-ui/react-toast";
 import {
   GitHubLogoIcon,
   DashboardIcon,
-  LightningBoltIcon,
   ShadowNoneIcon,
 } from "@radix-ui/react-icons";
 import { ThemeSwitcher } from "./ThemeSwitcher";
@@ -41,7 +40,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
   return (
     <Toast.Provider swipeDirection="right">
       <div className="grid xl:grid-cols-[auto,1fr]">
-        <div className="hidden xl:block">
+        <div className="hidden w-64 xl:block">
           <div className="sticky top-0 isolate flex h-full max-h-screen min-h-screen flex-col justify-between overflow-hidden border-r border-brand-50 px-4 pt-8 pb-4 shadow-sm dark:border-slate-700 dark:bg-black">
             <svg
               viewBox="0 0 1108 632"
@@ -85,7 +84,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
                 <div className="w-full space-y-1">
                   {isLoading ? (
                     [...new Array(10)].map((_, i) => {
-                      return <Skeleton className="h-8" key={i} />;
+                      return <Skeleton className="h-8 w-full" key={i} />;
                     })
                   ) : isError ? (
                     <ErrorCard message="Could not fetch queues" />
@@ -104,7 +103,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
               </div>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex w-full items-center justify-between">
               <a
                 href="https://github.com/alexbudure/queuedash"
                 target="_blank"
@@ -113,15 +112,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
               >
                 <GitHubLogoIcon />
               </a>
-              <a
-                href="https://www.queuedash.com/pro"
-                target="_blank"
-                rel="noreferrer"
-                className="flex h-7 items-center justify-center space-x-1.5 whitespace-nowrap rounded-md bg-amber-100 pl-2 pr-3 text-amber-900 shadow-sm transition duration-150 ease-in-out hover:bg-amber-200 active:bg-amber-300 dark:bg-amber-900 dark:text-amber-50"
-              >
-                <LightningBoltIcon />
-                <span className="text-sm font-medium">Discover Pro</span>
-              </a>
+
               <ThemeSwitcher />
             </div>
           </div>

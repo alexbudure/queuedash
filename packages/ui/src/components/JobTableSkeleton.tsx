@@ -19,7 +19,7 @@ export const JobTableSkeleton = () => {
                 : ""
             )}
           >
-            <Skeleton className="h-6" />
+            <Skeleton className="h-6 w-full" />
           </div>
         );
       })}

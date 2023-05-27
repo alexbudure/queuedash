@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -206,6 +206,10 @@ export const JobTable = ({
   const { mutate: rerun } = trpc.job.rerun.useMutation();
   const { mutate: bulkRemove } = trpc.job.bulkRemove.useMutation();
 
+  useEffect(() => {
+    table.resetRowSelection();
+  }, [status]);
+
   return (
     <div>
       {selectedJob ? (
@@ -319,6 +323,7 @@ export const JobTable = ({
                       });
                     }
                   });
+                  table.resetRowSelection();
                 }}
               />
             ) : null}

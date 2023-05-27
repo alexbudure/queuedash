@@ -42,19 +42,20 @@ const app = express();
 
 const reportQueue = new Bull("report-queue");
 
-createQueueDashExpressMiddleware({
-  app,
-  baseUrl: "/queuedash",
-  ctx: {
-    queues: [
-      {
-        queue: reportQueue,
-        displayName: "Reports",
-        type: "bull" as const,
-      },
-    ],
-  },
-});
+app.use(
+  "/queuedash",
+  createQueueDashExpressMiddleware({
+    ctx: {
+      queues: [
+        {
+          queue: reportQueue,
+          displayName: "Reports",
+          type: "bull" as const,
+        },
+      ],
+    },
+  })
+);
 
 app.listen(3000, () => {
   console.log("Listening on port 3000");
