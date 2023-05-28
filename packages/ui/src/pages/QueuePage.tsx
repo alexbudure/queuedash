@@ -13,7 +13,6 @@ import { ErrorCard } from "../components/ErrorCard";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Tooltip } from "../components/Tooltip";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -108,33 +107,20 @@ export const QueuePage = () => {
               {queueReq.data ? (
                 <>
                   <p className="text-slate-600">
-                    {queueReq.data.type.charAt(0).toUpperCase() +
-                      queueReq.data.type.slice(1).toLowerCase()}
-                  </p>
-                  <p className="text-slate-600">·</p>
-                  <p className="text-slate-600">
-                    Redis v{queueReq.data.client.version}
-                  </p>
-                  <p className="text-slate-600">·</p>
-                  <p className="text-slate-600">
-                    <Tooltip message="Connected clients">
-                      <span className="text-green-800">
-                        {numberFormat(queueReq.data.client.connectedClients)}
-                      </span>
-                    </Tooltip>{" "}
-                    /{" "}
-                    <Tooltip message="Blocked clients">
-                      <span className="text-red-800">
-                        {numberFormat(queueReq.data.client.blockedClients)}
-                      </span>
-                    </Tooltip>{" "}
-                    /{" "}
-                    <Tooltip message="Max clients">
-                      <span className="text-blue-800">
-                        {numberFormat(queueReq.data.client.maxClients)}
-                      </span>
-                    </Tooltip>{" "}
-                    clients
+                    <span className="text-green-800">
+                      {numberFormat(queueReq.data.client.connectedClients)}{" "}
+                      connected
+                    </span>{" "}
+                    and{" "}
+                    <span className="text-red-800">
+                      {numberFormat(queueReq.data.client.blockedClients)}{" "}
+                      blocked
+                    </span>{" "}
+                    out of{" "}
+                    <span className="text-slate-900">
+                      {numberFormat(queueReq.data.client.maxClients)} max
+                      clients
+                    </span>
                   </p>
                   <p className="text-slate-600">·</p>
                   <p className="text-slate-600">
@@ -144,6 +130,10 @@ export const QueuePage = () => {
                       2
                     )}
                     %)
+                  </p>
+                  <p className="text-slate-600">·</p>
+                  <p className="text-slate-600">
+                    Redis v{queueReq.data.client.version}
                   </p>
                 </>
               ) : (

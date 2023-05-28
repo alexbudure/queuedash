@@ -170,15 +170,15 @@ export const queueRouter = router({
           isBee ? queueInCtx.queue.paused : queueInCtx.queue.isPaused(),
         ]);
 
-        const client = isBee
-          ? queueInCtx.queue.settings.redis
-          : await queueInCtx.queue.client;
-        const info = await client.info();
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const parsedInfo: RedisInfo & {
+        const info: RedisInfo & {
           maxclients: string;
-        } = parse(info);
+        } = isBee
+          ? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            queueInCtx.queue.client.server_info
+          : // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            parse(await queueInCtx.queue.client.info());
 
         return {
           displayName: queueInCtx.displayName,
@@ -196,17 +196,14 @@ export const queueRouter = router({
           },
           client: {
             usedMemoryPercentage:
-              Number(parsedInfo.used_memory) /
-              Number(parsedInfo.total_system_memory),
-            usedMemoryHuman: parsedInfo.used_memory_human,
-            totalMemoryHuman: parsedInfo.total_system_memory_human,
-            uptimeInSeconds: Number(parsedInfo.uptime_in_seconds),
-            connectedClients: Number(parsedInfo.connected_clients),
-            blockedClients: Number(parsedInfo.blocked_clients),
-            maxClients: parsedInfo.maxclients
-              ? Number(parsedInfo.maxclients)
-              : 0,
-            version: parsedInfo.redis_version,
+              Number(info.used_memory) / Number(info.total_system_memory),
+            usedMemoryHuman: info.used_memory_human,
+            totalMemoryHuman: info.total_system_memory_human,
+            uptimeInSeconds: Number(info.uptime_in_seconds),
+            connectedClients: Number(info.connected_clients),
+            blockedClients: Number(info.blocked_clients),
+            maxClients: info.maxclients ? Number(info.maxclients) : 0,
+            version: info.redis_version,
           },
         };
       } catch (e) {
