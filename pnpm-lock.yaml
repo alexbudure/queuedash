@@ -109,8 +109,8 @@ importers:
   packages/dev:
     specifiers:
       '@faker-js/faker': ^7.6.0
-      '@queuedash/api': workspace:^1.0.0
-      '@queuedash/ui': workspace:^1.0.0
+      '@queuedash/api': workspace:^1.1.0
+      '@queuedash/ui': workspace:^1.1.0
       '@trpc/server': ^10.14.0
       '@types/node': ^18.14.6
       '@types/react': ^18.0.28
@@ -154,7 +154,7 @@ importers:
   packages/ui:
     specifiers:
       '@monaco-editor/react': ^4.4.6
-      '@queuedash/api': workspace:^1.0.1
+      '@queuedash/api': workspace:^1.1.0
       '@radix-ui/react-alert-dialog': ^1.0.2
       '@radix-ui/react-checkbox': ^1.0.2
       '@radix-ui/react-dialog': ^1.0.2
