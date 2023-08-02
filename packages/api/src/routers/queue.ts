@@ -51,6 +51,7 @@ export const queueRouter = router({
           "delayed",
           "active",
           "waiting",
+          "prioritized",
           "paused",
         ] as const),
       })
