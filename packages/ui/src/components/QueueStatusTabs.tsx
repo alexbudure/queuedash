@@ -12,37 +12,6 @@ type Tab = {
   status: Status;
 };
 
-const tabs: Tab[] = [
-  {
-    name: "Completed",
-    status: "completed",
-  },
-  {
-    name: "Failed",
-    status: "failed",
-  },
-  {
-    name: "Active",
-    status: "active",
-  },
-  {
-    name: "Prioritized",
-    status: "prioritized",
-  },
-  {
-    name: "Waiting",
-    status: "waiting",
-  },
-  {
-    name: "Delayed",
-    status: "delayed",
-  },
-  {
-    name: "Paused",
-    status: "paused",
-  },
-];
-
 type QueueStatusTabsProps = {
   showCleanAllButton: boolean;
   status: Status;
@@ -60,6 +29,36 @@ export const QueueStatusTabs = ({
     isLoading: isLoadingCleanQueue,
     isSuccess: isSuccessCleanQueue,
   } = trpc.queue.clean.useMutation();
+
+  const tabs: Tab[] = [
+    {
+      name: "Completed",
+      status: "completed",
+    },
+    {
+      name: "Failed",
+      status: "failed",
+    },
+    {
+      name: "Active",
+      status: "active",
+    },
+    ...(queue && "prioritized" in queue.counts
+      ? [{ name: "Prioritized", status: "prioritized" as const }]
+      : []),
+    {
+      name: "Waiting",
+      status: "waiting",
+    },
+    {
+      name: "Delayed",
+      status: "delayed",
+    },
+    {
+      name: "Paused",
+      status: "paused",
+    },
+  ];
 
   return (
     <div className="flex items-center justify-between">
