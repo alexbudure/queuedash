@@ -25,7 +25,7 @@ importers:
       '@typescript-eslint/parser': ^5.54.0
       bee-queue: ^1.5.0
       bull: ^4.10.4
-      bullmq: ^3.10.0
+      bullmq: ^4.6.3
       eslint: ^8.35.0
       eslint-config-prettier: ^8.6.0
       express: ^4.18.2
@@ -54,7 +54,7 @@ importers:
       '@typescript-eslint/parser': 5.54.0_ycpbpc6yetojsgtrx3mwntkhsu
       bee-queue: 1.5.0
       bull: 4.10.4
-      bullmq: 3.10.0
+      bullmq: 4.6.3
       eslint: 8.35.0
       eslint-config-prettier: 8.6.0_eslint@8.35.0
       express: 4.18.2
@@ -118,7 +118,7 @@ importers:
       '@typescript-eslint/parser': ^5.54.0
       bee-queue: ^1.5.0
       bull: ^4.10.4
-      bullmq: ^3.10.1
+      bullmq: ^4.6.3
       eslint: ^8.35.0
       eslint-config-next: ^13.2.3
       eslint-config-prettier: ^8.6.0
@@ -135,7 +135,7 @@ importers:
       '@trpc/server': 10.14.0
       bee-queue: 1.5.0
       bull: 4.10.4
-      bullmq: 3.10.1
+      bullmq: 4.6.3
       next: 13.2.3_biqbaboplfbrettd7655fr4n2y
       react: 18.2.0
       react-dom: 18.2.0_react@18.2.0
@@ -2634,35 +2634,19 @@ packages:
     transitivePeerDependencies:
       - supports-color
 
-  /bullmq/3.10.0:
-    resolution: {integrity: sha512-oC8bDXS5P9/KjSAAPgoV/oTUR44lB3QlJ2739gjizqvdScU4umBBd2XRGd7zo2AekmoVpS3sgHBzOVR1kAxSwg==}
+  /bullmq/4.6.3:
+    resolution: {integrity: sha512-i5W9gIRy/WBrlzz+W1V5cCX/ILmMHvjBljOVYoxFd032xpHcKQFN2my9uija7uETwskFBDAGcps6CE27fdka8w==}
     dependencies:
       cron-parser: 4.7.0
       glob: 8.1.0
-      ioredis: 5.3.1
+      ioredis: 5.3.2
       lodash: 4.17.21
       msgpackr: 1.8.1
-      semver: 7.3.8
+      semver: 7.5.4
       tslib: 2.5.0
       uuid: 9.0.0
     transitivePeerDependencies:
       - supports-color
-    dev: true
-
-  /bullmq/3.10.1:
-    resolution: {integrity: sha512-NHysIgywLRB0C1OXY1YQPXsDRnozBWBREPTyeX72ARolkHMkj0IXY+nG36N1pxc2OToPkMHyhSQxaY4jmaM0VQ==}
-    dependencies:
-      cron-parser: 4.7.0
-      glob: 8.1.0
-      ioredis: 5.3.1
-      lodash: 4.17.21
-      msgpackr: 1.8.1
-      semver: 7.3.8
-      tslib: 2.5.0
-      uuid: 9.0.0
-    transitivePeerDependencies:
-      - supports-color
-    dev: false
 
   /bytes/3.1.2:
     resolution: {integrity: sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg==}
@@ -4244,6 +4228,22 @@ packages:
     transitivePeerDependencies:
       - supports-color
 
+  /ioredis/5.3.2:
+    resolution: {integrity: sha512-1DKMMzlIHM02eBBVOFQ1+AolGjs6+xEcM4PDL7NqOS6szq7H9jSaEkIUH6/a5Hl241LzW6JLSiAbNvTQjUupUA==}
+    engines: {node: '>=12.22.0'}
+    dependencies:
+      '@ioredis/commands': 1.2.0
+      cluster-key-slot: 1.1.2
+      debug: 4.3.4
+      denque: 2.1.0
+      lodash.defaults: 4.2.0
+      lodash.isarguments: 3.1.0
+      redis-errors: 1.2.0
+      redis-parser: 3.0.0
+      standard-as-callback: 2.1.0
+    transitivePeerDependencies:
+      - supports-color
+
   /ipaddr.js/1.9.1:
     resolution: {integrity: sha512-0KI/607xoxSToH7GjN1FfSbLoU0+btTicjsQSWQlh/hZykN8KpmMf7uYwPW3R+akZ6R/w18ZlXSHBYXiYUPO3g==}
     engines: {node: '>= 0.10'}
@@ -5775,6 +5775,13 @@ packages:
 
   /semver/7.3.8:
     resolution: {integrity: sha512-NB1ctGL5rlHrPJtFDVIVzTyQylMLu9N9VICA6HSFJo8MCGVTMW6gfpicwKmmK/dAjTOrqu5l63JJOpDSrAis3A==}
+    engines: {node: '>=10'}
+    hasBin: true
+    dependencies:
+      lru-cache: 6.0.0
+
+  /semver/7.5.4:
+    resolution: {integrity: sha512-1bCSESV6Pv+i21Hvpxp3Dx+pSD8lIPt8uVjRrxAUt/nbswYc+tK6Y2btiULjd4+fnq15PX+nqQDC7Oft7WkwcA==}
     engines: {node: '>=10'}
     hasBin: true
     dependencies:

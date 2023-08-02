@@ -51,6 +51,7 @@ export const queueRouter = router({
           "delayed",
           "active",
           "waiting",
+          "prioritized",
           "paused",
         ] as const),
       })
@@ -190,6 +191,9 @@ export const queueRouter = router({
               "completed" in counts ? counts.completed : counts.succeeded,
             delayed: counts.delayed,
             failed: counts.failed,
+            ...("prioritized" in counts
+              ? { prioritized: counts.prioritized }
+              : {}),
             waiting: counts.waiting,
             paused: "paused" in counts ? counts.paused : 0,
           },
