@@ -26,6 +26,10 @@ const tabs: Tab[] = [
     status: "active",
   },
   {
+    name: "Prioritized",
+    status: "prioritized",
+  },
+  {
     name: "Waiting",
     status: "waiting",
   },
@@ -77,6 +81,8 @@ export const QueueStatusTabs = ({
                     isActive && tab.status === "failed",
                   "bg-cyan-50 text-cyan-900":
                     isActive && tab.status === "active",
+                  "bg-purple-50 text-purple-900":
+                    isActive && tab.status === "prioritized",
                   "bg-amber-50 text-amber-900":
                     isActive && tab.status === "waiting",
                   "bg-indigo-50 text-indigo-900":
@@ -99,6 +105,8 @@ export const QueueStatusTabs = ({
                         isActive && tab.status === "failed",
                       "bg-cyan-600 text-cyan-50":
                         isActive && tab.status === "active",
+                      "bg-purple-600 text-purple-50":
+                        isActive && tab.status === "prioritized",
                       "bg-amber-600 text-amber-50":
                         isActive && tab.status === "waiting",
                       "bg-indigo-600 text-indigo-50":

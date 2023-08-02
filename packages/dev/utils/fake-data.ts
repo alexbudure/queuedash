@@ -1,13 +1,23 @@
 import Bull from "bull";
+import type { JobsOptions as BullMQJobOptions } from "bullmq";
+import { Queue as BullMQQueue } from "bullmq";
 import { faker } from "@faker-js/faker";
 
-type FakeQueue = {
-  queue: Bull.Queue;
-  type: "bull";
-  displayName: string;
-  jobs: { opts: Bull.JobOptions; data: Record<string, unknown> }[];
-  jobName: (job: Record<string, unknown>) => string;
-};
+type FakeQueue =
+  | {
+      queue: Bull.Queue;
+      type: "bull";
+      displayName: string;
+      jobs: { opts: Bull.JobOptions; data: Record<string, unknown> }[];
+      jobName: (job: Record<string, unknown>) => string;
+    }
+  | {
+      queue: BullMQQueue;
+      type: "bullmq";
+      displayName: string;
+      jobs: { opts: BullMQJobOptions; data: Record<string, unknown> }[];
+      jobName: (job: Record<string, unknown>) => string;
+    };
 
 export const queues: FakeQueue[] = [
   {
@@ -68,15 +78,17 @@ export const queues: FakeQueue[] = [
     },
   },
   {
-    queue: new Bull("cancellation-follow-ups"),
-    type: "bull" as const,
+    queue: new BullMQQueue("cancellation-follow-ups"),
+    type: "bullmq" as const,
     displayName: "Cancellation follow-ups",
-    jobs: [...new Array(50)].map(() => {
+    jobs: [...new Array(50)].map((_, index) => {
       return {
         data: {
           name: faker.name.fullName(),
         },
-        opts: {},
+        opts: {
+          priority: index === 4 ? undefined : 1,
+        },
       };
     }),
     jobName: (job: Record<string, unknown>) => {
