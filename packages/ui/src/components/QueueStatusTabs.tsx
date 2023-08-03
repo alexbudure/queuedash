@@ -12,33 +12,6 @@ type Tab = {
   status: Status;
 };
 
-const tabs: Tab[] = [
-  {
-    name: "Completed",
-    status: "completed",
-  },
-  {
-    name: "Failed",
-    status: "failed",
-  },
-  {
-    name: "Active",
-    status: "active",
-  },
-  {
-    name: "Waiting",
-    status: "waiting",
-  },
-  {
-    name: "Delayed",
-    status: "delayed",
-  },
-  {
-    name: "Paused",
-    status: "paused",
-  },
-];
-
 type QueueStatusTabsProps = {
   showCleanAllButton: boolean;
   status: Status;
@@ -56,6 +29,36 @@ export const QueueStatusTabs = ({
     isLoading: isLoadingCleanQueue,
     isSuccess: isSuccessCleanQueue,
   } = trpc.queue.clean.useMutation();
+
+  const tabs: Tab[] = [
+    {
+      name: "Completed",
+      status: "completed",
+    },
+    {
+      name: "Failed",
+      status: "failed",
+    },
+    {
+      name: "Active",
+      status: "active",
+    },
+    ...(queue && "prioritized" in queue.counts
+      ? [{ name: "Prioritized", status: "prioritized" as const }]
+      : []),
+    {
+      name: "Waiting",
+      status: "waiting",
+    },
+    {
+      name: "Delayed",
+      status: "delayed",
+    },
+    {
+      name: "Paused",
+      status: "paused",
+    },
+  ];
 
   return (
     <div className="flex items-center justify-between">
@@ -77,6 +80,8 @@ export const QueueStatusTabs = ({
                     isActive && tab.status === "failed",
                   "bg-cyan-50 text-cyan-900":
                     isActive && tab.status === "active",
+                  "bg-purple-50 text-purple-900":
+                    isActive && tab.status === "prioritized",
                   "bg-amber-50 text-amber-900":
                     isActive && tab.status === "waiting",
                   "bg-indigo-50 text-indigo-900":
@@ -99,6 +104,8 @@ export const QueueStatusTabs = ({
                         isActive && tab.status === "failed",
                       "bg-cyan-600 text-cyan-50":
                         isActive && tab.status === "active",
+                      "bg-purple-600 text-purple-50":
+                        isActive && tab.status === "prioritized",
                       "bg-amber-600 text-amber-50":
                         isActive && tab.status === "waiting",
                       "bg-indigo-600 text-indigo-50":
