@@ -1,4 +1,4 @@
-import type { Elysia } from "elysia";
+import { Elysia } from "elysia";
 import { trpc } from "@elysiajs/trpc";
 import { version } from "../../package.json";
 import type { Context } from "../trpc";
@@ -19,21 +19,27 @@ const index_html_page = (url: string) => /* HTML */ `<!DOCTYPE html>
           basename: "${url}",
         };
       </script>
-      <link rel="stylesheet" href="https://unpkg.com/@queuedash/ui@${version}/dist/styles.css" />
-      <script type="module" src="https://unpkg.com/@queuedash/client@${version}/dist/main.mjs"></script>
+      <link
+        rel="stylesheet"
+        href="https://unpkg.com/@queuedash/ui@${version}/dist/styles.css"
+      />
+      <script
+        type="module"
+        src="https://unpkg.com/@queuedash/client@${version}/dist/main.mjs"
+      ></script>
     </body>
   </html>`;
 
-export function createQueueDashElysiaMiddleware({
+export function queuedash({
   baseUrl,
-  app,
   ctx,
 }: {
-  app: Elysia;
   ctx: Context;
   baseUrl: string;
 }): void {
-  app
+  new Elysia({
+    name: "queuedash",
+  })
     .use(
       trpc(appRouter, {
         endpoint: `${baseUrl}/trpc`,
@@ -44,6 +50,9 @@ export function createQueueDashElysiaMiddleware({
     )
     .get(
       `${baseUrl}`,
-      async () => new Response(index_html_page(baseUrl), { headers: { "Content-Type": "text/html; charset=utf8" } })
+      async () =>
+        new Response(index_html_page(baseUrl), {
+          headers: { "Content-Type": "text/html; charset=utf8" },
+        })
     );
 }

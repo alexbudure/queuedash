@@ -1,8 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": ["ESNext", "dom"],
+    "module": "esnext",
+    "target": "esnext",
     "outDir": "dist",
     "allowJs": true,
     "skipLibCheck": true,
@@ -11,7 +12,6 @@
     "noEmit": true,
     "incremental": true,
     "esModuleInterop": true,
-    "module": "commonjs",
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "isolatedModules": true,
