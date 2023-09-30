@@ -1,5 +1,14 @@
 # @queuedash/ui
 
+## 2.0.1
+
+### Patch Changes
+
+- [`8d2eadd`](https://github.com/alexbudure/queuedash/commit/8d2eadd9ad547ff2e893662474a228bf340f0728) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix the middlewares for Fastify and Express
+
+- Updated dependencies [[`8d2eadd`](https://github.com/alexbudure/queuedash/commit/8d2eadd9ad547ff2e893662474a228bf340f0728)]:
+  - @queuedash/api@2.0.1
+
 ## 2.0.0
 
 ### Major Changes

@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/ui",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",
@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.4.6",
-    "@queuedash/api": "workspace:^2.0.0",
+    "@queuedash/api": "workspace:^2.0.1",
     "@radix-ui/react-alert-dialog": "^1.0.2",
     "@radix-ui/react-checkbox": "^1.0.2",
     "@radix-ui/react-dialog": "^1.0.2",
