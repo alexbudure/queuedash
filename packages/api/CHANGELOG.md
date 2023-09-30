@@ -1,5 +1,91 @@
 # @queuedash/api
 
+## 2.0.0
+
+### Major Changes
+
+- [#5](https://github.com/alexbudure/queuedash/pull/5) [`1f794d1`](https://github.com/alexbudure/queuedash/commit/1f794d1679225718dcc670e9c7eb59564fee1bc6) Thanks [@alexbudure](https://github.com/alexbudure)! - Updated all adapters to use a more natural API and added real-time Redis info on the queue detail page
+
+  ***
+
+  ### Breaking changes
+
+  **Express**
+
+  Before:
+
+  ```typescript
+  createQueueDashExpressMiddleware({
+    app,
+    baseUrl: "/queuedash",
+    ctx: {
+      queues: [
+        {
+          queue: new Bull("report-queue"),
+          displayName: "Reports",
+          type: "bull" as const,
+        },
+      ],
+    },
+  });
+  ```
+
+  After:
+
+  ```typescript
+  app.use(
+    "/queuedash",
+    createQueueDashExpressMiddleware({
+      ctx: {
+        queues: [
+          {
+            queue: new Bull("report-queue"),
+            displayName: "Reports",
+            type: "bull" as const,
+          },
+        ],
+      },
+    })
+  );
+  ```
+
+  **Fastify**
+
+  Before:
+
+  ```typescript
+  createQueueDashFastifyMiddleware({
+    server,
+    baseUrl: "/queuedash",
+    ctx: {
+      queues: [
+        {
+          queue: new Bull("report-queue"),
+          displayName: "Reports",
+          type: "bull" as const,
+        },
+      ],
+    },
+  });
+  ```
+
+  After:
+
+  ```typescript
+  server.register(fastifyQueueDashPlugin, {
+    baseUrl: "/queuedash",
+    ctx: {
+      queues: [
+        {
+          queue: new Bull("report-queue"),
+          displayName: "Reports",
+          type: "bull" as const,
+        },
+      ],
+    },
+  });
+  ```
+
 ## 1.2.1
 
 ### Patch Changes
