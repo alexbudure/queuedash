@@ -149,23 +149,23 @@
   resolved "https://registry.yarnpkg.com/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-13.2.3.tgz#cd432f280beb8d8de5b7cd2501e9f502e9f3dd72"
   integrity sha512-aLG2MaFs4y7IwaMTosz2r4mVbqRyCnMoFqOcmfTi7/mAS+G4IMH0vJp4oLdbshqiVoiVuKrAfqtXj55/m7Qu1Q==
 
-"@queuedash/api@^1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-1.0.0.tgz#f35edbc138777fb8243829c0b2c326aa33fc34cb"
-  integrity sha512-wAdM8IbbYFScIOTb+p0KzaPJG7DHE7t1bsu2x2HSen9lskJx8R2QzxSFhYb4+gy09DWN+DVUuQggrNLarxRyjA==
+"@queuedash/api@^1.2.1":
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-1.2.1.tgz#26132ea4128716e5adfc1dc050e5b915b9066059"
+  integrity sha512-JPO78/N7NKQvlpnyvfOFhootsWgSK4Jsd47UI0N6QZ2iXz1ODr7Uhhh/EP59a5AGAlwt+OEVrARmQ3ksf1VNxg==
   dependencies:
     "@trpc/server" "^10.14.0"
     redis "^4.6.5"
     redis-info "^3.1.0"
     zod "^3.20.6"
 
-"@queuedash/ui@^1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@queuedash/ui/-/ui-1.0.0.tgz#f6caac637be27fdf1b8d0180cfb5c57800dc416b"
-  integrity sha512-USkKFCEkT2TSHvXgLl4TKD36IeK9fomsqBY1x5jXKTw99aMP7R93tmGUnQQKGFVLZUmU+ICOPNL/CmBiTXoDfg==
+"@queuedash/ui@^1.2.1":
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/@queuedash/ui/-/ui-1.2.1.tgz#03d860129cbbbf167d2ece8eddc0c427039e9a92"
+  integrity sha512-JjSPEg8U18QrJPo2c7JbQmh0InO1SQIgApFipdGPjBDJoJxWWraRkEt4K/QqYat5vVnJtlr2YHA2KEUjOAWMmQ==
   dependencies:
     "@monaco-editor/react" "^4.4.6"
-    "@queuedash/api" "^1.0.0"
+    "@queuedash/api" "^1.2.1"
     "@radix-ui/react-alert-dialog" "^1.0.2"
     "@radix-ui/react-checkbox" "^1.0.2"
     "@radix-ui/react-dialog" "^1.0.2"

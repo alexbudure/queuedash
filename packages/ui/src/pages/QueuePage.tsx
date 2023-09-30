@@ -14,6 +14,8 @@ import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router-dom";
 
+export const { format: numberFormat } = new Intl.NumberFormat("en-US");
+
 export const QueuePage = () => {
   const { id } = useParams();
   const queueName = id as string;
@@ -41,7 +43,7 @@ export const QueuePage = () => {
       retry: NUM_OF_RETRIES,
     }
   );
-  //
+
   useEffect(() => {
     const searchStatus = searchParams.get("status");
     if (searchStatus) {
@@ -79,20 +81,65 @@ export const QueuePage = () => {
         <ErrorCard message="Could not fetch jobs" />
       ) : (
         <div>
-          <div className="mb-6 flex items-center space-x-4">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-              {queueReq.data ? (
-                queueReq.data.displayName
-              ) : (
-                <Skeleton className="h-8 w-52 rounded-md" />
-              )}
-            </h1>
-            {queueReq.data ? <QueueActionMenu queue={queueReq.data} /> : null}
-            {queueReq.data?.paused ? (
-              <div className="flex cursor-default items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 py-1 text-sm text-yellow-900 transition duration-150 ease-in-out">
-                <span>Paused</span>
+          <div className="mb-2 flex justify-between">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                {queueReq.data ? (
+                  queueReq.data.displayName
+                ) : (
+                  <Skeleton className="h-8 w-52 rounded-md" />
+                )}
+              </h1>
+              <div className="flex items-center space-x-2">
+                {queueReq.data ? (
+                  <QueueActionMenu queue={queueReq.data} />
+                ) : null}
+                {queueReq.data?.paused ? (
+                  <div className="flex h-7 cursor-default items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 text-sm font-medium text-yellow-900 transition duration-150 ease-in-out">
+                    <span>Paused</span>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
+          </div>
+          <div className="mb-5">
+            <div className="flex items-center space-x-2">
+              {queueReq.data ? (
+                <>
+                  <p className="text-slate-600">
+                    <span className="text-green-800">
+                      {numberFormat(queueReq.data.client.connectedClients)}{" "}
+                      connected
+                    </span>{" "}
+                    and{" "}
+                    <span className="text-red-800">
+                      {numberFormat(queueReq.data.client.blockedClients)}{" "}
+                      blocked
+                    </span>{" "}
+                    out of{" "}
+                    <span className="text-slate-900">
+                      {numberFormat(queueReq.data.client.maxClients)} max
+                      clients
+                    </span>
+                  </p>
+                  <p className="text-slate-600">·</p>
+                  <p className="text-slate-600">
+                    {queueReq.data.client.usedMemoryHuman} /{" "}
+                    {queueReq.data.client.totalMemoryHuman} (
+                    {(queueReq.data.client.usedMemoryPercentage * 100).toFixed(
+                      2
+                    )}
+                    %)
+                  </p>
+                  <p className="text-slate-600">·</p>
+                  <p className="text-slate-600">
+                    Redis v{queueReq.data.client.version}
+                  </p>
+                </>
+              ) : (
+                <Skeleton className="h-6 w-80" />
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">

@@ -9,6 +9,7 @@
   "commit": false,
   "fixed": [],
   "linked": [],
+  "ignore": ["@queuedash/dev"],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch"

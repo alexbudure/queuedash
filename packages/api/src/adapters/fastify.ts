@@ -4,21 +4,22 @@ import type { Context } from "../trpc";
 import { appRouter } from "../routers/_app";
 import * as trpcExpress from "@trpc/server/adapters/fastify";
 
-export function createQueueDashFastifyMiddleware({
-  baseUrl,
-  server,
-  ctx,
-}: {
-  server: Pick<FastifyInstance, "register" | "get">;
-  ctx: Context;
-  baseUrl: string;
-}): void {
-  server.register(trpcExpress.fastifyTRPCPlugin, {
+export function fastifyQueueDashPlugin(
+  fastify: FastifyInstance,
+  {
+    baseUrl,
+    ctx,
+  }: {
+    ctx: Context;
+    baseUrl: string;
+  }
+): void {
+  fastify.register(trpcExpress.fastifyTRPCPlugin, {
     prefix: `${baseUrl}/trpc`,
     trpcOptions: { router: appRouter, createContext: () => ctx },
   });
 
-  server.get(`${baseUrl}/*`, (_, res) => {
+  fastify.get(`${baseUrl}/*`, (_, res) => {
     res.send(/* HTML */ `<!DOCTYPE html>
       <html lang="en">
         <head>
