@@ -1,8 +1,8 @@
 ---
-"@queuedash/api": major
-"@queuedash/client": major
-"@queuedash/dev": major
-"@queuedash/ui": major
+"@queuedash/api": minor
+"@queuedash/client": minor
+"@queuedash/dev": minor
+"@queuedash/ui": minor
 ---
 
 Support for Elysia
