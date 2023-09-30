@@ -1,9 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": ["ESNext", "dom"],
     "module": "esnext",
-    "target": "es5",
+    "target": "esnext",
+    "outDir": "dist",
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -15,20 +16,16 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "composite": false,
+    "composite": true,
     "declaration": true,
     "declarationMap": true,
     "inlineSources": false,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "preserveWatchOutput": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "types": ["bun-types"]
   },
-  "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["main.ts", "package.json"],
   "exclude": ["node_modules"]
 }

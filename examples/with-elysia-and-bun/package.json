@@ -1,0 +1,19 @@
+{
+  "name": "with-elysia-and-bun",
+  "module": "main.ts",
+  "type": "module",
+  "scripts": {
+    "start": "bun main.ts"
+  },
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@queuedash/api": "^1.1.0",
+    "bull": "^4.11.3",
+    "elysia": "^0.6.24"
+  }
+}
