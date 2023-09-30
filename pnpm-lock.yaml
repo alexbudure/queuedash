@@ -110,7 +110,7 @@ importers:
         version: 18.2.0(react@18.2.0)
     devDependencies:
       '@queuedash/ui':
-        specifier: workspace:^1.2.0
+        specifier: workspace:^1.2.1
         version: link:../ui
       '@rollup/plugin-typescript':
         specifier: ^10.0.1
@@ -164,10 +164,10 @@ importers:
         specifier: ^7.6.0
         version: 7.6.0
       '@queuedash/api':
-        specifier: workspace:^1.2.0
+        specifier: workspace:^1.2.1
         version: link:../api
       '@queuedash/ui':
-        specifier: workspace:^1.2.0
+        specifier: workspace:^1.2.1
         version: link:../ui
       '@trpc/server':
         specifier: ^10.14.0
@@ -228,7 +228,7 @@ importers:
         specifier: ^4.4.6
         version: 4.4.6(monaco-editor@0.35.0)(react-dom@18.2.0)(react@18.2.0)
       '@queuedash/api':
-        specifier: workspace:^1.2.0
+        specifier: workspace:^1.2.1
         version: link:../api
       '@radix-ui/react-alert-dialog':
         specifier: ^1.0.2
