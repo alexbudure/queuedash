@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 1.2.1
+
+### Patch Changes
+
+- [#12](https://github.com/alexbudure/queuedash/pull/12) [`d79c8ff`](https://github.com/alexbudure/queuedash/commit/d79c8ffe34ae36c74d0663dd2e29e6c93327bf8c) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix Elysia plugin
+
 ## 1.2.0
 
 ### Minor Changes
