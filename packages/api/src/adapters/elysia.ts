@@ -36,8 +36,8 @@ export function queuedash({
 }: {
   ctx: Context;
   baseUrl: string;
-}): void {
-  new Elysia({
+}): Elysia {
+  return new Elysia({
     name: "queuedash",
   })
     .use(
