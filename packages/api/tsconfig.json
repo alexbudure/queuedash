@@ -18,6 +18,7 @@
     "jsx": "preserve",
     "composite": true,
     "declaration": true,
+    "downlevelIteration": true,
     "declarationMap": true,
     "inlineSources": false,
     "noUnusedLocals": false,
