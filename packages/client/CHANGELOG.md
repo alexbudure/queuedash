@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 1.2.0
+
+### Minor Changes
+
+- [`9aaec9a`](https://github.com/alexbudure/queuedash/commit/9aaec9a21c091680cb30a67e9322eedd3e16dbe8) Thanks [@alexbudure](https://github.com/alexbudure)! - Support for Elysia
+
 ## 1.0.1
 
 ### Patch Changes
