@@ -12,7 +12,8 @@ export function fastifyQueueDashPlugin(
   }: {
     ctx: Context;
     baseUrl: string;
-  }
+  },
+  done: () => void
 ): void {
   fastify.register(trpcExpress.fastifyTRPCPlugin, {
     prefix: `${baseUrl}/trpc`,
@@ -49,4 +50,6 @@ export function fastifyQueueDashPlugin(
         </body>
       </html>`);
   });
+
+  done();
 }

@@ -7,17 +7,17 @@
   "author": "Alex Budure",
   "license": "MIT",
   "dependencies": {
-    "@queuedash/api": "^1.2.1",
-    "@queuedash/ui": "^1.2.1",
-    "@trpc/server": "^10.14.0",
-    "bull": "^4.10.4",
-    "next": "^13.2.3",
+    "@queuedash/api": "^2.0.0",
+    "@queuedash/ui": "^2.0.0",
+    "@trpc/server": "^10.38.5",
+    "bull": "^4.11.3",
+    "next": "^13.5.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@types/node": "^18.14.6",
     "@types/react": "^18.0.28",
-    "typescript": "^4.9.5"
+    "typescript": "^5.2.2"
   }
 }

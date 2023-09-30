@@ -11,12 +11,13 @@ export function createQueueDashExpressMiddleware({
 }): Handler {
   return (req, res, next) => {
     if (req.path === `${req.baseUrl}/trpc`) {
-      return trpcExpress.createExpressMiddleware({
+      trpcExpress.createExpressMiddleware({
         router: appRouter,
         createContext: () => ctx,
       })(req, res, next);
+      next();
     } else if (req.path === req.baseUrl) {
-      return res.send(/* HTML */ `<!DOCTYPE html>
+      res.send(/* HTML */ `<!DOCTYPE html>
         <html lang="en">
           <head>
             <meta charset="UTF-8" />
@@ -44,6 +45,7 @@ export function createQueueDashExpressMiddleware({
             ></script>
           </body>
         </html>`);
+      next();
     }
   };
 }
