@@ -1,5 +1,11 @@
 # @queuedash/api
 
+## 2.0.2
+
+### Patch Changes
+
+- [`6680a6a`](https://github.com/alexbudure/queuedash/commit/6680a6a5ece43fef248fedacb31f8fae2242d2d3) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix the adapters.. again
+
 ## 2.0.1
 
 ### Patch Changes
