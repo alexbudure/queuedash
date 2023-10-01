@@ -129,33 +129,23 @@
   resolved "https://registry.yarnpkg.com/@next/swc-win32-x64-msvc/-/swc-win32-x64-msvc-13.5.3.tgz#97340a709febb60ff73003566b99d127d4e5b881"
   integrity sha512-2Vz2tYWaLqJvLcWbbTlJ5k9AN6JD7a5CN2pAeIzpbecK8ZF/yobA39cXtv6e+Z8c5UJuVOmaTldEAIxvsIux/Q==
 
-"@queuedash/api@^2.0.2":
-  version "2.0.2"
-  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.2.tgz#2a0227d9c1ae9634ce300280c4cd6209c0d5da37"
-  integrity sha512-4xtDW2uX+5A6uHvwHJaDIohTkW13iewr+3FaccjZBwwpL6mLzbO8/IlMVgUxsVndB5nI15++DvQ497SfphC90A==
+"@queuedash/api@^2.0.5":
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.5.tgz#238f5de0d3bf36b665626d979e6969b981f124ce"
+  integrity sha512-JqqtjokUrcZe1CnjMbcL5UlAYBw/LaN8ZEPVg+qcc72LmjCRhp75zpnOpcHjOtZR9tyGzflWkyMS4oxgVz3Gfw==
   dependencies:
     "@trpc/server" "^10.14.0"
     redis "^4.6.5"
     redis-info "^3.1.0"
     zod "^3.20.6"
 
-"@queuedash/api@^2.0.3":
-  version "2.0.3"
-  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.3.tgz#536a260adf1a2db46c4b599bbc902918807ff66b"
-  integrity sha512-tvM6jyIt31FENKfStibyORjqxwHWL2GPqsvKuM85WQj2FRJJQUy7bBdQsSlTrBc22G/KtApDq54Wp4VSLnKG6A==
-  dependencies:
-    "@trpc/server" "^10.14.0"
-    redis "^4.6.5"
-    redis-info "^3.1.0"
-    zod "^3.20.6"
-
-"@queuedash/ui@^2.0.2":
-  version "2.0.2"
-  resolved "https://registry.yarnpkg.com/@queuedash/ui/-/ui-2.0.2.tgz#026052f3c6e62058277bb19a5e202a4a08bb68f4"
-  integrity sha512-GowyZjjqW0m9q92nEuggSs4wrasQhMyoqhNItD6ekChTQYXtCno9ipUGHgZKlro5WGrNyoOi6tkDl47neyqmUw==
+"@queuedash/ui@^2.0.5":
+  version "2.0.5"
+  resolved "https://registry.yarnpkg.com/@queuedash/ui/-/ui-2.0.5.tgz#fad0c7e4502c5e2bca1df3868dd90e50bc53bce2"
+  integrity sha512-CDnYO8m9K3kcCVKdAeP7eKPX9PHeGP/7Y3HasGlRp5XH8AL8osv3Q2vHEzjchQtZOneRi1/uEY5uQFxTBdZkCA==
   dependencies:
     "@monaco-editor/react" "^4.4.6"
-    "@queuedash/api" "^2.0.2"
+    "@queuedash/api" "^2.0.5"
     "@radix-ui/react-alert-dialog" "^1.0.2"
     "@radix-ui/react-checkbox" "^1.0.2"
     "@radix-ui/react-dialog" "^1.0.2"
