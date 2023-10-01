@@ -1,5 +1,11 @@
 # @queuedash/api
 
+## 2.0.4
+
+### Patch Changes
+
+- [`0948ec2`](https://github.com/alexbudure/queuedash/commit/0948ec21985d33b3ffbb0ec220664493382579da) Thanks [@alexbudure](https://github.com/alexbudure)! - Move html into each adapter
+
 ## 2.0.3
 
 ### Patch Changes
