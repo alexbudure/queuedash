@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 2.0.3
+
+### Patch Changes
+
+- [`dee7163`](https://github.com/alexbudure/queuedash/commit/dee71633d33c8bceee9bde84a0b340f899adeaf8) Thanks [@alexbudure](https://github.com/alexbudure)! - Remove unnecessary express app in adapter
+
 ## 2.0.2
 
 ### Patch Changes
