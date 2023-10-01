@@ -139,6 +139,16 @@
     redis-info "^3.1.0"
     zod "^3.20.6"
 
+"@queuedash/api@^2.0.3":
+  version "2.0.3"
+  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.3.tgz#536a260adf1a2db46c4b599bbc902918807ff66b"
+  integrity sha512-tvM6jyIt31FENKfStibyORjqxwHWL2GPqsvKuM85WQj2FRJJQUy7bBdQsSlTrBc22G/KtApDq54Wp4VSLnKG6A==
+  dependencies:
+    "@trpc/server" "^10.14.0"
+    redis "^4.6.5"
+    redis-info "^3.1.0"
+    zod "^3.20.6"
+
 "@queuedash/ui@^2.0.2":
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/@queuedash/ui/-/ui-2.0.2.tgz#026052f3c6e62058277bb19a5e202a4a08bb68f4"

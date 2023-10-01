@@ -8,7 +8,7 @@
     "start": "ts-node main.ts"
   },
   "dependencies": {
-    "@queuedash/api": "^2.0.2",
+    "@queuedash/api": "^2.0.3",
     "bull": "^4.11.3",
     "express": "^4.18.2"
   },
