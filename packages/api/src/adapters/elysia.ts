@@ -4,7 +4,7 @@ import type { Context } from "../trpc";
 import { appRouter } from "src/main";
 import { version } from "../../package.json";
 
-export const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
+const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />

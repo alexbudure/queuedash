@@ -4,7 +4,7 @@ import { appRouter } from "../routers/_app";
 import * as trpcFastify from "@trpc/server/adapters/fastify";
 import { version } from "../../package.json";
 
-export const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
+const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />

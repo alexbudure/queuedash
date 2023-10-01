@@ -3,7 +3,7 @@ import * as trpcExpress from "@trpc/server/adapters/express";
 import { appRouter, Context } from "../routers/_app";
 import { version } from "../../package.json";
 
-export const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
+const html_app = (baseUrl: string) => /* HTML */ `<!DOCTYPE html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />
