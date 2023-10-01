@@ -1,4 +1,4 @@
-import express, { Router } from "express";
+import { Router } from "express";
 import { html_app } from "./html";
 import * as trpcExpress from "@trpc/server/adapters/express";
 import { appRouter, Context } from "../routers/_app";
@@ -26,18 +26,3 @@ export function createQueueDashExpressMiddleware({
 
   return router;
 }
-
-const app = express();
-
-app.use(
-  "/queuedash",
-  createQueueDashExpressMiddleware({
-    ctx: {
-      queues: [],
-    },
-  })
-);
-
-app.listen(3000, () => {
-  console.log("listening on port 3000");
-});

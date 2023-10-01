@@ -88,10 +88,10 @@
   resolved "https://registry.yarnpkg.com/@msgpackr-extract/msgpackr-extract-win32-x64/-/msgpackr-extract-win32-x64-3.0.2.tgz#0f164b726869f71da3c594171df5ebc1c4b0a407"
   integrity sha512-O+6Gs8UeDbyFpbSh2CPEz/UOrrdWPTBYNblZK5CxxLisYt4kGX3Sc+czffFonyjiGSq3jWLwJS/CCJc7tBr4sQ==
 
-"@queuedash/api@^2.0.1":
-  version "2.0.1"
-  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.1.tgz#d84b7ec97d01cd6892940124e37bfae7b5674419"
-  integrity sha512-kGknrEeIlVrLV0QPU00ve57PL9IIDcVagLoqXkEYj3hcg/2g5tCHO0os147l65u9atmAqMGMYKZDo+d9XTlJ1w==
+"@queuedash/api@^2.0.2":
+  version "2.0.2"
+  resolved "https://registry.yarnpkg.com/@queuedash/api/-/api-2.0.2.tgz#2a0227d9c1ae9634ce300280c4cd6209c0d5da37"
+  integrity sha512-4xtDW2uX+5A6uHvwHJaDIohTkW13iewr+3FaccjZBwwpL6mLzbO8/IlMVgUxsVndB5nI15++DvQ497SfphC90A==
   dependencies:
     "@trpc/server" "^10.14.0"
     redis "^4.6.5"

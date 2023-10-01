@@ -9,10 +9,10 @@
     "bun-types": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.2.2"
   },
   "dependencies": {
-    "@queuedash/api": "^1.2.1",
+    "@queuedash/api": "^2.0.2",
     "bull": "^4.11.3",
     "elysia": "^0.6.24"
   }
