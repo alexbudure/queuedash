@@ -1,5 +1,14 @@
 # @queuedash/ui
 
+## 2.0.5
+
+### Patch Changes
+
+- [`bc47dd5`](https://github.com/alexbudure/queuedash/commit/bc47dd5de7a5ed32cd82365dc27073282afc45be) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix express bundling with app
+
+- Updated dependencies [[`bc47dd5`](https://github.com/alexbudure/queuedash/commit/bc47dd5de7a5ed32cd82365dc27073282afc45be)]:
+  - @queuedash/api@2.0.5
+
 ## 2.0.4
 
 ### Patch Changes

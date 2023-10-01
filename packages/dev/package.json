@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@faker-js/faker": "^7.6.0",
-    "@queuedash/api": "workspace:^2.0.4",
-    "@queuedash/ui": "workspace:^2.0.4",
+    "@queuedash/api": "workspace:^2.0.5",
+    "@queuedash/ui": "workspace:^2.0.5",
     "@trpc/server": "^10.14.0",
     "bee-queue": "^1.5.0",
     "bull": "^4.10.4",
