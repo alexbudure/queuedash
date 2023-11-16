@@ -147,7 +147,6 @@ type QueueDashAppProps = {
 
 - Supports Celery and other queueing systems
 - Command+K bar and shortcuts
-- Display Redis information
 - Ability to whitelabel the UI
 
 ## Pro Version
