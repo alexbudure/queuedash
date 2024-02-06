@@ -13,3 +13,6 @@ dist
 .idea
 .next
 .env
+
+# Misc
+.DS_Store
