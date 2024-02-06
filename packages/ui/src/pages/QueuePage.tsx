@@ -41,7 +41,7 @@ export const QueuePage = () => {
       enabled: !!queueName,
       refetchInterval: REFETCH_INTERVAL,
       retry: NUM_OF_RETRIES,
-    }
+    },
   );
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export const QueuePage = () => {
       enabled: !!queueName,
       refetchInterval: REFETCH_INTERVAL,
       retry: NUM_OF_RETRIES,
-    }
+    },
   );
 
   const jobs =
@@ -127,7 +127,7 @@ export const QueuePage = () => {
                     {queueReq.data.client.usedMemoryHuman} /{" "}
                     {queueReq.data.client.totalMemoryHuman} (
                     {(queueReq.data.client.usedMemoryPercentage * 100).toFixed(
-                      2
+                      2,
                     )}
                     %)
                   </p>

@@ -19,18 +19,24 @@ for (const item of queues) {
       return Promise.resolve();
     });
   } else {
-    new Worker(item.queue.name, async () => {
-      await sleep(Math.random() * 20);
+    new Worker(
+      item.queue.name,
+      async () => {
+        await sleep(Math.random() * 20);
 
-      const queue = new BullMQQueue(item.queue.name);
+        const queue = new BullMQQueue(item.queue.name);
 
-      const completedCount = await queue.getCompletedCount();
+        const completedCount = await queue.getCompletedCount();
 
-      if (completedCount === 48) {
-        throw new Error("Generic error");
-      }
+        if (completedCount === 48) {
+          throw new Error("Generic error");
+        }
 
-      return Promise.resolve();
-    });
+        return Promise.resolve();
+      },
+      {
+        connection: {},
+      },
+    );
   }
 }

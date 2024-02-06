@@ -1,6 +1,7 @@
 import { Elysia } from "elysia";
 import { trpc } from "@elysiajs/trpc";
-import { appRouter, Context } from "../routers/_app";
+import type { Context } from "../routers/_app";
+import { appRouter } from "../routers/_app";
 import { createQueuedashHtml } from "./utils";
 
 export function queuedash({

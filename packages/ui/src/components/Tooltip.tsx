@@ -15,7 +15,7 @@ export const Tooltip = ({
         <TooltipRadix.Trigger asChild>{children}</TooltipRadix.Trigger>
         <TooltipRadix.Portal>
           <TooltipRadix.Content
-            className="rounded-md bg-white py-1 px-2 text-sm text-slate-900 shadow-md"
+            className="rounded-md bg-white px-2 py-1 text-sm text-slate-900 shadow-md"
             sideOffset={6}
           >
             {message}

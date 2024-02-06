@@ -10,7 +10,7 @@ export type Queue = RouterOutput["queue"]["byName"];
 export type Status = RouterInput["job"]["list"]["status"];
 
 export const trpc = createTRPCReact<AppRouter>({
-  unstable_overrides: {
+  overrides: {
     useMutation: {
       async onSuccess(opts) {
         await opts.originalFn();

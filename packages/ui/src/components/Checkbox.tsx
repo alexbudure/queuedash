@@ -9,7 +9,7 @@ export const Checkbox = ({
   return (
     <RadixCheckbox.Root
       className={clsx(
-        `flex h-4 w-4 cursor-pointer rounded-sm border shadow-sm`,
+        `flex size-4 cursor-pointer rounded-sm border shadow-sm`,
         className,
         {
           "border-slate-300 hover:border-slate-500 hover:bg-slate-100":
@@ -23,7 +23,7 @@ export const Checkbox = ({
       onClick={(e) => e.stopPropagation()}
       {...props}
     >
-      <RadixCheckbox.Indicator className="flex h-full w-full items-center justify-center">
+      <RadixCheckbox.Indicator className="flex size-full items-center justify-center">
         {props.checked === "indeterminate" && (
           <DividerHorizontalIcon height={12} width={12} />
         )}

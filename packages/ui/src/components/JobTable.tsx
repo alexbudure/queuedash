@@ -288,7 +288,7 @@ export const JobTable = ({
               }}
             >
               <Progress.Indicator
-                className="h-full w-full bg-cyan-500 transition duration-300 ease-in-out"
+                className="size-full bg-cyan-500 transition duration-300 ease-in-out"
                 style={{ transform: `translateX(-${100 - progress}%)` }}
               />
             </Progress.Root>
@@ -302,7 +302,7 @@ export const JobTable = ({
 
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 py-2 px-3 text-sm shadow-lg backdrop-blur">
+          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur">
             <p>{table.getSelectedRowModel().rows.length} selected</p>
             {status === "completed" || status === "failed" ? (
               <Button

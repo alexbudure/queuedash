@@ -20,7 +20,7 @@ export const Toast = ({ variant, message, onDismiss }: ToastProps) => {
   return (
     <RadixToast.Root
       className={clsx(
-        "flex items-center space-x-1 rounded-md border bg-white/75 py-2 px-3 text-sm shadow-lg backdrop-blur-md",
+        "flex items-center space-x-1 rounded-md border bg-white/75 px-3 py-2 text-sm shadow-lg backdrop-blur-md",
         {
           "border-red-50 text-red-900": variant === "error",
           "border-green-50 text-green-900": variant === "success",

@@ -1,5 +1,6 @@
 import type { Handler } from "express";
-import { appRouter, Context } from "../routers/_app";
+import type { Context } from "../routers/_app";
+import { appRouter } from "../routers/_app";
 import * as trpcNodeHttp from "@trpc/server/adapters/node-http";
 import { createQueuedashHtml } from "./utils";
 
