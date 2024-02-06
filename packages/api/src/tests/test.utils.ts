@@ -11,7 +11,7 @@ const QUEUE_NAME_PREFIX = "flight-bookings";
 const QUEUE_DISPLAY_NAME = "Flight bookings";
 
 const getFakeQueueName = () =>
-  `${QUEUE_NAME_PREFIX}-${faker.random.alpha({ count: 5 })}`;
+  `${QUEUE_NAME_PREFIX}-${faker.string.alpha({ length: 5 })}`;
 
 export const sleep = (t: number) =>
   new Promise((resolve) => setTimeout(resolve, t));
@@ -45,7 +45,7 @@ export const initRedisInstance = async () => {
               index: index + 1,
             },
           };
-        })
+        }),
       );
 
       await sleep(200);
@@ -80,7 +80,7 @@ export const initRedisInstance = async () => {
               index: index + 1,
             },
           };
-        })
+        }),
       );
 
       await sleep(200);
@@ -112,7 +112,7 @@ export const initRedisInstance = async () => {
           return flightBookingsQueue.queue.createJob({
             index: index + 1,
           });
-        })
+        }),
       );
 
       await sleep(200);

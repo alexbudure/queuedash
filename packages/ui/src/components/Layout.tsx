@@ -41,11 +41,11 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
     <Toast.Provider swipeDirection="right">
       <div className="grid xl:grid-cols-[auto,1fr]">
         <div className="hidden w-64 xl:block">
-          <div className="sticky top-0 isolate flex h-full max-h-screen min-h-screen flex-col justify-between overflow-hidden border-r border-brand-50 px-4 pt-8 pb-4 shadow-sm dark:border-slate-700 dark:bg-black">
+          <div className="sticky top-0 isolate flex h-full max-h-screen min-h-screen flex-col justify-between overflow-hidden border-r border-brand-50 px-4 pb-4 pt-8 shadow-sm dark:border-slate-700 dark:bg-black">
             <svg
               viewBox="0 0 1108 632"
               aria-hidden="true"
-              className="absolute top-10 left-[calc(50%-24rem)] -z-10 w-[69.25rem] max-w-none rotate-90 transform-gpu opacity-50 blur-3xl lg:top-[calc(50%-30rem)]"
+              className="absolute left-[calc(50%-24rem)] top-10 -z-10 w-[69.25rem] max-w-none rotate-90 transform-gpu opacity-50 blur-3xl lg:top-[calc(50%-30rem)]"
             >
               <path
                 fill="url(#175c433f-44f6-4d59-93f0-c5c51ad5566d)"
@@ -108,7 +108,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
                 href="https://github.com/alexbudure/queuedash"
                 target="_blank"
                 rel="noreferrer"
-                className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-900 shadow-sm transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 dark:bg-slate-600 dark:text-slate-50 dark:hover:bg-slate-500"
+                className="flex size-7 items-center justify-center rounded-md bg-slate-100 text-slate-900 shadow-sm transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 dark:bg-slate-600 dark:text-slate-50 dark:hover:bg-slate-500"
               >
                 <GitHubLogoIcon />
               </a>

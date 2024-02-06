@@ -9,13 +9,13 @@ import type { RedisInfo } from "redis-info";
 import { parse } from "redis-info";
 
 const generateQueueMutationProcedure = (
-  action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue) => void
+  action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue) => void,
 ) => {
   return procedure
     .input(
       z.object({
         queueName: z.string(),
-      })
+      }),
     )
     .mutation(async ({ input: { queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -56,7 +56,7 @@ export const queueRouter = router({
           "prioritized",
           "paused",
         ] as const),
-      })
+      }),
     )
     .mutation(async ({ input: { queueName, status }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -72,9 +72,13 @@ export const queueRouter = router({
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        await queueInCtx.queue.clean(0, status);
+        if (queueInCtx.type === "bullmq") {
+          // @ts-expect-error
+          await queueInCtx.queue.clean(0, 0, status);
+        } else {
+          // @ts-expect-error
+          await queueInCtx.queue.clean(0, status);
+        }
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -123,7 +127,7 @@ export const queueRouter = router({
       z.object({
         queueName: z.string(),
         data: z.object({}).passthrough(),
-      })
+      }),
     )
     .mutation(async ({ input: { queueName, data }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -153,7 +157,7 @@ export const queueRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-      })
+      }),
     )
     .query(async ({ input: { queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -174,12 +178,11 @@ export const queueRouter = router({
         const info: RedisInfo & {
           maxclients: string;
         } = isBee
-          ? // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
+          ? // @ts-expect-error
             queueInCtx.queue.client.server_info
-          : // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            parse(await queueInCtx.queue.client.info());
+          : queueInCtx.type === "bullmq"
+            ? parse(await (await queueInCtx.queue.client).info())
+            : parse(await queueInCtx.queue.client.info());
 
         return {
           displayName: queueInCtx.displayName,

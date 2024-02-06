@@ -95,7 +95,7 @@ export const QueueStatusTabs = ({
               {queue?.counts[tab.status] ? (
                 <span
                   className={clsx(
-                    "rounded-md py-0.5 px-1.5 text-xs font-semibold",
+                    "rounded-md px-1.5 py-0.5 text-xs font-semibold",
                     {
                       "bg-slate-400 text-slate-50": !isActive,
                       "bg-green-600 text-green-50":

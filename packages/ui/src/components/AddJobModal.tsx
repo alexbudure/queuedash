@@ -51,7 +51,7 @@ export const AddJobModal = ({ queue, onDismiss }: JobModalProps) => {
         >
           <Dialog.Close asChild>
             <button
-              className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50"
+              className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50"
               aria-label="Close"
               onClick={() => onDismiss()}
             >

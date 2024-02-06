@@ -44,11 +44,10 @@ export const formatJob = ({
       name: queueInCtx.jobName
         ? queueInCtx.jobName(job.data)
         : job.id === "__default__"
-        ? "Default"
-        : job.id,
+          ? "Default"
+          : job.id,
       data: job.data as object,
       opts: job.options,
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       createdAt: new Date(),
       processedAt: new Date(),
@@ -64,10 +63,9 @@ export const formatJob = ({
     name: queueInCtx.jobName
       ? queueInCtx.jobName(job.data)
       : job.name === "__default__"
-      ? "Default"
-      : job.name,
+        ? "Default"
+        : job.name,
     data: job.data as object,
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     opts: job.opts,
     createdAt: new Date(job.timestamp),
@@ -75,7 +73,6 @@ export const formatJob = ({
     finishedAt: job.finishedOn ? new Date(job.finishedOn) : null,
     failedReason: job.failedReason,
     stacktrace: job.stacktrace,
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     retriedAt: job.retriedOn ? new Date(job.retriedOn) : null,
   } as QueueDashJob;

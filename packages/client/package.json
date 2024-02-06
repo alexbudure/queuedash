@@ -14,22 +14,22 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@queuedash/ui": "workspace:^2.0.5",
-    "@rollup/plugin-typescript": "^10.0.1",
-    "@types/react": "^18.0.28",
-    "@types/react-dom": "^18.0.11",
-    "@typescript-eslint/eslint-plugin": "^5.54.0",
-    "@typescript-eslint/parser": "^5.54.0",
-    "@vitejs/plugin-react": "^3.1.0",
-    "eslint": "^8.35.0",
-    "eslint-config-prettier": "^8.6.0",
-    "eslint-plugin-tailwindcss": "^3.10.1",
-    "postcss": "^8.4.21",
-    "prettier": "^2.8.4",
-    "rollup-plugin-typescript-paths": "^1.4.0",
-    "tailwindcss": "^3.2.7",
-    "typescript": "^5.2.0",
-    "vite": "^4.1.4"
+    "@queuedash/ui": "workspace:*",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/react": "^18.2.54",
+    "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.56.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-tailwindcss": "^3.14.1",
+    "postcss": "^8.4.34",
+    "prettier": "^3.2.5",
+    "rollup-plugin-typescript-paths": "^1.5.0",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
   },
   "license": "MIT"
 }
