@@ -67,11 +67,11 @@ const columns = [
   columnHelper.accessor("name", {
     cell: (props) => (
       <div className="flex w-full items-center space-x-2">
-        <span className="max-w-fit flex-1 truncate text-slate-900 dark:text-slate-200">
+        <span className="max-w-fit grow basis-full truncate text-slate-900 dark:text-slate-200">
           {props.cell.row.original.name}
         </span>
 
-        <span className="rounded-md text-sm text-slate-500 dark:text-slate-400">
+        <span className="shrink truncate max-w-[20%] text-sm text-slate-500 dark:text-slate-400">
           #{props.cell.row.original.id}
         </span>
       </div>
