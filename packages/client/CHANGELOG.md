@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 2.1.1
+
+### Patch Changes
+
+- [#26](https://github.com/alexbudure/queuedash/pull/26) [`2e0956c`](https://github.com/alexbudure/queuedash/commit/2e0956c586b9f5f3190f169e363f76230d037686) Thanks [@p3drosola](https://github.com/p3drosola)! - Improve UI support for long job ids
+
 ## 2.1.0
 
 ### Minor Changes
