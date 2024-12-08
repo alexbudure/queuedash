@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.1.0
+
+### Minor Changes
+
+- [#33](https://github.com/alexbudure/queuedash/pull/33) [`011ad3b`](https://github.com/alexbudure/queuedash/commit/011ad3bca2b50b4568fa7edc7bf314948e84eeb9) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix bundle strategy for API
+
 ## 3.0.0
 
 ### Major Changes
