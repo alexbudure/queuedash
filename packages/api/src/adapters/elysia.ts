@@ -15,7 +15,6 @@ export function queuedash({
     name: "queuedash",
   })
     .use(
-      // @ts-expect-error
       trpc(appRouter, {
         endpoint: `${baseUrl}/trpc`,
         createContext: (params) => {
