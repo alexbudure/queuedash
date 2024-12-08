@@ -136,7 +136,7 @@ test("rerun job", async () => {
     queueName: firstQueue.queue.name,
   });
 
-  expect(list.totalCount).toMatchObject(NUM_OF_COMPLETED_JOBS + 1);
+  expect(list.totalCount).toBe(NUM_OF_COMPLETED_JOBS + 1);
 });
 
 // TODO:

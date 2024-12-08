@@ -9,27 +9,27 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@faker-js/faker": "^8.4.0",
+    "@faker-js/faker": "^9.3.0",
     "@queuedash/api": "workspace:*",
     "@queuedash/ui": "workspace:*",
-    "@trpc/server": "^10.45.0",
+    "@trpc/server": "^10.45.2",
     "bee-queue": "^1.7.1",
-    "bull": "^4.12.2",
-    "bullmq": "^5.1.9",
-    "next": "^14.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "bull": "^4.16.4",
+    "bullmq": "^5.31.2",
+    "next": "^15.0.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.16",
-    "@types/react": "^18.2.54",
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
-    "eslint": "^8.56.0",
-    "eslint-config-next": "^14.1.0",
+    "@types/node": "^22.10.1",
+    "@types/react": "^19.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
+    "eslint": "^9.16.0",
+    "eslint-config-next": "^15.0.4",
     "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.2.5",
+    "prettier": "^3.4.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.7.2"
   }
 }

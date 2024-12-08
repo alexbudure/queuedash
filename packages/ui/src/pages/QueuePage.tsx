@@ -37,6 +37,8 @@ export const QueuePage = () => {
       status,
     },
     {
+      queryKey: ["job.list", { queueName, limit: JOBS_PER_PAGE, status }],
+      initialPageParam: 0,
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       enabled: !!queueName,
       refetchInterval: REFETCH_INTERVAL,
@@ -60,6 +62,7 @@ export const QueuePage = () => {
       queueName,
     },
     {
+      queryKey: ["queue.byName", { queueName }],
       enabled: !!queueName,
       refetchInterval: REFETCH_INTERVAL,
       retry: NUM_OF_RETRIES,

@@ -137,7 +137,11 @@ export const queueRouter = router({
 
       try {
         if ("add" in queueInCtx.queue) {
-          await queueInCtx.queue.add(data, {});
+          if (queueInCtx.type === "bullmq") {
+            await queueInCtx.queue.add("Job", data, {});
+          } else {
+            await queueInCtx.queue.add(data, {});
+          }
         } else {
           await queueInCtx.queue.createJob(data).save();
         }
