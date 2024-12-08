@@ -170,8 +170,8 @@ importers:
         specifier: workspace:*
         version: link:../ui
       '@trpc/server':
-        specifier: ^10.45.2
-        version: 10.45.2
+        specifier: ^11.0.0-rc.660
+        version: 11.0.0-rc.660(typescript@5.7.2)
       bee-queue:
         specifier: ^1.7.1
         version: 1.7.1
@@ -1595,9 +1595,6 @@ packages:
       react: '>=18.2.0'
       react-dom: '>=18.2.0'
       typescript: '>=5.6.2'
-
-  '@trpc/server@10.45.2':
-    resolution: {integrity: sha512-wOrSThNNE4HUnuhJG6PfDRp4L2009KDVxsd+2VYH8ro6o/7/jwYZ8Uu5j+VaW+mOmc8EHerHzGcdbGNQSAUPgg==}
 
   '@trpc/server@11.0.0-rc.660':
     resolution: {integrity: sha512-QUapcZCNOpHT7ng9LceGc9ImkboWd0Go9ryrduZpL+p4jdfaC6409AQ3x4XEW6Wu3yBmZAn4CywCsDrDhjDy/w==}
@@ -5418,8 +5415,6 @@ snapshots:
       react: 19.0.0
       react-dom: 19.0.0(react@19.0.0)
       typescript: 5.7.2
-
-  '@trpc/server@10.45.2': {}
 
   '@trpc/server@11.0.0-rc.660(typescript@5.7.2)':
     dependencies:

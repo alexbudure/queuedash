@@ -12,7 +12,7 @@
     "@faker-js/faker": "^9.3.0",
     "@queuedash/api": "workspace:*",
     "@queuedash/ui": "workspace:*",
-    "@trpc/server": "^10.45.2",
+    "@trpc/server": "^11.0.0-rc.660",
     "bee-queue": "^1.7.1",
     "bull": "^4.16.4",
     "bullmq": "^5.31.2",
