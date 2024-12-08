@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.2.0
+
+### Minor Changes
+
+- [`8e5c7ac`](https://github.com/alexbudure/queuedash/commit/8e5c7ac06bb13674e32b4cd9b1b7c65913e122af) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix importing API
+
+### Patch Changes
+
+- Updated dependencies [[`8e5c7ac`](https://github.com/alexbudure/queuedash/commit/8e5c7ac06bb13674e32b4cd9b1b7c65913e122af)]:
+  - @queuedash/api@3.2.0
+
 ## 3.1.0
 
 ### Minor Changes
