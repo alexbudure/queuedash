@@ -15,18 +15,19 @@ export function queuedash({
     name: "queuedash",
   })
     .use(
+      // @ts-expect-error
       trpc(appRouter, {
         endpoint: `${baseUrl}/trpc`,
         createContext: (params) => {
           return { ...params, ...ctx };
         },
-      })
+      }),
     )
     .get(
       baseUrl,
       async () =>
         new Response(createQueuedashHtml(baseUrl), {
           headers: { "Content-Type": "text/html; charset=utf8" },
-        })
+        }),
     );
 }

@@ -88,8 +88,6 @@ export const jobRouter = router({
 
       const job = await queueInCtx.queue.getJob(jobId);
 
-      console.log(job);
-
       if (!job) {
         throw new TRPCError({
           code: "BAD_REQUEST",

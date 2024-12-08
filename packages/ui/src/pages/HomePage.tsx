@@ -46,7 +46,6 @@ const QueueCard = ({ queueName }: { queueName: string }) => {
       queueName,
     },
     {
-      queryKey: ["queue.byName", { queueName }],
       refetchInterval: REFETCH_INTERVAL,
       retry: NUM_OF_RETRIES,
     },
