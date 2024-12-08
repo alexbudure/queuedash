@@ -26,7 +26,7 @@ export const QueueStatusTabs = ({
 }: QueueStatusTabsProps) => {
   const {
     mutate: cleanQueue,
-    isLoading: isLoadingCleanQueue,
+    status: cleanQueueStatus,
     isSuccess: isSuccessCleanQueue,
   } = trpc.queue.clean.useMutation();
 
@@ -88,14 +88,14 @@ export const QueueStatusTabs = ({
                     isActive && tab.status === "delayed",
                   "bg-stone-50 text-stone-900":
                     isActive && tab.status === "paused",
-                }
+                },
               )}
             >
               <span>{tab.name}</span>
               {queue?.counts[tab.status] ? (
                 <span
                   className={clsx(
-                    "rounded-md py-0.5 px-1.5 text-xs font-semibold",
+                    "rounded-md px-1.5 py-0.5 text-xs font-semibold",
                     {
                       "bg-slate-400 text-slate-50": !isActive,
                       "bg-green-600 text-green-50":
@@ -112,7 +112,7 @@ export const QueueStatusTabs = ({
                         isActive && tab.status === "delayed",
                       "bg-stone-600 text-stone-50":
                         isActive && tab.status === "paused",
-                    }
+                    },
                   )}
                 >
                   {queue.counts[tab.status]}
@@ -145,7 +145,7 @@ export const QueueStatusTabs = ({
             icon={<TrashIcon />}
             label="Clean all"
             size="sm"
-            isLoading={isLoadingCleanQueue}
+            isLoading={cleanQueueStatus === "pending"}
           />
         </Alert>
       ) : null}

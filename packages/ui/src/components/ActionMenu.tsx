@@ -15,7 +15,7 @@ export const ActionMenu = ({ actions }: ActionMenuProps) => {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button
-          className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-50 text-slate-900 outline-none transition duration-150 ease-in-out hover:bg-slate-100 focus:bg-slate-100 radix-state-open:bg-slate-100"
+          className="flex size-7 items-center justify-center rounded-md bg-slate-50 text-slate-900 outline-none transition duration-150 ease-in-out hover:bg-slate-100 focus:bg-slate-100 radix-state-open:bg-slate-100"
           aria-label="Action menu"
         >
           <DotsVerticalIcon width={18} height={18} />

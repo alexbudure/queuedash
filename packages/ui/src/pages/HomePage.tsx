@@ -48,7 +48,7 @@ const QueueCard = ({ queueName }: { queueName: string }) => {
     {
       refetchInterval: REFETCH_INTERVAL,
       retry: NUM_OF_RETRIES,
-    }
+    },
   );
 
   if (!queueReq.data) return null;

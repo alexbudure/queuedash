@@ -8,15 +8,15 @@ import type BeeQueue from "bee-queue";
 import { createClient } from "redis";
 const generateJobMutationProcedure = (
   action: (
-    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>
-  ) => Promise<unknown> | void
+    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>,
+  ) => Promise<unknown> | void,
 ) => {
   return procedure
     .input(
       z.object({
         queueName: z.string(),
         jobId: z.string(),
-      })
+      }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -78,7 +78,7 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         jobId: z.string(),
-      })
+      }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -97,6 +97,8 @@ export const jobRouter = router({
       try {
         if (queueInCtx.type === "bee") {
           await queueInCtx.queue.createJob(job.data).save();
+        } else if (queueInCtx.type === "bullmq") {
+          await queueInCtx.queue.add(job.name, job.data, {});
         } else {
           await queueInCtx.queue.add(job.data, {});
         }
@@ -129,7 +131,7 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         jobIds: z.array(z.string()),
-      })
+      }),
     )
     .mutation(async ({ input: { jobIds, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -150,7 +152,7 @@ export const jobRouter = router({
             await job.remove();
 
             return job;
-          })
+          }),
         );
         return jobs.map((job) => formatJob({ job, queueInCtx }));
       } catch (e) {
@@ -179,7 +181,7 @@ export const jobRouter = router({
           "waiting",
           "paused",
         ] as const),
-      })
+      }),
     )
     .query(
       async ({
@@ -206,7 +208,7 @@ export const jobRouter = router({
             ]);
 
             const totalCount = await client.sCard(
-              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`
+              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`,
             );
 
             await client.disconnect();
@@ -234,13 +236,17 @@ export const jobRouter = router({
             status === "prioritized" && isBullMq
               ? queueInCtx.queue.getJobs([status], cursor, cursor + limit - 1)
               : status === "prioritized"
-              ? []
-              : queueInCtx.queue.getJobs([status], cursor, cursor + limit - 1),
+                ? []
+                : queueInCtx.queue.getJobs(
+                    [status],
+                    cursor,
+                    cursor + limit - 1,
+                  ),
             status === "prioritized" && isBullMq
               ? queueInCtx.queue.getJobCountByTypes(status)
               : status === "prioritized"
-              ? 0
-              : queueInCtx.queue.getJobCountByTypes(status),
+                ? 0
+                : queueInCtx.queue.getJobCountByTypes(status),
           ]);
           const totalCount = totalCountWithWrongType as unknown as number;
 
@@ -258,6 +264,6 @@ export const jobRouter = router({
             message: e instanceof Error ? e.message : undefined,
           });
         }
-      }
+      },
     ),
 });
