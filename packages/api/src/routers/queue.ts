@@ -73,10 +73,10 @@ export const queueRouter = router({
 
       try {
         if (queueInCtx.type === "bullmq") {
-          // @ts-expect-error
+          // @ts-expect-error BullMQ has a different api
           await queueInCtx.queue.clean(0, 0, status);
         } else {
-          // @ts-expect-error
+          // @ts-expect-error Bull has a different api
           await queueInCtx.queue.clean(0, status);
         }
       } catch (e) {
@@ -137,11 +137,7 @@ export const queueRouter = router({
 
       try {
         if ("add" in queueInCtx.queue) {
-          if (queueInCtx.type === "bullmq") {
-            await queueInCtx.queue.add("Job", data, {});
-          } else {
-            await queueInCtx.queue.add(data, {});
-          }
+          await queueInCtx.queue.add(data, {});
         } else {
           await queueInCtx.queue.createJob(data).save();
         }
@@ -182,7 +178,7 @@ export const queueRouter = router({
         const info: RedisInfo & {
           maxclients: string;
         } = isBee
-          ? // @ts-expect-error
+          ? // @ts-expect-error Bee-Queue does not have a client property
             queueInCtx.queue.client.server_info
           : queueInCtx.type === "bullmq"
             ? parse(await (await queueInCtx.queue.client).info())

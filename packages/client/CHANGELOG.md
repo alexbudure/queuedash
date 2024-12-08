@@ -1,5 +1,17 @@
 # @queuedash/client
 
+## 2.1.1
+
+### Patch Changes
+
+- [#26](https://github.com/alexbudure/queuedash/pull/26) [`2e0956c`](https://github.com/alexbudure/queuedash/commit/2e0956c586b9f5f3190f169e363f76230d037686) Thanks [@p3drosola](https://github.com/p3drosola)! - Improve UI support for long job ids
+
+## 2.1.0
+
+### Minor Changes
+
+- [#23](https://github.com/alexbudure/queuedash/pull/23) [`7a2e3c0`](https://github.com/alexbudure/queuedash/commit/7a2e3c000da0b34c4c3a4dd2471e2e19738d1e6d) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix bull api differences
+
 ## 2.0.5
 
 ### Patch Changes
