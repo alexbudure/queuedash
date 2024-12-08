@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.0.0
+
+### Major Changes
+
+- [#21](https://github.com/alexbudure/queuedash/pull/21) [`6692303`](https://github.com/alexbudure/queuedash/commit/6692303bde835b9934e2ae962e4727357f0d4afe) Thanks [@alexbudure](https://github.com/alexbudure)! - This version upgrades core dependencies to their latest major versions, including Elysia, BullMQ, and tRPC
+
+### Patch Changes
+
+- Updated dependencies [[`6692303`](https://github.com/alexbudure/queuedash/commit/6692303bde835b9934e2ae962e4727357f0d4afe)]:
+  - @queuedash/api@3.0.0
+
 ## 2.1.1
 
 ### Patch Changes
@@ -110,7 +121,7 @@
           },
         ],
       },
-    })
+    }),
   );
   ```
 
