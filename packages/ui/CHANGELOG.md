@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.3.0
+
+### Minor Changes
+
+- [#38](https://github.com/alexbudure/queuedash/pull/38) [`00346f4`](https://github.com/alexbudure/queuedash/commit/00346f4c11fdae742dae1981061f044aee66697b) Thanks [@alexbudure](https://github.com/alexbudure)! - Improve React 19 compatibility
+
+### Patch Changes
+
+- Updated dependencies [[`00346f4`](https://github.com/alexbudure/queuedash/commit/00346f4c11fdae742dae1981061f044aee66697b)]:
+  - @queuedash/api@3.3.0
+
 ## 3.2.0
 
 ### Minor Changes
