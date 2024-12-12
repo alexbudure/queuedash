@@ -29,7 +29,11 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
           {
             label: queue.paused ? "Resume" : "Pause",
             onSelect: () => {
-              queue.paused ? resume(input) : pause(input);
+              if (queue.paused) {
+                resume(input);
+              } else {
+                pause(input);
+              }
             },
             icon: queue.paused ? <PlayIcon /> : <PauseIcon />,
           },
