@@ -12,7 +12,7 @@ import { Skeleton } from "../components/Skeleton";
 import { ErrorCard } from "../components/ErrorCard";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 

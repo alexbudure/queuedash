@@ -1,11 +1,11 @@
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { clsx } from "clsx";
 import { Button } from "./Button";
 import { TrashIcon } from "@radix-ui/react-icons";
-import type { Status, RouterOutput } from "../utils/trpc";
+import type { RouterOutput, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import { Toast } from "./Toast";
 import { Alert } from "./Alert";
+import { toast } from "sonner";
 
 type Tab = {
   name: string;
@@ -24,11 +24,12 @@ export const QueueStatusTabs = ({
   status,
   queue,
 }: QueueStatusTabsProps) => {
-  const {
-    mutate: cleanQueue,
-    status: cleanQueueStatus,
-    isSuccess: isSuccessCleanQueue,
-  } = trpc.queue.clean.useMutation();
+  const { mutate: cleanQueue, status: cleanQueueStatus } =
+    trpc.queue.clean.useMutation({
+      onSuccess() {
+        toast.success(`All ${status} jobs have been removed`);
+      },
+    });
 
   const tabs: Tab[] = [
     {
@@ -148,12 +149,6 @@ export const QueueStatusTabs = ({
             isLoading={cleanQueueStatus === "pending"}
           />
         </Alert>
-      ) : null}
-      {isSuccessCleanQueue ? (
-        <Toast
-          message={`All ${status} jobs have been removed`}
-          variant="success"
-        />
       ) : null}
     </div>
   );

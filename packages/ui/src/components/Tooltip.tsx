@@ -1,5 +1,9 @@
-import * as TooltipRadix from "@radix-ui/react-tooltip";
 import type { PropsWithChildren } from "react";
+import {
+  Button,
+  Tooltip as ReactAriaTooltip,
+  TooltipTrigger,
+} from "react-aria-components";
 
 type TooltipProps = {
   message: string;
@@ -10,19 +14,14 @@ export const Tooltip = ({
   message,
 }: PropsWithChildren<TooltipProps>) => {
   return (
-    <TooltipRadix.Provider>
-      <TooltipRadix.Root>
-        <TooltipRadix.Trigger asChild>{children}</TooltipRadix.Trigger>
-        <TooltipRadix.Portal>
-          <TooltipRadix.Content
-            className="rounded-md bg-white px-2 py-1 text-sm text-slate-900 shadow-md"
-            sideOffset={6}
-          >
-            {message}
-            <TooltipRadix.Arrow className="fill-white" />
-          </TooltipRadix.Content>
-        </TooltipRadix.Portal>
-      </TooltipRadix.Root>
-    </TooltipRadix.Provider>
+    <TooltipTrigger>
+      <Button>{children}</Button>
+      <ReactAriaTooltip
+        offset={6}
+        className="rounded-md bg-white px-2 py-1 text-sm text-slate-900 shadow-md"
+      >
+        {message}
+      </ReactAriaTooltip>
+    </TooltipTrigger>
   );
 };

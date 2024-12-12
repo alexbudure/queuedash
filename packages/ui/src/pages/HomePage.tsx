@@ -1,7 +1,7 @@
 import { Layout } from "../components/Layout";
 import { trpc } from "../utils/trpc";
 import { NUM_OF_RETRIES, REFETCH_INTERVAL } from "../utils/config";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import {
   CheckCircledIcon,
   CrossCircledIcon,
