@@ -1,6 +1,12 @@
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import type { PropsWithChildren, ReactElement } from "react";
 import { Button } from "./Button";
+import {
+  Button as AriaButton,
+  Dialog,
+  DialogTrigger,
+  Heading,
+  Modal,
+} from "react-aria-components";
 
 type AlertProps = {
   title: string;
@@ -14,25 +20,27 @@ export const Alert = ({
   children,
 }: PropsWithChildren<AlertProps>) => {
   return (
-    <AlertDialog.Root>
-      <AlertDialog.Trigger asChild>{children}</AlertDialog.Trigger>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 bg-black/10" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl">
-          <AlertDialog.Title className="mb-3 text-xl font-semibold text-slate-900">
-            {title}
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mb-6 text-slate-600">
-            {description}
-          </AlertDialog.Description>
-          <div className="flex justify-end space-x-3">
-            <AlertDialog.Cancel asChild>
-              <Button label="Cancel" />
-            </AlertDialog.Cancel>
-            <AlertDialog.Action asChild>{action}</AlertDialog.Action>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+    <DialogTrigger>
+      <AriaButton>{children}</AriaButton>
+      <Modal isDismissable className="fixed inset-0 bg-black/10">
+        <Dialog
+          role="alertdialog"
+          className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl"
+        >
+          {({ close }) => (
+            <>
+              <Heading className="mb-3 text-xl font-semibold text-slate-900">
+                {title}
+              </Heading>
+              <p className="mb-6 text-slate-600">{description}</p>
+              <div className="flex justify-end space-x-3">
+                <Button onClick={close} label="Cancel" />
+                {action}
+              </div>
+            </>
+          )}
+        </Dialog>
+      </Modal>
+    </DialogTrigger>
   );
 };

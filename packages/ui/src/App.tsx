@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useEffect, useState } from "react";
 import { trpc } from "./utils/trpc";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { QueuePage } from "./pages/QueuePage";
 import type { UserPreferences } from "./components/ThemeSwitcher";
 import { HomePage } from "./pages/HomePage";
+import { Toaster } from "sonner";
 
 type QueueDashPagesProps = {
   // URL to the API
@@ -23,12 +24,12 @@ export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {
           url: apiUrl,
         }),
       ],
-    })
+    }),
   );
 
   useEffect(() => {
     const userPreferences: UserPreferences | null = JSON.parse(
-      localStorage.getItem("user-preferences") || "null"
+      localStorage.getItem("user-preferences") || "null",
     );
 
     if (userPreferences) {
@@ -56,26 +57,16 @@ export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {
     return null;
   }
 
-  const router = createBrowserRouter(
-    [
-      {
-        path: "/",
-        element: <HomePage />,
-      },
-      {
-        path: "/:id",
-        element: <QueuePage />,
-      },
-    ],
-    {
-      basename,
-    }
-  );
-
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <Toaster />
+        <BrowserRouter basename={basename}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/:id" element={<QueuePage />} />
+          </Routes>
+        </BrowserRouter>
       </QueryClientProvider>
     </trpc.Provider>
   );

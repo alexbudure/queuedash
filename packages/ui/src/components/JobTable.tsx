@@ -11,25 +11,25 @@ import {
   CounterClockwiseClockIcon,
   CrossCircledIcon,
   DotsHorizontalIcon,
+  ExclamationTriangleIcon,
+  LapTimerIcon,
   PlusCircledIcon,
   SlashIcon,
-  LapTimerIcon,
-  ExclamationTriangleIcon,
   TargetIcon,
   TrashIcon,
 } from "@radix-ui/react-icons";
 import { format, formatDistanceStrict, formatDistanceToNow } from "date-fns";
 import type { Job, Status } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
 import { useInView } from "react-intersection-observer";
 import { JobTableRow } from "./JobTableRow";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { Checkbox } from "./Checkbox";
 import { JobOptionTag } from "./JobOptionTag";
-import * as Progress from "@radix-ui/react-progress";
 import { Tooltip } from "./Tooltip";
 import { JobModal } from "./JobModal";
 import { Button } from "./Button";
-import { trpc } from "../utils/trpc";
+import { Meter } from "react-aria-components";
 
 const columnHelper = createColumnHelper<Job & { status: Status }>();
 
@@ -71,7 +71,7 @@ const columns = [
           {props.cell.row.original.name}
         </span>
 
-        <span className="shrink truncate max-w-[20%] text-sm text-slate-500 dark:text-slate-400">
+        <span className="max-w-[20%] shrink truncate text-sm text-slate-500 dark:text-slate-400">
           #{props.cell.row.original.id}
         </span>
       </div>
@@ -240,7 +240,7 @@ export const JobTable = ({
                       ? null
                       : flexRender(
                           header.column.columnDef.header,
-                          header.getContext()
+                          header.getContext(),
                         )}
                   </div>
                 ))}
@@ -279,19 +279,23 @@ export const JobTable = ({
             <p className="text-xs text-slate-500">
               You&apos;ve viewed {jobs.length} of {totalJobs} jobs
             </p>
-
-            <Progress.Root
-              className="relative h-0.5 w-[144px] overflow-hidden rounded-sm bg-slate-200"
-              value={progress}
-              style={{
-                transform: "translateZ(0)",
-              }}
-            >
-              <Progress.Indicator
-                className="size-full bg-cyan-500 transition duration-300 ease-in-out"
-                style={{ transform: `translateX(-${100 - progress}%)` }}
-              />
-            </Progress.Root>
+            <Meter value={progress}>
+              {({ percentage }) => (
+                <>
+                  <div
+                    style={{
+                      transform: "translateZ(0)",
+                    }}
+                    className="relative h-0.5 w-[144px] overflow-hidden rounded-sm bg-slate-200"
+                  >
+                    <div
+                      className="size-full bg-cyan-500 transition duration-300 ease-in-out"
+                      style={{ transform: `translateX(-${100 - percentage}%)` }}
+                    />
+                  </div>
+                </>
+              )}
+            </Meter>
 
             {isFetchingNextPage ? (
               <SlashIcon className="animate-spin text-slate-300" />
@@ -368,7 +372,7 @@ const LifecycleItem = ({ variant, date }: LifecycleItemProps) => {
   return (
     <Tooltip
       message={`${variantToPrefixMap[variant]} ${formatDistanceToNow(
-        date
+        date,
       )} ago`}
     >
       <div className="flex items-center space-x-1.5">

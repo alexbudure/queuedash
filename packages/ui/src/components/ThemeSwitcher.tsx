@@ -1,10 +1,10 @@
 import { DesktopIcon, MoonIcon, SunIcon } from "@radix-ui/react-icons";
 import { useState } from "react";
-import * as ToggleGroup from "@radix-ui/react-toggle-group";
+import { ToggleButtonGroup, ToggleButton } from "react-aria-components";
 
 export function useLocalStorage<T extends Record<string, unknown>>(
   key: string,
-  initialValue: T
+  initialValue: T,
 ) {
   // State to store our value
   // Pass initial state function to useState so logic is only executed once
@@ -26,6 +26,7 @@ export function useLocalStorage<T extends Record<string, unknown>>(
       // Parse stored json or if none return initialValue
       return parsedItem;
     } catch (error) {
+      console.log(error);
       // If error also return initialValue
       return initialValue;
     }
@@ -44,6 +45,7 @@ export function useLocalStorage<T extends Record<string, unknown>>(
         window.localStorage.setItem(key, JSON.stringify(valueToStore));
       }
     } catch (error) {
+      console.log(error);
       // A more advanced implementation would handle the error case
     }
   };
@@ -59,23 +61,22 @@ export const ThemeSwitcher = () => {
     "user-preferences",
     {
       theme: "system",
-    }
+    },
   );
 
   return (
-    <ToggleGroup.Root
+    <ToggleButtonGroup
       className="flex h-7 space-x-0.5 rounded-md bg-slate-100 p-0.5 dark:bg-slate-700"
-      type="single"
-      defaultValue="system"
+      defaultSelectedKeys={["system"]}
       aria-label="Theme"
-      value={preferences.theme}
-      onValueChange={(value: string) => {
-        if (value === "system") {
+      selectedKeys={[preferences.theme]}
+      onSelectionChange={(value) => {
+        if (value.has("system")) {
           setPreferences({ theme: "system" });
-        } else if (value === "light") {
+        } else if (value.has("light")) {
           document.documentElement.classList.remove("dark");
           setPreferences({ theme: "light" });
-        } else if (value === "dark") {
+        } else if (value.has("dark")) {
           document.documentElement.classList.add("dark");
           setPreferences({ theme: "dark" });
         }
@@ -99,16 +100,16 @@ export const ThemeSwitcher = () => {
         },
       ].map((item) => {
         return (
-          <ToggleGroup.Item
+          <ToggleButton
             key={item.value}
-            className="flex aspect-square h-full items-center justify-center rounded-md text-slate-900 transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 radix-state-on:bg-slate-200 radix-state-on:shadow-sm dark:text-slate-50 dark:hover:bg-slate-500 dark:radix-state-on:bg-slate-500"
-            value={item.value}
+            className="flex aspect-square h-full items-center justify-center rounded-md text-slate-900 transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 data-[selected=true]:bg-slate-200 data-[selected=true]:shadow-sm dark:text-slate-50 dark:hover:bg-slate-500 dark:data-[selected=true]:bg-slate-500"
+            id={item.value}
             aria-label={item.ariaLabel}
           >
             {item.icon()}
-          </ToggleGroup.Item>
+          </ToggleButton>
         );
       })}
-    </ToggleGroup.Root>
+    </ToggleButtonGroup>
   );
 };
