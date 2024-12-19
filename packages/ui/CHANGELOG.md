@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.4.0
+
+### Minor Changes
+
+- [#40](https://github.com/alexbudure/queuedash/pull/40) [`0ccd37a`](https://github.com/alexbudure/queuedash/commit/0ccd37afe5a3d8b158109d1ec80a02cead1480bf) Thanks [@fukouda](https://github.com/fukouda)! - Add the ability to pass in hook handlers on Fastify
+
+### Patch Changes
+
+- Updated dependencies [[`0ccd37a`](https://github.com/alexbudure/queuedash/commit/0ccd37afe5a3d8b158109d1ec80a02cead1480bf)]:
+  - @queuedash/api@3.4.0
+
 ## 3.3.0
 
 ### Minor Changes
