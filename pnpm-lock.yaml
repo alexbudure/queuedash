@@ -18,6 +18,12 @@ importers:
         specifier: ^2.3.3
         version: 2.3.3
 
+  examples/with-hono:
+    dependencies:
+      '@queuedash/api':
+        specifier: ^3.4.0
+        version: link:../../packages/api
+
   packages/api:
     dependencies:
       '@trpc/server':
@@ -39,6 +45,9 @@ importers:
       '@faker-js/faker':
         specifier: ^9.3.0
         version: 9.3.0
+      '@hono/trpc-server':
+        specifier: ^0.3.4
+        version: 0.3.4(@trpc/server@11.0.0-rc.660(typescript@5.7.2))(hono@4.6.16)
       '@rollup/plugin-typescript':
         specifier: ^12.1.1
         version: 12.1.1(rollup@4.28.1)(tslib@2.8.1)(typescript@5.7.2)
@@ -84,6 +93,9 @@ importers:
       fastify:
         specifier: ^5.1.0
         version: 5.1.0
+      hono:
+        specifier: ^4.6.16
+        version: 4.6.16
       prettier:
         specifier: ^3.4.2
         version: 3.4.2
@@ -705,6 +717,13 @@ packages:
 
   '@formatjs/intl-localematcher@0.5.9':
     resolution: {integrity: sha512-8zkGu/sv5euxbjfZ/xmklqLyDGQSxsLqg8XOq88JW3cmJtzhCP8EtSJXlaKZnVO4beEaoiT9wj4eIoCQ9smwxA==}
+
+  '@hono/trpc-server@0.3.4':
+    resolution: {integrity: sha512-xFOPjUPnII70FgicDzOJy1ufIoBTu8eF578zGiDOrYOrYN8CJe140s9buzuPkX+SwJRYK8LjEBHywqZtxdm8aA==}
+    engines: {node: '>=16.0.0'}
+    peerDependencies:
+      '@trpc/server': ^10.10.0 || >11.0.0-rc
+      hono: '>=4.*'
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -2932,6 +2951,10 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
+  hono@4.6.16:
+    resolution: {integrity: sha512-iE6xOPwDYlfnZFwk6BfIMMIH4WZm3pPhz6rc1uJM/OPew0pjG5K6p8WTLaMBY1/szF/T0TaEjprMpwn16BA0NQ==}
+    engines: {node: '>=16.9.0'}
+
   http-errors@2.0.0:
     resolution: {integrity: sha512-FtwrG/euBzaEjYeRqOgly7G0qviiXoJWnvEH2Z1plBdXgbyjv34pHTSb9zoeHMyDy33+DWy5Wt9Wo+TURtOYSQ==}
     engines: {node: '>= 0.8'}
@@ -4889,6 +4912,11 @@ snapshots:
   '@formatjs/intl-localematcher@0.5.9':
     dependencies:
       tslib: 2.8.1
+
+  '@hono/trpc-server@0.3.4(@trpc/server@11.0.0-rc.660(typescript@5.7.2))(hono@4.6.16)':
+    dependencies:
+      '@trpc/server': 11.0.0-rc.660(typescript@5.7.2)
+      hono: 4.6.16
 
   '@humanfs/core@0.19.1': {}
 
@@ -7688,6 +7716,8 @@ snapshots:
   hasown@2.0.2:
     dependencies:
       function-bind: 1.1.2
+
+  hono@4.6.16: {}
 
   http-errors@2.0.0:
     dependencies:

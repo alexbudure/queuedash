@@ -1,0 +1,21 @@
+{
+  "name": "with-hono",
+  "version": "1.0.0",
+  "description": "Example of using QueueDash with Hono",
+  "author": "Lukáš Huvar",
+  "license": "MIT",
+  "scripts": {
+    "start": "tsx main.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@queuedash/api": "^3.4.0",
+    "bull": "^4.16.5",
+    "hono": "^4.6.16"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
