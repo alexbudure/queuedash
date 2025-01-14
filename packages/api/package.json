@@ -33,6 +33,7 @@
   "devDependencies": {
     "@elysiajs/trpc": "^1.1.0",
     "@faker-js/faker": "^9.3.0",
+    "@hono/trpc-server": "^0.3.4",
     "@rollup/plugin-typescript": "^12.1.1",
     "@types/express": "^5.0.0",
     "@types/express-serve-static-core": "^5.0.2",
@@ -48,6 +49,7 @@
     "eslint-config-prettier": "^9.1.0",
     "express": "^4.21.2",
     "fastify": "^5.1.0",
+    "hono": "^4.6.16",
     "prettier": "^3.4.2",
     "rollup-plugin-typescript-paths": "^1.5.0",
     "typescript": "^5.7.2",
