@@ -1,5 +1,11 @@
 # @queuedash/api
 
+## 3.5.0
+
+### Minor Changes
+
+- [#44](https://github.com/alexbudure/queuedash/pull/44) [`ba73bcf`](https://github.com/alexbudure/queuedash/commit/ba73bcf1afec112e6916a4c6beb132a8d9c7edd4) Thanks [@huv1k](https://github.com/huv1k)! - Add support for hono
+
 ## 3.4.0
 
 ### Minor Changes
