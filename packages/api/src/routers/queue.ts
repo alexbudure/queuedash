@@ -190,6 +190,10 @@ export const queueRouter = router({
           paused: isPaused,
           type: queueInCtx.type,
           counts: {
+            completedLastMinute: isBee ? null: (await queueInCtx.queue.getMetrics('completed', Date.now() - 60 * 1000, Date.now())).meta.prevCount,
+            completedLastHour: isBee ? null : (await queueInCtx.queue.getMetrics('completed', Date.now() - 60 * 60 * 1000, Date.now())).meta.count,
+            failedLastMinute: isBee ? null : (await queueInCtx.queue.getMetrics('failed', Date.now() - 60 * 1000, Date.now())).meta.prevCount,
+            failedLastHour: isBee ? null : (await queueInCtx.queue.getMetrics('failed', Date.now() - 60 * 60 * 1000, Date.now())).meta.count,
             active: counts.active,
             completed:
               "completed" in counts ? counts.completed : counts.succeeded,

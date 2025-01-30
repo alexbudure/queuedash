@@ -13,6 +13,7 @@ import { ErrorCard } from "../components/ErrorCard";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router";
+import { CircleNumber } from "../components/CircleNumber";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -73,6 +74,7 @@ export const QueuePage = () => {
       })
       .flat() ?? [];
 
+    
   return (
     <Layout>
       {queueReq.data === null ? (
@@ -141,7 +143,26 @@ export const QueuePage = () => {
               )}
             </div>
           </div>
-
+     
+          <div className="mb-5">
+  <div className="flex items-center space-x-2">
+    {queueReq.data?.counts?.completedLastMinute !== undefined &&(
+      <CircleNumber number={Number(queueReq.data.counts.completedLastMinute)} label="Completed last minute" />
+    )}
+    {queueReq.data?.counts?.failedLastMinute !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.failedLastMinute)}   label="Failed last minute"/>
+    )}
+    {queueReq.data?.counts?.completedLastHour !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.completedLastHour)}  label="Completed last hour"/>
+    )}
+    {queueReq.data?.counts?.failedLastHour !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.failedLastHour)}  label="Failed last hour"/>
+    )}
+    
+  </div>
+</div>
+         
+              
           <div className="space-y-4">
             <QueueStatusTabs
               showCleanAllButton={jobs.length > 0}
