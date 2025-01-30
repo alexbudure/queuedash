@@ -146,22 +146,19 @@ export const QueuePage = () => {
      
           <div className="mb-5">
   <div className="flex items-center space-x-2">
-    {queueReq.data?.counts?.completedLastMinute !== undefined && 
-     queueReq.data.counts.completedLastMinute !== 0 && (
-      <CircleNumber number={Number(queueReq.data.counts.completedLastMinute)} />
+    {queueReq.data?.counts?.completedLastMinute !== undefined &&(
+      <CircleNumber number={Number(queueReq.data.counts.completedLastMinute)} label="Completed last minute" />
     )}
-    {queueReq.data?.counts?.failedLastMinute !== undefined && 
-     queueReq.data.counts.failedLastMinute !== 0 && (
-      <CircleNumber number={Number(queueReq.data.counts.failedLastMinute)} />
+    {queueReq.data?.counts?.failedLastMinute !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.failedLastMinute)}   label="Failed last minute"/>
     )}
-    {queueReq.data?.counts?.completedLastHour !== undefined && 
-     queueReq.data.counts.completedLastHour !== 0 && (
-      <CircleNumber number={Number(queueReq.data.counts.completedLastHour)} />
+    {queueReq.data?.counts?.completedLastHour !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.completedLastHour)}  label="Completed last hour"/>
     )}
-    {queueReq.data?.counts?.failedLastHour !== undefined && 
-     queueReq.data.counts.failedLastHour !== 0 && (
-      <CircleNumber number={Number(queueReq.data.counts.failedLastHour)} />
+    {queueReq.data?.counts?.failedLastHour !== undefined &&  (
+      <CircleNumber number={Number(queueReq.data.counts.failedLastHour)}  label="Failed last hour"/>
     )}
+    
   </div>
 </div>
          
