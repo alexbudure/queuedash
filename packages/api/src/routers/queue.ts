@@ -183,13 +183,17 @@ export const queueRouter = router({
           : queueInCtx.type === "bullmq"
             ? parse(await (await queueInCtx.queue.client).info())
             : parse(await queueInCtx.queue.client.info());
-
+            
         return {
           displayName: queueInCtx.displayName,
           name: queueInCtx.queue.name,
           paused: isPaused,
           type: queueInCtx.type,
           counts: {
+            completedLastMinute: isBee ? null: (await queueInCtx.queue.getMetrics('completed', Date.now() - 60 * 1000)).count,
+            completedLastHour: isBee ? null : (await queueInCtx.queue.getMetrics('completed', Date.now() - 60 * 60 * 1000)).count,
+            failedLastMinute: isBee ? null : (await queueInCtx.queue.getMetrics('failed', Date.now() - 60 * 1000)).count,
+            failedLastHour: isBee ? null : (await queueInCtx.queue.getMetrics('failed', Date.now() - 60 * 60 * 1000)).count,
             active: counts.active,
             completed:
               "completed" in counts ? counts.completed : counts.succeeded,
