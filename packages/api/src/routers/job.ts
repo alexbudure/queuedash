@@ -8,15 +8,15 @@ import type BeeQueue from "bee-queue";
 import { createClient } from "redis";
 const generateJobMutationProcedure = (
   action: (
-    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>,
-  ) => Promise<unknown> | void,
+    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>
+  ) => Promise<unknown> | void
 ) => {
   return procedure
     .input(
       z.object({
         queueName: z.string(),
         jobId: z.string(),
-      }),
+      })
     )
     .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -78,7 +78,7 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         jobId: z.string(),
-      }),
+      })
     )
     .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -131,7 +131,7 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         jobIds: z.array(z.string()),
-      }),
+      })
     )
     .mutation(async ({ input: { jobIds, queueName }, ctx: { queues } }) => {
       const queueInCtx = findQueueInCtxOrFail({
@@ -152,7 +152,7 @@ export const jobRouter = router({
             await job.remove();
 
             return job;
-          }),
+          })
         );
         return jobs.map((job) => formatJob({ job, queueInCtx }));
       } catch (e) {
@@ -165,6 +165,25 @@ export const jobRouter = router({
           });
         }
       }
+    }),
+  logs: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      })
+    )
+    .query(async ({ input: { queueName, jobId }, ctx: { queues } }) => {
+      const queueInCtx = findQueueInCtxOrFail({
+        queues,
+        queueName,
+      });
+      if (queueInCtx.type !== "bullmq") {
+        return null;
+      }
+      const { logs } = await queueInCtx.queue.getJobLogs(jobId);
+
+      return logs;
     }),
   list: procedure
     .input(
@@ -181,7 +200,7 @@ export const jobRouter = router({
           "waiting",
           "paused",
         ] as const),
-      }),
+      })
     )
     .query(
       async ({
@@ -208,7 +227,7 @@ export const jobRouter = router({
             ]);
 
             const totalCount = await client.sCard(
-              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`,
+              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`
             );
 
             await client.disconnect();
@@ -240,7 +259,7 @@ export const jobRouter = router({
                 : queueInCtx.queue.getJobs(
                     [status],
                     cursor,
-                    cursor + limit - 1,
+                    cursor + limit - 1
                   ),
             status === "prioritized" && isBullMq
               ? queueInCtx.queue.getJobCountByTypes(status)
@@ -264,6 +283,6 @@ export const jobRouter = router({
             message: e instanceof Error ? e.message : undefined,
           });
         }
-      },
+      }
     ),
 });

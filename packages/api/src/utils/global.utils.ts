@@ -48,7 +48,6 @@ export const formatJob = ({
           : job.id,
       data: job.data as object,
       opts: job.options,
-      // @ts-ignore
       createdAt: new Date(),
       processedAt: new Date(),
       finishedAt: new Date(),
@@ -66,14 +65,13 @@ export const formatJob = ({
         ? "Default"
         : job.name,
     data: job.data as object,
-    // @ts-ignore
     opts: job.opts,
     createdAt: new Date(job.timestamp),
     processedAt: job.processedOn ? new Date(job.processedOn) : null,
     finishedAt: job.finishedOn ? new Date(job.finishedOn) : null,
     failedReason: job.failedReason,
     stacktrace: job.stacktrace,
-    // @ts-ignore
+    // @ts-expect-error
     retriedAt: job.retriedOn ? new Date(job.retriedOn) : null,
   } as QueueDashJob;
 };
