@@ -1,5 +1,5 @@
 import Bull from "bull";
-import type { JobsOptions as BullMQJobOptions } from "bullmq";
+import type { JobsOptions as BullMQJobOptions, RepeatOptions } from "bullmq";
 import { Queue as BullMQQueue } from "bullmq";
 import { faker } from "@faker-js/faker";
 
@@ -17,6 +17,18 @@ type FakeQueue =
       displayName: string;
       jobs: { opts: BullMQJobOptions; data: Record<string, unknown> }[];
       jobName: (job: Record<string, unknown>) => string;
+      schedulers: {
+        name: string;
+        opts: RepeatOptions;
+        template: {
+          name?: string | undefined;
+          data?: Record<string, unknown>;
+          opts?: Omit<
+            BullMQJobOptions,
+            "jobId" | "repeat" | "delay" | "deduplication" | "debounce"
+          >;
+        };
+      }[];
     };
 
 export const queues: FakeQueue[] = [
@@ -89,6 +101,21 @@ export const queues: FakeQueue[] = [
         },
         opts: {
           priority: index === 4 ? undefined : 1,
+        },
+      };
+    }),
+    schedulers: [...new Array(3)].map(() => {
+      return {
+        name: faker.person.fullName(),
+        template: {
+          name: faker.person.fullName(),
+          data: {
+            name: faker.person.fullName(),
+          },
+        },
+        opts: {
+          pattern: "0 0 * * *",
+          tz: "America/Los_Angeles",
         },
       };
     }),

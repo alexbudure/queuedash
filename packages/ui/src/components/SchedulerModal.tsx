@@ -12,7 +12,11 @@ type JobModalProps = {
   queueName: string;
 };
 
-export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
+export const SchedulerModal = ({
+  job,
+  queueName,
+  onDismiss,
+}: JobModalProps) => {
   const queueReq = trpc.queue.byName.useQuery({
     queueName,
   });
@@ -64,28 +68,6 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
             </div>
 
             <div>
-              {job.failedReason ? (
-                <div className="space-y-2 border-b border-b-slate-200 py-4">
-                  <p className="text-xs font-semibold uppercase text-slate-600">
-                    Error
-                  </p>
-                  <p className="text-sm text-red-600">{job.failedReason}</p>
-                  {/*TODO: Add stacktrace */}
-                  <Button
-                    label="Retry"
-                    size="sm"
-                    icon={<CounterClockwiseClockIcon width={14} />}
-                    onClick={() => {
-                      retry({
-                        queueName,
-                        jobId: job.id,
-                      });
-                      onDismiss();
-                    }}
-                  />
-                </div>
-              ) : null}
-
               <div className="space-y-2 border-b border-b-slate-200 py-4">
                 <p className="text-xs font-semibold uppercase text-slate-600">
                   Options
@@ -105,7 +87,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
               </div>
 
               {queueReq.data?.type === "bullmq" ? (
-                <div className="mt-4 space-y-2 border-t border-t-slate-200 pt-4">
+                <div className="space-y-2 border-t border-t-slate-200 pt-4">
                   <p className="text-xs font-semibold uppercase text-slate-600">
                     Logs
                   </p>

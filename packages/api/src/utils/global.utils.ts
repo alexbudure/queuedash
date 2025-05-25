@@ -15,6 +15,12 @@ type QueueDashOptions = {
   removeOnFail?: boolean | number;
   stackTraceLimit?: number;
   preventParsingData?: boolean;
+  repeat?: {
+    offset: number;
+    tz: string;
+    pattern: string;
+    count: number;
+  };
 };
 
 type QueueDashJob = {

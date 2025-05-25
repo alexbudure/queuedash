@@ -73,11 +73,16 @@ export const queueRouter = router({
 
       try {
         if (queueInCtx.type === "bullmq") {
-          // @ts-expect-error BullMQ has a different api
-          await queueInCtx.queue.clean(0, 0, status);
-        } else {
-          // @ts-expect-error Bull has a different api
-          await queueInCtx.queue.clean(0, status);
+          await queueInCtx.queue.clean(
+            0,
+            0,
+            status === "waiting" ? "wait" : status,
+          );
+        } else if (status !== "prioritized") {
+          await queueInCtx.queue.clean(
+            0,
+            status === "waiting" ? "wait" : status,
+          );
         }
       } catch (e) {
         throw new TRPCError({
@@ -112,6 +117,18 @@ export const queueRouter = router({
       });
     }
   }),
+  pauseAll: procedure.mutation(async ({ ctx: { queues } }) => {
+    await Promise.all([
+      queues.map((queue) => {
+        if ("pause" in queue.queue) {
+          return queue.queue.pause();
+        } else {
+          return null;
+        }
+      }),
+    ]);
+    return "ok";
+  }),
   resume: generateQueueMutationProcedure((queue) => {
     if ("resume" in queue) {
       return queue.resume();
@@ -121,6 +138,18 @@ export const queueRouter = router({
         message: "Cannot resume Bee-Queue queues",
       });
     }
+  }),
+  resumeAll: procedure.mutation(async ({ ctx: { queues } }) => {
+    await Promise.all([
+      queues.map((queue) => {
+        if ("resume" in queue.queue) {
+          return queue.queue.resume();
+        } else {
+          return null;
+        }
+      }),
+    ]);
+    return "ok";
   }),
   addJob: procedure
     .input(
