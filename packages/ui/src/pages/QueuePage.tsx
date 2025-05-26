@@ -13,6 +13,7 @@ import { ErrorCard } from "../components/ErrorCard";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router";
+import { SchedulerTable } from "../components/SchedulerTable";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -142,25 +143,31 @@ export const QueuePage = () => {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <QueueStatusTabs
-              showCleanAllButton={jobs.length > 0}
-              queueName={queueName}
-              status={status}
-              queue={queueReq.data}
-            />
-            <JobTable
-              onBottomInView={() => {
-                if (isFetchingNextPage || !hasNextPage) return;
-                fetchNextPage();
-              }}
-              status={status}
-              totalJobs={data?.pages.at(-1)?.totalCount || 0}
-              jobs={jobs.map((j) => ({ ...j, status }))}
-              isLoading={isLoading}
-              isFetchingNextPage={isFetchingNextPage}
-              queueName={queueName}
-            />
+          <div className="space-y-8">
+            {queueReq.data?.type === "bullmq" ? (
+              <SchedulerTable queueName={queueName} />
+            ) : null}
+
+            <div className="space-y-4">
+              <QueueStatusTabs
+                showCleanAllButton={jobs.length > 0}
+                queueName={queueName}
+                status={status}
+                queue={queueReq.data}
+              />
+              <JobTable
+                onBottomInView={() => {
+                  if (isFetchingNextPage || !hasNextPage) return;
+                  fetchNextPage();
+                }}
+                status={status}
+                totalJobs={data?.pages.at(-1)?.totalCount || 0}
+                jobs={jobs.map((j) => ({ ...j, status }))}
+                isLoading={isLoading}
+                isFetchingNextPage={isFetchingNextPage}
+                queueName={queueName}
+              />
+            </div>
           </div>
         </div>
       )}

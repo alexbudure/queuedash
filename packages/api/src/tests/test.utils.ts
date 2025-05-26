@@ -5,6 +5,7 @@ import BullMQ from "bullmq";
 import BeeQueue from "bee-queue";
 
 export const NUM_OF_JOBS = 20;
+export const NUM_OF_SCHEDULERS = 3;
 export const NUM_OF_COMPLETED_JOBS = NUM_OF_JOBS / 2;
 export const NUM_OF_FAILED_JOBS = NUM_OF_JOBS / 2;
 const QUEUE_NAME_PREFIX = "flight-bookings";
@@ -19,7 +20,7 @@ export const sleep = (t: number) =>
 type QueueType = "bull" | "bullmq" | "bee";
 
 export const type: QueueType =
-  (process.env.QUEUE_TYPE as unknown as QueueType) || "bee";
+  (process.env.QUEUE_TYPE as unknown as QueueType) || "bullmq";
 
 export const initRedisInstance = async () => {
   switch (type) {
@@ -64,13 +65,19 @@ export const initRedisInstance = async () => {
         type: "bullmq" as const,
       };
 
-      new BullMQ.Worker(flightBookingsQueue.queue.name, async (job) => {
-        if (job.data.index > NUM_OF_COMPLETED_JOBS) {
-          throw new Error("Generic error");
-        }
+      new BullMQ.Worker(
+        flightBookingsQueue.queue.name,
+        async (job) => {
+          if (job.data.index > NUM_OF_COMPLETED_JOBS) {
+            throw new Error("Generic error");
+          }
 
-        return Promise.resolve();
-      });
+          return Promise.resolve();
+        },
+        {
+          connection: {},
+        },
+      );
 
       await flightBookingsQueue.queue.addBulk(
         [...new Array(NUM_OF_JOBS)].map((_, index) => {
@@ -82,6 +89,30 @@ export const initRedisInstance = async () => {
           };
         }),
       );
+
+      const schedulers = [...new Array(NUM_OF_SCHEDULERS)].map(() => {
+        return {
+          name: faker.person.fullName(),
+          template: {
+            name: faker.person.fullName(),
+            data: {
+              name: faker.person.fullName(),
+            },
+          },
+          opts: {
+            pattern: "0 0 * * *",
+            tz: "America/Los_Angeles",
+          },
+        };
+      });
+
+      for (const scheduler of schedulers) {
+        await flightBookingsQueue.queue.upsertJobScheduler(
+          scheduler.name,
+          scheduler.opts,
+          scheduler.template,
+        );
+      }
 
       await sleep(200);
 

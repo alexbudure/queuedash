@@ -6,6 +6,7 @@ import {
   HobbyKnifeIcon,
   TrashIcon,
 } from "@radix-ui/react-icons";
+import { useEffect } from "react";
 
 type JobActionMenuProps = {
   job: Job;
@@ -17,15 +18,20 @@ export const JobActionMenu = ({
   queueName,
   onRemove,
 }: JobActionMenuProps) => {
-  const opts = {
-    onSuccess: () => {
+  const { mutate: retry, isSuccess: retrySuccess } =
+    trpc.job.retry.useMutation();
+  const { mutate: discard, isSuccess: discardSuccess } =
+    trpc.job.discard.useMutation();
+  const { mutate: rerun, isSuccess: rerunSuccess } =
+    trpc.job.rerun.useMutation();
+  const { mutate: remove, isSuccess: removeSuccess } =
+    trpc.job.remove.useMutation();
+
+  useEffect(() => {
+    if (retrySuccess || discardSuccess || rerunSuccess || removeSuccess) {
       onRemove?.();
-    },
-  };
-  const { mutate: retry } = trpc.job.retry.useMutation(opts);
-  const { mutate: discard } = trpc.job.discard.useMutation(opts);
-  const { mutate: rerun } = trpc.job.rerun.useMutation(opts);
-  const { mutate: remove } = trpc.job.remove.useMutation(opts);
+    }
+  }, [retrySuccess, discardSuccess, rerunSuccess, removeSuccess, onRemove]);
 
   const input = {
     queueName,

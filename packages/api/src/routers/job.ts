@@ -166,6 +166,25 @@ export const jobRouter = router({
         }
       }
     }),
+  logs: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      }),
+    )
+    .query(async ({ input: { queueName, jobId }, ctx: { queues } }) => {
+      const queueInCtx = findQueueInCtxOrFail({
+        queues,
+        queueName,
+      });
+      if (queueInCtx.type !== "bullmq") {
+        return null;
+      }
+      const { logs } = await queueInCtx.queue.getJobLogs(jobId);
+
+      return logs;
+    }),
   list: procedure
     .input(
       z.object({

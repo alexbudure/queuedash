@@ -21,9 +21,11 @@ for (const item of queues) {
   } else {
     new Worker(
       item.queue.name,
-      async () => {
+      async (job) => {
         await sleep(Math.random() * 20);
 
+        job.log("Test log 1");
+        job.log("Test log 2");
         const queue = new BullMQQueue(item.queue.name);
 
         const completedCount = await queue.getCompletedCount();
@@ -36,7 +38,7 @@ for (const item of queues) {
       },
       {
         connection: {},
-      },
+      }
     );
   }
 }

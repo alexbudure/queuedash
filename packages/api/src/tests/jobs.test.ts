@@ -41,10 +41,9 @@ test("retry job", async () => {
       queueName: firstQueue.queue.name,
       jobId: job.id,
     });
-
     expect(newJob).toMatchObject({
       id: job.id,
-      retriedAt: expect.any(Date),
+      ...(firstQueue.type === "bull" && { retriedAt: expect.any(Date) }),
     });
   } catch (e) {
     expect(e).toBeInstanceOf(TRPCError);

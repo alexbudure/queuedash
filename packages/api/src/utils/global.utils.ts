@@ -15,6 +15,12 @@ type QueueDashOptions = {
   removeOnFail?: boolean | number;
   stackTraceLimit?: number;
   preventParsingData?: boolean;
+  repeat?: {
+    offset: number;
+    tz: string;
+    pattern: string;
+    count: number;
+  };
 };
 
 type QueueDashJob = {
@@ -28,6 +34,22 @@ type QueueDashJob = {
   failedReason?: string;
   stacktrace?: string[];
   retriedAt: Date | null;
+};
+
+export type QueueDashScheduler = {
+  key: string;
+  name: string;
+  id?: string | null;
+  iterationCount?: number;
+  limit?: number;
+  endDate?: number;
+  tz?: string;
+  pattern?: string;
+  every?: string;
+  next?: number;
+  template?: {
+    data?: Record<string, unknown>;
+  };
 };
 
 export const formatJob = ({
@@ -48,7 +70,6 @@ export const formatJob = ({
           : job.id,
       data: job.data as object,
       opts: job.options,
-      // @ts-ignore
       createdAt: new Date(),
       processedAt: new Date(),
       finishedAt: new Date(),
@@ -66,14 +87,13 @@ export const formatJob = ({
         ? "Default"
         : job.name,
     data: job.data as object,
-    // @ts-ignore
     opts: job.opts,
     createdAt: new Date(job.timestamp),
     processedAt: job.processedOn ? new Date(job.processedOn) : null,
     finishedAt: job.finishedOn ? new Date(job.finishedOn) : null,
     failedReason: job.failedReason,
     stacktrace: job.stacktrace,
-    // @ts-ignore
+    // @ts-expect-error
     retriedAt: job.retriedOn ? new Date(job.retriedOn) : null,
   } as QueueDashJob;
 };

@@ -8,6 +8,7 @@ export type RouterInput = inferRouterInputs<AppRouter>;
 export type Job = RouterOutput["job"]["list"]["jobs"][0];
 export type Queue = RouterOutput["queue"]["byName"];
 export type Status = RouterInput["job"]["list"]["status"];
+export type Scheduler = RouterOutput["scheduler"]["list"][0];
 
 export const trpc = createTRPCReact<AppRouter>({
   overrides: {

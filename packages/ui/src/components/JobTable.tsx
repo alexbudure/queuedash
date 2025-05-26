@@ -17,12 +17,13 @@ import {
   SlashIcon,
   TargetIcon,
   TrashIcon,
+  LoopIcon,
 } from "@radix-ui/react-icons";
 import { format, formatDistanceStrict, formatDistanceToNow } from "date-fns";
 import type { Job, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { useInView } from "react-intersection-observer";
-import { JobTableRow } from "./JobTableRow";
+import { TableRow } from "./TableRow";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { Checkbox } from "./Checkbox";
 import { JobOptionTag } from "./JobOptionTag";
@@ -156,6 +157,12 @@ const columns = [
               label={opts.delay}
             />
           ) : null}
+          {opts.repeat ? (
+            <JobOptionTag
+              icon={<LoopIcon width={12} height={12} />}
+              label={opts.repeat.count}
+            />
+          ) : null}
         </div>
       );
     },
@@ -247,11 +254,12 @@ export const JobTable = ({
               </div>
             ))}
             {table.getRowModel().rows.map((row, rowIndex) => (
-              <JobTableRow
+              <TableRow
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
                 isSelected={row.getIsSelected()}
                 onClick={() => setSelectedJob(row.original)}
+                layoutVariant="job"
               >
                 {row.getVisibleCells().map((cell, cellIndex) => (
                   <div
@@ -263,7 +271,7 @@ export const JobTable = ({
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </div>
                 ))}
-              </JobTableRow>
+              </TableRow>
             ))}
             {!isLoading && isEmpty ? (
               <div className="flex items-center justify-center py-10">
