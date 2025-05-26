@@ -62,7 +62,7 @@
     "tailwindcss": "^3.4.16",
     "tailwindcss-radix": "^3.0.5",
     "typescript": "^5.8.3",
-    "vite": "^6.2.5"
+    "vite": "^5.4.19"
   },
   "peerDependencies": {
     "react": ">=18",

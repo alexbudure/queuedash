@@ -20,7 +20,7 @@ export const schedulerRouter = router({
         });
       }
 
-      return await queueInCtx.queue.getJobSchedulers();
+      return queueInCtx.queue.getJobSchedulers();
     }),
 
   add: procedure
@@ -86,6 +86,56 @@ export const schedulerRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: e instanceof Error ? e.message : undefined,
           });
+        }
+      },
+    ),
+
+  bulkRemove: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobSchedulerIds: z.array(z.string()),
+      }),
+    )
+    .mutation(
+      async ({ input: { jobSchedulerIds, queueName }, ctx: { queues } }) => {
+        const queueInCtx = findQueueInCtxOrFail({
+          queues,
+          queueName,
+        });
+
+        if (queueInCtx.type !== "bullmq") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Scheduled jobs are only supported for BullMQ queues",
+          });
+        }
+
+        try {
+          return Promise.all(
+            jobSchedulerIds.map(async (jobSchedulerId) => {
+              const scheduler =
+                await queueInCtx.queue.getJobScheduler(jobSchedulerId);
+
+              if (!scheduler) {
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                });
+              }
+              await queueInCtx.queue.removeJobScheduler(jobSchedulerId);
+
+              return scheduler;
+            }),
+          );
+        } catch (e) {
+          if (e instanceof TRPCError) {
+            throw e;
+          } else {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: e instanceof Error ? e.message : undefined,
+            });
+          }
         }
       },
     ),

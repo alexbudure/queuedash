@@ -7,7 +7,7 @@
     "dev": "pnpm run build --watch",
     "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bee",
     "test:bull": "QUEUE_TYPE=bull vitest run",
-    "test:bullmq": "QUEUE_TYPE=bull vitest run",
+    "test:bullmq": "QUEUE_TYPE=bullmq vitest run",
     "test:bee": "QUEUE_TYPE=bee vitest run",
     "lint": "eslint ./ --fix"
   },
@@ -53,7 +53,7 @@
     "prettier": "^3.5.3",
     "rollup-plugin-typescript-paths": "^1.5.0",
     "typescript": "^5.8.3",
-    "vite": "^6.2.5",
+    "vite": "^5.4.19",
     "vitest": "^3.1.1"
   },
   "license": "MIT"

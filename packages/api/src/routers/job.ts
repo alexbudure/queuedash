@@ -185,24 +185,6 @@ export const jobRouter = router({
 
       return logs;
     }),
-  listSchedulers: procedure
-    .input(
-      z.object({
-        queueName: z.string(),
-      }),
-    )
-    .query(async ({ input: { queueName }, ctx: { queues } }) => {
-      const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
-
-      if (queueInCtx.type !== "bullmq") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Only BullMQ queues support job schedulers",
-        });
-      }
-
-      return queueInCtx.queue.getJobSchedulers();
-    }),
   list: procedure
     .input(
       z.object({

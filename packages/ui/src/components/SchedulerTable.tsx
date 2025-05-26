@@ -5,17 +5,17 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { CounterClockwiseClockIcon, TrashIcon } from "@radix-ui/react-icons";
-import type { Job, Scheduler } from "../utils/trpc";
+import { TrashIcon } from "@radix-ui/react-icons";
+import type { Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { TableRow } from "./TableRow";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { Checkbox } from "./Checkbox";
-import { JobModal } from "./JobModal";
 import { Button } from "./Button";
 import cronstrue from "cronstrue";
 import { Tooltip } from "./Tooltip";
 import { format, formatDistanceToNow } from "date-fns";
+import { SchedulerModal } from "./SchedulerModal";
 
 const columnHelper = createColumnHelper<Scheduler>();
 
@@ -71,36 +71,51 @@ const columns = [
     ),
     header: "Scheduler",
   }),
-  columnHelper.accessor("repeat", {
-    cell: (props) => (
-      <span className="grow basis-full truncate text-slate-900 dark:text-slate-200">
-        {cronstrue.toString(props.cell.row.original.pattern, {
-          verbose: true,
-        })}{" "}
-        ({getTimezoneAbbreviation(props.cell.row.original.tz)})
-      </span>
-    ),
+  columnHelper.accessor("pattern", {
+    cell: (props) => {
+      return (
+        <span className="grow basis-full truncate text-slate-900 dark:text-slate-200">
+          {props.cell.row.original.pattern
+            ? cronstrue.toString(props.cell.row.original.pattern, {
+                verbose: true,
+              })
+            : props.cell.row.original.every
+              ? `Every ${props.cell.row.original.every}`
+              : ""}{" "}
+          {props.cell.row.original.tz
+            ? `(${getTimezoneAbbreviation(props.cell.row.original.tz)})`
+            : ""}
+        </span>
+      );
+    },
     header: "Pattern",
   }),
   columnHelper.accessor("next", {
-    cell: (props) => (
-      <Tooltip
-        message={format(
-          new Date(props.cell.row.original.next),
-          `dd MMM yyyy HH:mm:ss zzz`,
-        )}
-      >
-        <div className="flex items-center space-x-1.5">
-          <p className="text-slate-900 dark:text-slate-200">
-            In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
-            <span className="text-sm text-slate-700">
-              ({props.cell.row.original.iterationCount} run
-              {props.cell.row.original.iterationCount === 1 ? "" : "s"} total)
-            </span>
-          </p>
-        </div>
-      </Tooltip>
-    ),
+    cell: (props) => {
+      if (!props.cell.row.original.next) {
+        return (
+          <p className="text-slate-900 dark:text-slate-200">No next run</p>
+        );
+      }
+      return (
+        <Tooltip
+          message={format(
+            new Date(props.cell.row.original.next),
+            `dd MMM yyyy HH:mm:ss zzz`,
+          )}
+        >
+          <div className="flex items-center space-x-1.5">
+            <p className="text-slate-900 dark:text-slate-200">
+              In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
+              <span className="text-sm text-slate-700">
+                ({props.cell.row.original.iterationCount} run
+                {props.cell.row.original.iterationCount === 1 ? "" : "s"} total)
+              </span>
+            </p>
+          </div>
+        </Tooltip>
+      );
+    },
     header: "Next Run",
   }),
 ];
@@ -126,21 +141,21 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
     onRowSelectionChange: setRowSelection,
   });
 
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedScheduler, setSelectedScheduler] = useState<Scheduler | null>(
+    null,
+  );
 
-  const { mutate: retry } = trpc.job.retry.useMutation();
-  const { mutate: rerun } = trpc.job.rerun.useMutation();
-  const { mutate: bulkRemove } = trpc.job.bulkRemove.useMutation();
+  const { mutate: bulkRemove } = trpc.scheduler.bulkRemove.useMutation();
 
   if (!isLoading && isEmpty) return null;
 
   return (
     <div>
-      {selectedJob ? (
-        <JobModal
+      {selectedScheduler ? (
+        <SchedulerModal
+          scheduler={selectedScheduler}
           queueName={queueName}
-          job={selectedJob}
-          onDismiss={() => setSelectedJob(null)}
+          onDismiss={() => setSelectedScheduler(null)}
         />
       ) : null}
       <div className="rounded-md border border-slate-200 shadow-sm dark:border-slate-700">
@@ -175,7 +190,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
                 isSelected={row.getIsSelected()}
-                onClick={() => setSelectedJob(row.original)}
+                onClick={() => setSelectedScheduler(row.original)}
                 layoutVariant="scheduler"
               >
                 {row.getVisibleCells().map((cell, cellIndex) => (
@@ -198,29 +213,6 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
           <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur">
             <p>{table.getSelectedRowModel().rows.length} selected</p>
-            {status === "completed" || status === "failed" ? (
-              <Button
-                label={status === "failed" ? "Retry" : "Rerun"}
-                icon={<CounterClockwiseClockIcon />}
-                size="sm"
-                onClick={() => {
-                  table.getSelectedRowModel().rows.forEach((row) => {
-                    if (status === "failed") {
-                      retry({
-                        queueName,
-                        jobId: row.original.id,
-                      });
-                    } else {
-                      rerun({
-                        queueName,
-                        jobId: row.original.id,
-                      });
-                    }
-                  });
-                  table.resetRowSelection();
-                }}
-              />
-            ) : null}
 
             <Button
               label="Delete"
@@ -230,9 +222,9 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
               onClick={() => {
                 bulkRemove({
                   queueName,
-                  jobIds: table
+                  jobSchedulerIds: table
                     .getSelectedRowModel()
-                    .rows.map((row) => row.original.id),
+                    .rows.map((row) => row.original.key),
                 });
 
                 table.resetRowSelection();

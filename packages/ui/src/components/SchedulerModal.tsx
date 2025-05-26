@@ -1,31 +1,25 @@
-import { CounterClockwiseClockIcon, Cross2Icon } from "@radix-ui/react-icons";
-import type { Job } from "../utils/trpc";
+import { Cross2Icon } from "@radix-ui/react-icons";
+import type { Scheduler } from "../utils/trpc";
 import { JSONTree } from "react-json-tree";
-import { JobActionMenu } from "./JobActionMenu";
-import { Button } from "./Button";
-import { trpc } from "../utils/trpc";
 import { Dialog, Heading, Modal } from "react-aria-components";
+import { SchedulerActionMenu } from "./SchedulerActionMenu";
 
-type JobModalProps = {
-  job: Job;
-  onDismiss: () => void;
+type SchedulerModalProps = {
+  scheduler: Scheduler;
   queueName: string;
+  onDismiss: () => void;
 };
 
 export const SchedulerModal = ({
-  job,
+  scheduler,
   queueName,
   onDismiss,
-}: JobModalProps) => {
-  const queueReq = trpc.queue.byName.useQuery({
-    queueName,
-  });
-
-  const { mutate: retry } = trpc.job.retry.useMutation();
-  const { data } = trpc.job.logs.useQuery({
-    jobId: job.id,
-    queueName,
-  });
+}: SchedulerModalProps) => {
+  const template = scheduler.template;
+  const opts = {
+    ...scheduler,
+  };
+  delete opts.template;
 
   return (
     <Modal
@@ -55,14 +49,16 @@ export const SchedulerModal = ({
             <div className="flex items-center space-x-4">
               <Heading className="mb-1 flex items-center space-x-2">
                 <span className="text-xl font-semibold text-slate-900">
-                  {job.name}
+                  {scheduler.name}
                 </span>
 
-                <span className="rounded-md text-slate-500">#{job.id}</span>
+                <span className="rounded-md text-slate-500">
+                  #{scheduler.id}
+                </span>
               </Heading>
-              <JobActionMenu
+              <SchedulerActionMenu
                 queueName={queueName}
-                job={job}
+                scheduler={scheduler}
                 onRemove={onDismiss}
               />
             </div>
@@ -73,39 +69,17 @@ export const SchedulerModal = ({
                   Options
                 </p>
                 <div className="data-json-renderer [&>ul]:max-h-[400px]">
-                  <JSONTree data={job.opts} theme="monokai" />
+                  <JSONTree data={opts} theme="monokai" />
                 </div>
               </div>
-
               <div className="space-y-2 pt-4">
                 <p className="text-xs font-semibold uppercase text-slate-600">
-                  Data
+                  Template
                 </p>
                 <div className="data-json-renderer [&>ul]:max-h-[400px]">
-                  <JSONTree data={job.data} theme="monokai" />
+                  <JSONTree data={template} theme="monokai" />
                 </div>
               </div>
-
-              {queueReq.data?.type === "bullmq" ? (
-                <div className="space-y-2 border-t border-t-slate-200 pt-4">
-                  <p className="text-xs font-semibold uppercase text-slate-600">
-                    Logs
-                  </p>
-                  <div className="space-y-1">
-                    {data?.map((log, index) => {
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center space-x-2"
-                        >
-                          <div className="h-4 w-1 rounded-sm bg-slate-300" />
-                          <p className="font-mono text-sm">{log}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
             </div>
           </>
         )}
