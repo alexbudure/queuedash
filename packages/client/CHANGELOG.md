@@ -1,5 +1,13 @@
 # @queuedash/client
 
+## 3.6.0
+
+### Minor Changes
+
+- [#50](https://github.com/alexbudure/queuedash/pull/50) [`1fd1326`](https://github.com/alexbudure/queuedash/commit/1fd1326ebc22045c78ecdbbceef2856fcce6cbb6) Thanks [@alexbudure](https://github.com/alexbudure)! - - Job scheduler support
+  - Per-job logs
+  - Global pause & resume
+
 ## 3.5.0
 
 ### Minor Changes
