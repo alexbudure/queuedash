@@ -36,6 +36,22 @@ type QueueDashJob = {
   retriedAt: Date | null;
 };
 
+export type QueueDashScheduler = {
+  key: string;
+  name: string;
+  id?: string | null;
+  iterationCount?: number;
+  limit?: number;
+  endDate?: number;
+  tz?: string;
+  pattern?: string;
+  every?: string;
+  next?: number;
+  template?: {
+    data?: Record<string, unknown>;
+  };
+};
+
 export const formatJob = ({
   job,
   queueInCtx,

@@ -1,6 +1,7 @@
 import { procedure, router } from "../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { QueueDashScheduler } from "../utils/global.utils";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
 export const schedulerRouter = router({
@@ -10,18 +11,23 @@ export const schedulerRouter = router({
         queueName: z.string(),
       }),
     )
-    .query(async ({ input: { queueName }, ctx: { queues } }) => {
-      const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
+    .query(
+      async ({
+        input: { queueName },
+        ctx: { queues },
+      }): Promise<QueueDashScheduler[]> => {
+        const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
 
-      if (queueInCtx.type !== "bullmq") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Scheduled jobs are only supported for BullMQ queues",
-        });
-      }
+        if (queueInCtx.type !== "bullmq") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Scheduled jobs are only supported for BullMQ queues",
+          });
+        }
 
-      return queueInCtx.queue.getJobSchedulers();
-    }),
+        return queueInCtx.queue.getJobSchedulers();
+      },
+    ),
 
   add: procedure
     .input(
@@ -98,7 +104,10 @@ export const schedulerRouter = router({
       }),
     )
     .mutation(
-      async ({ input: { jobSchedulerIds, queueName }, ctx: { queues } }) => {
+      async ({
+        input: { jobSchedulerIds, queueName },
+        ctx: { queues },
+      }): Promise<QueueDashScheduler[]> => {
         const queueInCtx = findQueueInCtxOrFail({
           queues,
           queueName,
