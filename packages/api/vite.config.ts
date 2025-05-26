@@ -2,9 +2,6 @@ import { defineConfig } from "vite";
 import typescript from "@rollup/plugin-typescript";
 import path from "path";
 import { typescriptPaths } from "rollup-plugin-typescript-paths";
-import { webcrypto } from "crypto";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).crypto ||= webcrypto;
 
 export default defineConfig({
   define: {
