@@ -14,13 +14,14 @@ FROM base AS deps
 RUN corepack enable pnpm
 # copy only what's needed for a cached, deterministic install
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-# also copy the app's package.json so pnpm can resolve that workspace graph
+# copy all workspace package.json files so pnpm can resolve the workspace graph
+COPY packages/docker/package.json packages/docker/
+COPY packages/api/package.json packages/api/
 COPY packages/ui/package.json packages/ui/
-# (add others if needed, e.g. packages/api/package.json)
-RUN pnpm i --frozen-lockfile
+RUN pnpm i --frozen-lockfile -r
 
 # -------------------------------------------------
-# builder: build just the UI workspace (and its deps)
+# builder: build just the docker workspace (and its deps)
 # -------------------------------------------------
 FROM base AS builder
 RUN corepack enable pnpm
@@ -28,10 +29,13 @@ RUN corepack enable pnpm
 COPY . .
 # reuse node_modules from deps layer to speed things up
 COPY --from=deps /repo/node_modules ./node_modules
-# (Optional) Prisma: RUN pnpm -w -r exec prisma generate
 
-# Ensure your packages/ui/next.config.js sets:  module.exports = { output: 'standalone' }
-RUN pnpm -w --filter ./packages/ui... build
+# Build dependencies first (api, ui)
+RUN pnpm --filter @queuedash/api build
+RUN pnpm --filter @queuedash/ui build
+
+# Build the docker package
+RUN pnpm --filter @queuedash/docker build
 
 # -------------------------------------------------
 # runner: minimal runtime image
@@ -44,14 +48,13 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 # non-root user
-RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 
-# copy Next.js standalone server + static assets + public
-COPY --from=builder /repo/packages/ui/.next/standalone ./
-COPY --from=builder /repo/packages/ui/.next/static ./.next/static
-COPY --from=builder /repo/packages/ui/public ./public
+# copy Next.js standalone server + static assets
+COPY --from=builder --chown=nextjs:nodejs /repo/packages/docker/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /repo/packages/docker/.next/static ./packages/docker/.next/static
 
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "packages/docker/server.js"]

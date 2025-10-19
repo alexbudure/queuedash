@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build-next": "next build",
-    "start": "next start",
+    "build": "next build",
+    "start": "node .next/standalone/packages/docker/server.js",
     "lint": "next lint"
   },
   "dependencies": {
