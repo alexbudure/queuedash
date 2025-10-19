@@ -91,26 +91,28 @@ export const initRedisInstance = async () => {
         }),
       );
 
-      // Add jobs with children to create waiting-children jobs
+      // Add jobs with children to create waiting-children jobs using FlowProducer
+      const flowProducer = new BullMQ.FlowProducer({ connection: {} });
+
       for (let i = 0; i < NUM_OF_WAITING_CHILDREN_JOBS; i++) {
-        const parentJob = await flightBookingsQueue.queue.add(
-          "parent-job",
-          { parentIndex: i },
-          {
-            delay: 1000, // Add delay so it doesn't process immediately
-          },
-        );
-        await flightBookingsQueue.queue.add(
-          "child-job",
-          { childIndex: i },
-          {
-            parent: {
-              id: parentJob.id!,
-              queue: flightBookingsQueue.queue.qualifiedName,
+        await flowProducer.add({
+          name: "parent-job",
+          queueName: flightBookingsQueue.queue.name,
+          data: { parentIndex: i },
+          children: [
+            {
+              name: "child-job",
+              queueName: flightBookingsQueue.queue.name,
+              data: { childIndex: i },
+              opts: {
+                delay: 10000, // Delay child jobs so parent stays in waiting-children
+              },
             },
-          },
-        );
+          ],
+        });
       }
+
+      await flowProducer.close();
 
       const schedulers = [...new Array(NUM_OF_SCHEDULERS)].map(() => {
         return {
