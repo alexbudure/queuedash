@@ -45,7 +45,7 @@ export type QueueDashScheduler = {
   endDate?: number;
   tz?: string;
   pattern?: string;
-  every?: string;
+  every?: number;
   next?: number;
   template?: {
     data?: Record<string, unknown>;

@@ -97,7 +97,7 @@ export const jobRouter = router({
       try {
         if (queueInCtx.type === "bee") {
           await queueInCtx.queue.createJob(job.data).save();
-        } else if (queueInCtx.type === "bullmq") {
+        } else if (queueInCtx.type === "bullmq" && "name" in job) {
           await queueInCtx.queue.add(job.name, job.data, {});
         } else {
           await queueInCtx.queue.add(job.data, {});
