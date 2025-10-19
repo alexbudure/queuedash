@@ -1,17 +1,9 @@
 import { QueueDashApp } from "@queuedash/ui";
 
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/queuedash`;
-  }
-
-  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
-}
-
 const Pages = () => {
   return (
     <div>
-      <QueueDashApp apiUrl={getBaseUrl()} basename="/queuedash" />
+      <QueueDashApp apiUrl="/api/queuedash" basename="/queuedash" />
       <div className="fixed bottom-0 right-0 p-4">
         <button
           onClick={() => {

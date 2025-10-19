@@ -198,6 +198,7 @@ export const jobRouter = router({
           "active",
           "prioritized",
           "waiting",
+          "waiting-children",
           "paused",
         ] as const),
       }),
@@ -252,18 +253,20 @@ export const jobRouter = router({
           const isBullMq = queueInCtx.type === "bullmq";
 
           const [jobs, totalCountWithWrongType] = await Promise.all([
-            status === "prioritized" && isBullMq
+            (status === "prioritized" || status === "waiting-children") &&
+            isBullMq
               ? queueInCtx.queue.getJobs([status], cursor, cursor + limit - 1)
-              : status === "prioritized"
+              : status === "prioritized" || status === "waiting-children"
                 ? []
                 : queueInCtx.queue.getJobs(
                     [status],
                     cursor,
                     cursor + limit - 1,
                   ),
-            status === "prioritized" && isBullMq
+            (status === "prioritized" || status === "waiting-children") &&
+            isBullMq
               ? queueInCtx.queue.getJobCountByTypes(status)
-              : status === "prioritized"
+              : status === "prioritized" || status === "waiting-children"
                 ? 0
                 : queueInCtx.queue.getJobCountByTypes(status),
           ]);

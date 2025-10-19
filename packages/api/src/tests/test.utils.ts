@@ -8,6 +8,7 @@ export const NUM_OF_JOBS = 20;
 export const NUM_OF_SCHEDULERS = 3;
 export const NUM_OF_COMPLETED_JOBS = NUM_OF_JOBS / 2;
 export const NUM_OF_FAILED_JOBS = NUM_OF_JOBS / 2;
+export const NUM_OF_WAITING_CHILDREN_JOBS = 2;
 const QUEUE_NAME_PREFIX = "flight-bookings";
 const QUEUE_DISPLAY_NAME = "Flight bookings";
 
@@ -89,6 +90,27 @@ export const initRedisInstance = async () => {
           };
         }),
       );
+
+      // Add jobs with children to create waiting-children jobs
+      for (let i = 0; i < NUM_OF_WAITING_CHILDREN_JOBS; i++) {
+        const parentJob = await flightBookingsQueue.queue.add(
+          "parent-job",
+          { parentIndex: i },
+          {
+            delay: 1000, // Add delay so it doesn't process immediately
+          },
+        );
+        await flightBookingsQueue.queue.add(
+          "child-job",
+          { childIndex: i },
+          {
+            parent: {
+              id: parentJob.id!,
+              queue: flightBookingsQueue.queue.qualifiedName,
+            },
+          },
+        );
+      }
 
       const schedulers = [...new Array(NUM_OF_SCHEDULERS)].map(() => {
         return {

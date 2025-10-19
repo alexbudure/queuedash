@@ -51,6 +51,9 @@ export const QueueStatusTabs = ({
       name: "Waiting",
       status: "waiting",
     },
+    ...(queue && "waiting-children" in queue.counts
+      ? [{ name: "Waiting Children", status: "waiting-children" as const }]
+      : []),
     {
       name: "Delayed",
       status: "delayed",
@@ -85,6 +88,8 @@ export const QueueStatusTabs = ({
                     isActive && tab.status === "prioritized",
                   "bg-amber-50 text-amber-900":
                     isActive && tab.status === "waiting",
+                  "bg-orange-50 text-orange-900":
+                    isActive && tab.status === "waiting-children",
                   "bg-indigo-50 text-indigo-900":
                     isActive && tab.status === "delayed",
                   "bg-stone-50 text-stone-900":
@@ -109,6 +114,8 @@ export const QueueStatusTabs = ({
                         isActive && tab.status === "prioritized",
                       "bg-amber-600 text-amber-50":
                         isActive && tab.status === "waiting",
+                      "bg-orange-600 text-orange-50":
+                        isActive && tab.status === "waiting-children",
                       "bg-indigo-600 text-indigo-50":
                         isActive && tab.status === "delayed",
                       "bg-stone-600 text-stone-50":
@@ -123,7 +130,7 @@ export const QueueStatusTabs = ({
           );
         })}
       </div>
-      {showCleanAllButton ? (
+      {showCleanAllButton && status !== "waiting-children" ? (
         <Alert
           title="Are you absolutely sure?"
           description={`This action cannot be undone. This will permanently remove all ${status} jobs from the queue.`}

@@ -16,6 +16,14 @@ type FakeQueue =
       type: "bullmq";
       displayName: string;
       jobs: { opts: BullMQJobOptions; data: Record<string, unknown> }[];
+      flows: {
+        name: string;
+        data: Record<string, unknown>;
+        children: {
+          name: string;
+          data: Record<string, unknown>;
+        }[];
+      }[];
       jobName: (job: Record<string, unknown>) => string;
       schedulers: {
         name: string;
@@ -117,6 +125,31 @@ export const queues: FakeQueue[] = [
           pattern: "0 0 * * *",
           tz: "America/Los_Angeles",
         },
+      };
+    }),
+    flows: [...new Array(3)].map((_, i) => {
+      const name = faker.person.fullName();
+      return {
+        name: `${name} Parent Flow`,
+        data: { parentIndex: i, name: `${name} Parent Flow` },
+        children: [
+          {
+            name: `${name} Child 1 of Parent`,
+            data: {
+              childIndex: i,
+              child: 1,
+              name: `${name} Child Job 1 of Parent`,
+            },
+          },
+          {
+            name: `${name} Child 2 of Parent`,
+            data: {
+              childIndex: i,
+              child: 2,
+              name: `${name} Child Job 2 of Parent`,
+            },
+          },
+        ],
       };
     }),
     jobName: (job: Record<string, unknown>) => {

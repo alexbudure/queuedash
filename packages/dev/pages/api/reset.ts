@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { FlowProducer } from "bullmq";
 
 import { queues } from "../../utils/fake-data";
 
@@ -35,6 +36,23 @@ export default async function handler(
           };
         }),
       );
+
+      const flowProducer = new FlowProducer({ connection: {} });
+
+      for (const flow of item.flows) {
+        await flowProducer.add({
+          name: flow.name,
+          queueName: item.queue.name,
+          data: flow.data,
+          children: flow.children.map((child) => ({
+            name: child.name,
+            queueName: item.queue.name,
+            data: child.data,
+          })),
+        });
+      }
+
+      await flowProducer.close();
     }
   }
   res.status(200).json({ ok: "ok" });
