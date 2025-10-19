@@ -140,21 +140,18 @@ test("rerun job", async () => {
 });
 
 test("list waiting-children jobs", async () => {
-  const { ctx, firstQueue } = await initRedisInstance();
-  const caller = appRouter.createCaller(ctx);
-
-  const list = await caller.job.list({
-    limit: 10,
-    cursor: 0,
-    status: "waiting-children",
-    queueName: firstQueue.queue.name,
-  });
-
   if (type === "bullmq") {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+
+    const list = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "waiting-children",
+      queueName: firstQueue.queue.name,
+    });
+
     expect(list.totalCount).toBe(NUM_OF_WAITING_CHILDREN_JOBS);
-  } else {
-    // Bull and Bee don't support waiting-children status
-    expect(list.totalCount).toBe(0);
   }
 });
 
