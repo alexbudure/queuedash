@@ -26,6 +26,7 @@
   ],
   "dependencies": {
     "@trpc/server": "^11.6.0",
+    "memoirist": "^0.4.0",
     "redis": "^4.7.0",
     "redis-info": "^3.1.0",
     "zod": "^3.24.2"

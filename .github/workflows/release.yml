@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write         # <-- needed to push to GHCR
+      packages: write
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
