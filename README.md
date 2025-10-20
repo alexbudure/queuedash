@@ -108,6 +108,45 @@ export default trpcNext.createNextApiHandler({
 });
 ```
 
+### Docker
+
+The fastest way to get started is using the official Docker image:
+
+```bash
+docker run -p 3000:3000 \
+  -e QUEUES_CONFIG_JSON='{"queues":[{"name":"my-queue","displayName":"My Queue","type":"bullmq","connectionUrl":"redis://localhost:6379"}]}' \
+  ghcr.io/alexbudure/queuedash:latest
+```
+
+Then visit http://localhost:3000
+
+#### Environment Variables
+
+- `QUEUES_CONFIG_JSON` - **Required**. JSON string containing queue configuration
+
+Example configuration:
+```json
+{
+  "queues": [
+    {
+      "name": "cancellation-follow-ups",
+      "displayName": "Cancellation follow-ups",
+      "type": "bullmq",
+      "connectionUrl": "redis://localhost:6379"
+    },
+    {
+      "name": "email-queue",
+      "displayName": "Email Queue",
+      "type": "bull",
+      "connectionUrl": "redis://localhost:6379"
+    }
+  ]
+}
+```
+
+Supported queue types: `bull`, `bullmq`, `bee`
+
+
 See the [./examples](./examples) folder for more.
 
 ---
