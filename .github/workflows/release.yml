@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      pull-requests: write
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
