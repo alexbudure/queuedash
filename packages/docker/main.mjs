@@ -1,9 +1,9 @@
-import * as trpcNext from "@trpc/server/adapters/next";
-import { appRouter } from "@queuedash/api";
 import { z } from "zod";
 import Bull from "bull";
 import { Queue as BullMQQueue } from "bullmq";
 import BeeQueue from "bee-queue";
+import express from "express";
+import { createQueueDashExpressMiddleware } from "@queuedash/api";
 
 const queueConfigSchema = z.object({
   queues: z.array(
@@ -35,14 +35,14 @@ const getQueuesFromConfig = () => {
       return {
         queue,
         displayName: queueConfig.displayName,
-        type: "bullmq" as const,
+        type: "bullmq",
       };
     } else if (queueConfig.type === "bull") {
       const queue = new Bull(queueConfig.name, queueConfig.connectionUrl);
       return {
         queue,
         displayName: queueConfig.displayName,
-        type: "bull" as const,
+        type: "bull",
       };
     } else {
       const queue = new BeeQueue(queueConfig.name, {
@@ -51,24 +51,26 @@ const getQueuesFromConfig = () => {
       return {
         queue,
         displayName: queueConfig.displayName,
-        type: "bee" as const,
+        type: "bee",
       };
     }
   });
 };
 
-export default trpcNext.createNextApiHandler({
-  router: appRouter,
-  onError({ error }) {
-    if (error.code === "INTERNAL_SERVER_ERROR") {
-      // send to bug reporting
-      console.error("Something went wrong", error);
-    }
-  },
-  batching: {
-    enabled: true,
-  },
-  createContext: () => ({
-    queues: getQueuesFromConfig(),
+const app = express();
+
+app.use(
+  "/",
+  createQueueDashExpressMiddleware({
+    ctx: {
+      queues: getQueuesFromConfig(),
+    },
   }),
+);
+
+const PORT = process.env.PORT || 3000;
+const HOST = "0.0.0.0";
+
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server listening on http://${HOST}:${PORT}`);
 });

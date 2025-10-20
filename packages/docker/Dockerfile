@@ -1,60 +1,51 @@
 # syntax=docker/dockerfile:1
 
-# -------------------------------------------------
-# Base image shared by stages
-# -------------------------------------------------
 FROM node:20-bookworm-slim AS base
 WORKDIR /repo
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 
-# -------------------------------------------------
-# deps: install workspace deps at the repo root
-# -------------------------------------------------
+# ---------------- deps: install full workspace graph ----------------
 FROM base AS deps
-RUN corepack enable pnpm
-# copy only what's needed for a cached, deterministic install
+# Copy root manifests
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-# copy all workspace package.json files so pnpm can resolve the workspace graph
-COPY packages/docker/package.json packages/docker/
-COPY packages/api/package.json packages/api/
-COPY packages/ui/package.json packages/ui/
-RUN pnpm i --frozen-lockfile -r
 
-# -------------------------------------------------
-# builder: build just the docker workspace (and its deps)
-# -------------------------------------------------
+# Copy ALL workspace package.json files so pnpm "sees" the graph
+COPY packages/docker/package.json packages/docker/package.json
+COPY packages/api/package.json    packages/api/package.json
+COPY packages/ui/package.json     packages/ui/package.json
+
+RUN pnpm i --frozen-lockfile
+
+# ---------------- builder: bring sources and build ----------------
 FROM base AS builder
-RUN corepack enable pnpm
-# bring the full repo now (so build has sources)
+# Bring *all* sources now that deps are installed
 COPY . .
-# reuse node_modules from deps layer to speed things up
+# Reuse node_modules from deps for speed
 COPY --from=deps /repo/node_modules ./node_modules
 
-# Build dependencies first (api, ui)
-RUN pnpm --filter @queuedash/api build
-RUN pnpm --filter @queuedash/ui build
+# Build any workspaces that @queuedash/docker needs at runtime
+# (e.g., compiling TS to dist/)
+RUN pnpm -w --filter @queuedash/api build || true
+RUN pnpm -w --filter @queuedash/ui  build || true
 
-# Build the docker package
-RUN pnpm --filter @queuedash/docker build
+# Deploy ONLY the docker runtime workspace into /repo/out
+# Exclude root to keep "exactly one project" for deploy
+RUN mkdir -p /repo/out \
+ && pnpm -w deploy --filter @queuedash/docker --filter '!@queuedash/root' --prod /repo/out
 
-# -------------------------------------------------
-# runner: minimal runtime image
-# -------------------------------------------------
+# (Optional) debug what's inside the deploy
+# RUN ls -la /repo/out && ls -la /repo/out/packages/docker || true
+
+# ---------------- runner: tiny runtime ----------------
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
+ENV NODE_ENV=production PORT=3000
 
-# non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# copy the pruned, deploy output
+COPY --from=builder /repo/out/ ./
 
-# copy Next.js standalone server + static assets
-COPY --from=builder --chown=nextjs:nodejs /repo/packages/docker/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /repo/packages/docker/.next/static ./packages/docker/.next/static
-
-USER nextjs
+USER node
 EXPOSE 3000
-CMD ["node", "packages/docker/server.js"]
+
+CMD ["node", "main.mjs"]
