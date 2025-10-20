@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.8.0
+
+### Minor Changes
+
+- [#58](https://github.com/alexbudure/queuedash/pull/58) [`f0b8299`](https://github.com/alexbudure/queuedash/commit/f0b82992985054cf343540d6b37cfd4e02eaa9cc) Thanks [@alexbudure](https://github.com/alexbudure)! - Add groupmq support
+
+### Patch Changes
+
+- Updated dependencies [[`f0b8299`](https://github.com/alexbudure/queuedash/commit/f0b82992985054cf343540d6b37cfd4e02eaa9cc)]:
+  - @queuedash/api@3.8.0
+
 ## 3.7.0
 
 ### Minor Changes
