@@ -188,7 +188,6 @@ export const initRedisInstance = async () => {
         queue: new GroupMQQueue({
           redis,
           namespace: getFakeQueueName(),
-          logger: true,
           keepFailed: NUM_OF_JOBS,
           keepCompleted: NUM_OF_JOBS,
         }),

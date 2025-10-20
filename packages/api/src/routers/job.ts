@@ -105,7 +105,8 @@ export const jobRouter = router({
           await queueInCtx.queue.add(job.name, job.data, {});
         } else if (queueInCtx.type === "groupmq") {
           await queueInCtx.queue.add({
-            groupId: job.data.groupId || crypto.randomUUID(),
+            groupId:
+              job.data.groupId || Math.random().toString(36).substring(2, 8),
             data: job.data,
           });
         } else {
