@@ -1,5 +1,11 @@
 # @queuedash/api
 
+## 3.7.0
+
+### Minor Changes
+
+- [#56](https://github.com/alexbudure/queuedash/pull/56) [`f4917f6`](https://github.com/alexbudure/queuedash/commit/f4917f64ecc70965c7ba1e39347677e206817fb0) Thanks [@alexbudure](https://github.com/alexbudure)! - Add job scheduler ui, new "waiting-children" tab, and Docker support
+
 ## 3.6.0
 
 ### Minor Changes
@@ -201,7 +207,6 @@
 ### Major Changes
 
 - [#1](https://github.com/alexbudure/queuedash/pull/1) [`c96b93d`](https://github.com/alexbudure/queuedash/commit/c96b93d9659bbb34248ab377e6659ebfb1fc3dd8) Thanks [@alexbudure](https://github.com/alexbudure)! - QueueDash v1 🎉
-
   - 😍&nbsp; Simple, clean, and compact UI
   - 🧙&nbsp; Add jobs to your queue with ease
   - 🪄&nbsp; Retry, remove, and more convenient actions for your jobs
