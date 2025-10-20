@@ -18,6 +18,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
   const { mutate: resume } = trpc.queue.resume.useMutation();
   const { mutate: empty } = trpc.queue.empty.useMutation();
   const [showAddJobModal, setShowAddJobModal] = useState(false);
+  const [showAddSchedulerModal, setShowAddSchedulerModal] = useState(false);
   const input = {
     queueName: queue.name,
   };
@@ -44,6 +45,17 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             },
             icon: <PlusIcon />,
           },
+          ...(queue.type === "bullmq"
+            ? [
+                {
+                  label: "Add scheduler",
+                  onSelect: () => {
+                    setShowAddSchedulerModal(true);
+                  },
+                  icon: <PlusIcon />,
+                },
+              ]
+            : []),
           {
             label: "Empty",
             onSelect: () => {
@@ -56,7 +68,16 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
       {showAddJobModal ? (
         <AddJobModal
           queue={queue}
+          variant="job"
           onDismiss={() => setShowAddJobModal(false)}
+        />
+      ) : null}
+
+      {showAddSchedulerModal ? (
+        <AddJobModal
+          queue={queue}
+          variant="scheduler"
+          onDismiss={() => setShowAddSchedulerModal(false)}
         />
       ) : null}
     </>

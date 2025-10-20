@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import typescript from "@rollup/plugin-typescript";
 import path from "path";
 import { typescriptPaths } from "rollup-plugin-typescript-paths";
@@ -21,12 +21,12 @@ export default defineConfig({
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
-        }),
+        }) as Plugin,
         typescript({
           sourceMap: false,
           declaration: true,
           outDir: "dist",
-        }),
+        }) as Plugin,
       ],
     },
   },

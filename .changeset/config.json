@@ -9,7 +9,7 @@
   "commit": false,
   "fixed": [],
   "linked": [],
-  "ignore": ["@queuedash/dev"],
+  "ignore": ["@queuedash/dev", "@queuedash/docker"],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch"

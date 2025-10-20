@@ -1,0 +1,29 @@
+{
+  "name": "@queuedash/docker",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node -r dotenv/config main.mjs"
+  },
+  "main": "main.mjs",
+  "files": [
+    "main.mjs"
+  ],
+  "dependencies": {
+    "@queuedash/api": "workspace:*",
+    "@queuedash/ui": "workspace:*",
+    "@trpc/server": "^11.6.0",
+    "bee-queue": "^1.7.1",
+    "bull": "^4.16.5",
+    "bullmq": "^5.61.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.8.1",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2"
+  }
+}

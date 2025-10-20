@@ -8,6 +8,7 @@ export const NUM_OF_JOBS = 20;
 export const NUM_OF_SCHEDULERS = 3;
 export const NUM_OF_COMPLETED_JOBS = NUM_OF_JOBS / 2;
 export const NUM_OF_FAILED_JOBS = NUM_OF_JOBS / 2;
+export const NUM_OF_WAITING_CHILDREN_JOBS = 2;
 const QUEUE_NAME_PREFIX = "flight-bookings";
 const QUEUE_DISPLAY_NAME = "Flight bookings";
 
@@ -89,6 +90,29 @@ export const initRedisInstance = async () => {
           };
         }),
       );
+
+      // Add jobs with children to create waiting-children jobs using FlowProducer
+      const flowProducer = new BullMQ.FlowProducer({ connection: {} });
+
+      for (let i = 0; i < NUM_OF_WAITING_CHILDREN_JOBS; i++) {
+        await flowProducer.add({
+          name: "parent-job",
+          queueName: flightBookingsQueue.queue.name,
+          data: { parentIndex: i },
+          children: [
+            {
+              name: "child-job",
+              queueName: flightBookingsQueue.queue.name,
+              data: { childIndex: i },
+              opts: {
+                delay: 10000, // Delay child jobs so parent stays in waiting-children
+              },
+            },
+          ],
+        });
+      }
+
+      await flowProducer.close();
 
       const schedulers = [...new Array(NUM_OF_SCHEDULERS)].map(() => {
         return {

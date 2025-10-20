@@ -104,7 +104,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 </div>
               </div>
 
-              {queueReq.data?.type === "bullmq" ? (
+              {queueReq.data?.type === "bullmq" && data?.length ? (
                 <div className="mt-4 space-y-2 border-t border-t-slate-200 pt-4">
                   <p className="text-xs font-semibold uppercase text-slate-600">
                     Logs

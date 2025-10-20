@@ -53,6 +53,7 @@ export const queueRouter = router({
           "delayed",
           "active",
           "waiting",
+          "waiting-children",
           "prioritized",
           "paused",
         ] as const),
@@ -76,9 +77,11 @@ export const queueRouter = router({
           await queueInCtx.queue.clean(
             0,
             0,
-            status === "waiting" ? "wait" : status,
+            status === "waiting" || status === "waiting-children"
+              ? "wait"
+              : status,
           );
-        } else if (status !== "prioritized") {
+        } else if (status !== "prioritized" && status !== "waiting-children") {
           await queueInCtx.queue.clean(
             0,
             status === "waiting" ? "wait" : status,
@@ -166,7 +169,11 @@ export const queueRouter = router({
 
       try {
         if ("add" in queueInCtx.queue) {
-          await queueInCtx.queue.add(data, {});
+          if (queueInCtx.type === "bullmq") {
+            queueInCtx.queue.add("Manual add", data);
+          } else {
+            await queueInCtx.queue.add(data, {});
+          }
         } else {
           await queueInCtx.queue.createJob(data).save();
         }
@@ -181,6 +188,65 @@ export const queueRouter = router({
         name: queueName,
       };
     }),
+
+  addJobScheduler: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        template: z.object({
+          name: z.string().optional(),
+          data: z.any(),
+          opts: z.any().optional(),
+        }),
+        opts: z
+          .object({
+            every: z.number().optional(),
+            pattern: z.string().optional(),
+            tz: z.string().optional(),
+          })
+          .optional(),
+      }),
+    )
+    .mutation(
+      async ({ input: { queueName, template, opts }, ctx: { queues } }) => {
+        const queueInCtx = findQueueInCtxOrFail({
+          queues,
+          queueName,
+        });
+
+        if (queueInCtx.type !== "bullmq") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Job schedulers are only supported for BullMQ queues",
+          });
+        }
+
+        try {
+          await queueInCtx.queue.upsertJobScheduler(
+            `scheduler-${Date.now()}`,
+            {
+              every: opts?.every,
+              pattern: opts?.pattern,
+              tz: opts?.tz,
+            },
+            {
+              name: template.name,
+              data: template.data,
+              opts: template.opts,
+            },
+          );
+        } catch (e) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+
+        return {
+          name: queueName,
+        };
+      },
+    ),
 
   byName: procedure
     .input(
@@ -228,6 +294,9 @@ export const queueRouter = router({
               ? { prioritized: counts.prioritized }
               : {}),
             waiting: counts.waiting,
+            ...("waiting-children" in counts
+              ? { "waiting-children": counts["waiting-children"] }
+              : {}),
             paused: "paused" in counts ? counts.paused : 0,
           },
           client: {
