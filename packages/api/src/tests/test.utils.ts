@@ -3,6 +3,8 @@ import { faker } from "@faker-js/faker";
 import type { Context } from "../trpc";
 import BullMQ from "bullmq";
 import BeeQueue from "bee-queue";
+import { Queue as GroupMQQueue, Worker as GroupMQWorker } from "groupmq";
+import Redis from "ioredis";
 
 export const NUM_OF_JOBS = 20;
 export const NUM_OF_SCHEDULERS = 3;
@@ -18,7 +20,7 @@ const getFakeQueueName = () =>
 export const sleep = (t: number) =>
   new Promise((resolve) => setTimeout(resolve, t));
 
-type QueueType = "bull" | "bullmq" | "bee";
+type QueueType = "bull" | "bullmq" | "bee" | "groupmq";
 
 export const type: QueueType =
   (process.env.QUEUE_TYPE as unknown as QueueType) || "bullmq";
@@ -171,6 +173,53 @@ export const initRedisInstance = async () => {
       );
 
       await sleep(200);
+
+      return {
+        ctx: {
+          queues: [flightBookingsQueue],
+        } satisfies Context,
+        firstQueue: flightBookingsQueue,
+      };
+    }
+    case "groupmq": {
+      const redis = new Redis();
+
+      const flightBookingsQueue = {
+        queue: new GroupMQQueue({
+          redis,
+          namespace: getFakeQueueName(),
+          logger: true,
+          keepFailed: NUM_OF_JOBS,
+          keepCompleted: NUM_OF_JOBS,
+        }),
+        displayName: QUEUE_DISPLAY_NAME,
+        type: "groupmq" as const,
+      };
+
+      const worker = new GroupMQWorker({
+        queue: flightBookingsQueue.queue,
+        enableCleanup: true,
+        handler: async (job) => {
+          if (job.data.index > NUM_OF_COMPLETED_JOBS) {
+            throw new Error("Generic error");
+          }
+
+          return Promise.resolve();
+        },
+      });
+      worker.run();
+      // Add regular jobs with different group IDs
+      for (let i = 0; i < NUM_OF_JOBS; i++) {
+        await flightBookingsQueue.queue.add({
+          groupId: faker.string.uuid(),
+          data: {
+            index: i + 1,
+          },
+          maxAttempts: 0,
+        });
+      }
+
+      await sleep(1000);
 
       return {
         ctx: {

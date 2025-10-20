@@ -7,9 +7,10 @@ import { TRPCError } from "@trpc/server";
 import type BeeQueue from "bee-queue";
 import type { RedisInfo } from "redis-info";
 import { parse } from "redis-info";
+import type { Queue as GroupMQQueue } from "groupmq";
 
 const generateQueueMutationProcedure = (
-  action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue) => void,
+  action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue | GroupMQQueue) => void,
 ) => {
   return procedure
     .input(
@@ -81,6 +82,20 @@ export const queueRouter = router({
               ? "wait"
               : status,
           );
+        } else if (queueInCtx.type === "groupmq") {
+          if (
+            status !== "completed" &&
+            status !== "failed" &&
+            status !== "delayed"
+          ) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "Can only clean completed, failed, or delayed jobs in GroupMQ queues",
+            });
+          }
+
+          await queueInCtx.queue.clean(0, 0, status);
         } else if (status !== "prioritized" && status !== "waiting-children") {
           await queueInCtx.queue.clean(
             0,
@@ -171,6 +186,11 @@ export const queueRouter = router({
         if ("add" in queueInCtx.queue) {
           if (queueInCtx.type === "bullmq") {
             queueInCtx.queue.add("Manual add", data);
+          } else if (queueInCtx.type === "groupmq") {
+            await queueInCtx.queue.add({
+              groupId: Math.random().toString(36).substring(2, 8),
+              data,
+            });
           } else {
             await queueInCtx.queue.add(data, {});
           }
@@ -261,13 +281,18 @@ export const queueRouter = router({
       });
 
       const isBee = queueInCtx.type === "bee";
+      const isGroupMQ = queueInCtx.type === "groupmq";
 
       try {
         const [counts, isPaused] = await Promise.all([
           isBee
             ? queueInCtx.queue.checkHealth()
             : queueInCtx.queue.getJobCounts(),
-          isBee ? queueInCtx.queue.paused : queueInCtx.queue.isPaused(),
+          isBee
+            ? queueInCtx.queue.paused
+            : isGroupMQ
+              ? queueInCtx.queue.isPaused()
+              : queueInCtx.queue.isPaused(),
         ]);
 
         const info: RedisInfo & {
@@ -275,9 +300,11 @@ export const queueRouter = router({
         } = isBee
           ? // @ts-expect-error Bee-Queue does not have a client property
             queueInCtx.queue.client.server_info
-          : queueInCtx.type === "bullmq"
-            ? parse(await (await queueInCtx.queue.client).info())
-            : parse(await queueInCtx.queue.client.info());
+          : isGroupMQ
+            ? parse(await queueInCtx.queue.redis.info())
+            : queueInCtx.type === "bullmq"
+              ? parse(await (await queueInCtx.queue.client).info())
+              : parse(await queueInCtx.queue.client.info());
 
         return {
           displayName: queueInCtx.displayName,

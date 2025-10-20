@@ -5,10 +5,11 @@
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",
-    "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bee",
+    "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bee && pnpm run test:groupmq",
     "test:bull": "QUEUE_TYPE=bull vitest run",
     "test:bullmq": "QUEUE_TYPE=bullmq vitest run",
     "test:bee": "QUEUE_TYPE=bee vitest run",
+    "test:groupmq": "QUEUE_TYPE=groupmq vitest run",
     "lint": "eslint ./ --fix"
   },
   "main": "./dist/main.js",
@@ -26,6 +27,7 @@
   ],
   "dependencies": {
     "@trpc/server": "^11.6.0",
+    "groupmq": "^1.0.0",
     "memoirist": "^0.4.0",
     "redis": "^4.7.0",
     "redis-info": "^3.1.0",
@@ -51,6 +53,7 @@
     "express": "^5.1.0",
     "fastify": "^5.6.1",
     "hono": "^4.10.1",
+    "ioredis": "^5.8.1",
     "prettier": "^3.6.2",
     "rollup-plugin-typescript-paths": "^1.5.0",
     "typescript": "^5.9.3",

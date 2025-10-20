@@ -14,7 +14,7 @@ test("list queues", async () => {
         name: q.queue.name,
         displayName: q.displayName,
       };
-    })
+    }),
   );
 });
 

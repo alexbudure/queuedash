@@ -9,6 +9,8 @@ import {
   type,
 } from "./test.utils";
 import { TRPCError } from "@trpc/server";
+import { faker } from "@faker-js/faker";
+import { pause } from "bullmq/dist/esm/scripts";
 
 test("list completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
@@ -159,7 +161,7 @@ test("promote job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  if (type === "bullmq") {
+  if (type === "bullmq" || type === "groupmq") {
     // Pause the queue first to prevent worker from processing promoted job
     const queueInCtx = ctx.queues[0];
     if (queueInCtx.type === "bullmq") {
@@ -170,6 +172,15 @@ test("promote job", async () => {
         { test: "data" },
         { delay: 5000 },
       );
+    } else if (queueInCtx.type === "groupmq") {
+      await queueInCtx.queue.pause();
+
+      await queueInCtx.queue.add({
+        groupId: faker.string.uuid(),
+        data: { test: "data" },
+        maxAttempts: 0,
+        delay: 5000,
+      });
     }
 
     await sleep(100);
@@ -199,15 +210,26 @@ test("promote job", async () => {
 
     expect(delayedListAfter.totalCount).toBe(initialDelayedCount - 1);
 
-    // Check that job is now in paused status (since queue is paused)
-    const pausedList = await caller.job.list({
-      limit: 10,
-      cursor: 0,
-      status: "paused",
-      queueName: firstQueue.queue.name,
-    });
-
-    expect(pausedList.jobs.some((j) => j.id === job.id)).toBe(true);
+    // Check that job moved to correct status
+    // GroupMQ: promoted jobs go to waiting even when paused
+    // BullMQ: promoted jobs go to paused when queue is paused
+    if (type === "groupmq") {
+      const waitingList = await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "waiting",
+        queueName: firstQueue.queue.name,
+      });
+      expect(waitingList.jobs.some((j) => j.id === job.id)).toBe(true);
+    } else {
+      const pausedList = await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "paused",
+        queueName: firstQueue.queue.name,
+      });
+      expect(pausedList.jobs.some((j) => j.id === job.id)).toBe(true);
+    }
   } else {
     try {
       await caller.job.promote({

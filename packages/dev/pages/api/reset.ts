@@ -7,19 +7,18 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
-  const client = await queues[0].queue.client;
-  const pipeline = client.pipeline();
-  const keys = await client.keys("bull*");
-  keys.forEach((key) => {
-    pipeline.del(key);
-  });
-  await pipeline.exec();
-
   for (const item of queues) {
     if (item.type === "bull") {
+      const client = await item.queue.client;
+      const pipeline = client.pipeline();
+      const keys = await client.keys("bull*");
+      keys.forEach((key) => {
+        pipeline.del(key);
+      });
+      await pipeline.exec();
       await item.queue.removeJobs("*");
       await item.queue.addBulk(item.jobs);
-    } else {
+    } else if (item.type === "bullmq") {
       await item.queue.obliterate({ force: true });
       for (const scheduler of item.schedulers) {
         await item.queue.upsertJobScheduler(
@@ -53,6 +52,26 @@ export default async function handler(
       }
 
       await flowProducer.close();
+    } else if (item.type === "bee") {
+      await item.queue.destroy();
+      for (const jobData of item.jobs) {
+        const job = item.queue.createJob(jobData.data);
+        await job.save();
+      }
+    } else if (item.type === "groupmq") {
+      const client = await item.queue.redis;
+      const pipeline = client.pipeline();
+      const keys = await client.keys("groupmq*");
+      keys.forEach((key) => {
+        pipeline.del(key);
+      });
+      await pipeline.exec();
+      for (const jobData of item.jobs) {
+        await item.queue.add({
+          data: jobData.data,
+          groupId: Math.random().toString(),
+        });
+      }
     }
   }
   res.status(200).json({ ok: "ok" });
