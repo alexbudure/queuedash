@@ -160,9 +160,11 @@ test("promote job", async () => {
   const caller = appRouter.createCaller(ctx);
 
   if (type === "bullmq") {
-    // Add a delayed job to promote
+    // Pause the queue first to prevent worker from processing promoted job
     const queueInCtx = ctx.queues[0];
     if (queueInCtx.type === "bullmq") {
+      await queueInCtx.queue.pause();
+
       await queueInCtx.queue.add(
         "delayed-job",
         { test: "data" },
@@ -172,28 +174,40 @@ test("promote job", async () => {
 
     await sleep(100);
 
-    const { jobs } = await caller.job.list({
+    const delayedList = await caller.job.list({
       limit: 10,
       cursor: 0,
       status: "delayed",
       queueName: firstQueue.queue.name,
     });
 
-    const job = jobs[0];
+    const job = delayedList.jobs[0];
+    const initialDelayedCount = delayedList.totalCount;
 
     await caller.job.promote({
       queueName: firstQueue.queue.name,
       jobId: job.id,
     });
 
-    const waitingList = await caller.job.list({
+    // Check that job was removed from delayed
+    const delayedListAfter = await caller.job.list({
       limit: 10,
       cursor: 0,
-      status: "waiting",
+      status: "delayed",
       queueName: firstQueue.queue.name,
     });
 
-    expect(waitingList.jobs.some((j) => j.id === job.id)).toBe(true);
+    expect(delayedListAfter.totalCount).toBe(initialDelayedCount - 1);
+
+    // Check that job is now in paused status (since queue is paused)
+    const pausedList = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "paused",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(pausedList.jobs.some((j) => j.id === job.id)).toBe(true);
   } else {
     try {
       await caller.job.promote({
