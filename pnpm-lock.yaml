@@ -23,6 +23,9 @@ importers:
       '@trpc/server':
         specifier: ^11.6.0
         version: 11.6.0(typescript@5.9.3)
+      groupmq:
+        specifier: ^1.0.0
+        version: 1.0.0(ioredis@5.8.1)
       memoirist:
         specifier: ^0.4.0
         version: 0.4.0
@@ -93,6 +96,9 @@ importers:
       hono:
         specifier: ^4.10.1
         version: 4.10.1
+      ioredis:
+        specifier: ^5.8.1
+        version: 5.8.1
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -190,6 +196,12 @@ importers:
       bullmq:
         specifier: ^5.61.0
         version: 5.61.0
+      groupmq:
+        specifier: ^1.0.0
+        version: 1.0.0(ioredis@5.8.1)
+      ioredis:
+        specifier: ^5.8.1
+        version: 5.8.1
       next:
         specifier: ^15.5.6
         version: 15.5.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -956,9 +968,6 @@ packages:
 
   '@internationalized/string@3.2.7':
     resolution: {integrity: sha512-D4OHBjrinH+PFZPvfCXvG28n2LSykWcJ7GIioQL+ok0LON15SdfoUssoHzzOUmVZLbRoREsQXVzA6r8JKsbP6A==}
-
-  '@ioredis/commands@1.2.0':
-    resolution: {integrity: sha512-Sx1pU8EM64o2BrqNpEO1CNLtKQwyhuXuqyfH7oGKCk+1a33d2r5saW8zNwm3j6BTExtjrv2BxTgzzkMwts6vGg==}
 
   '@ioredis/commands@1.4.0':
     resolution: {integrity: sha512-aFT2yemJJo+TZCmieA7qnYGQooOS7QfNmYrzGtsYd3g9j5iDP8AimYYAesf79ohjbLG12XxC4nG5DyEnC88AsQ==}
@@ -3419,6 +3428,12 @@ packages:
   graphemer@1.4.0:
     resolution: {integrity: sha512-EtKwoO6kxCL9WO5xipiHTZlSzBm7WLT627TqC/uVRd0HKmq8NXyebnNYxDoBi7wt8eTWrUrKXCOVaFq9x1kgag==}
 
+  groupmq@1.0.0:
+    resolution: {integrity: sha512-1UWQdJcmwlRAwKlhJvkAZzPoAuMKgOrSZeZRAZQzMuSTmmW6an6QfGiSWVmB0UQ3itgT2SVI9bYj3O3C+p/BzA==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      ioredis: '>=5'
+
   has-bigints@1.0.2:
     resolution: {integrity: sha512-tSvCKtBr9lkF0Ex0aQiP9N+OpV4zi2r/Nee5VkRDbaqv35RLYMzbwQfFSZZH0kR+Rd6302UJZ2p/bJCEoR3VoQ==}
 
@@ -3505,10 +3520,6 @@ packages:
 
   intl-messageformat@10.7.18:
     resolution: {integrity: sha512-m3Ofv/X/tV8Y3tHXLohcuVuhWKo7BBq62cqY15etqmLxg2DZ34AGGgQDeR+SCta2+zICb1NX83af0GJmbQ1++g==}
-
-  ioredis@5.6.0:
-    resolution: {integrity: sha512-tBZlIIWbndeWBWCXWZiqtOF/yxf6yZX3tAlTJ7nfo5jhd6dctNxF7QnYlZLZ1a0o0pDoen7CgZqO+zjNaFbJAg==}
-    engines: {node: '>=12.22.0'}
 
   ioredis@5.8.1:
     resolution: {integrity: sha512-Qho8TgIamqEPdgiMadJwzRMW3TudIg6vpg4YONokGDudy4eqRIJtDbVX72pfLBcWxvbn3qm/40TyGUObdW4tLQ==}
@@ -5734,8 +5745,6 @@ snapshots:
     dependencies:
       '@swc/helpers': 0.5.17
 
-  '@ioredis/commands@1.2.0': {}
-
   '@ioredis/commands@1.4.0': {}
 
   '@isaacs/cliui@8.0.2':
@@ -7800,7 +7809,7 @@ snapshots:
     dependencies:
       cron-parser: 4.9.0
       get-port: 5.1.1
-      ioredis: 5.6.0
+      ioredis: 5.8.1
       lodash: 4.17.21
       msgpackr: 1.11.2
       semver: 7.7.1
@@ -8825,6 +8834,11 @@ snapshots:
 
   graphemer@1.4.0: {}
 
+  groupmq@1.0.0(ioredis@5.8.1):
+    dependencies:
+      cron-parser: 4.9.0
+      ioredis: 5.8.1
+
   has-bigints@1.0.2: {}
 
   has-bigints@1.1.0: {}
@@ -8907,20 +8921,6 @@ snapshots:
       '@formatjs/fast-memoize': 2.2.7
       '@formatjs/icu-messageformat-parser': 2.11.4
       tslib: 2.8.1
-
-  ioredis@5.6.0:
-    dependencies:
-      '@ioredis/commands': 1.2.0
-      cluster-key-slot: 1.1.2
-      debug: 4.4.0
-      denque: 2.1.0
-      lodash.defaults: 4.2.0
-      lodash.isarguments: 3.1.0
-      redis-errors: 1.2.0
-      redis-parser: 3.0.0
-      standard-as-callback: 2.1.0
-    transitivePeerDependencies:
-      - supports-color
 
   ioredis@5.8.1:
     dependencies:

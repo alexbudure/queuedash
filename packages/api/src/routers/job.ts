@@ -6,9 +6,15 @@ import { TRPCError } from "@trpc/server";
 import { findQueueInCtxOrFail, formatJob } from "../utils/global.utils";
 import type BeeQueue from "bee-queue";
 import { createClient } from "redis";
+import type { Job as GroupMQJob } from "groupmq";
+
 const generateJobMutationProcedure = (
   action: (
-    job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>,
+    job:
+      | Bull.Job
+      | BullMQ.Job
+      | BeeQueue.Job<Record<string, unknown>>
+      | GroupMQJob,
   ) => Promise<unknown> | void,
 ) => {
   return procedure
@@ -51,13 +57,11 @@ const generateJobMutationProcedure = (
 
 export const jobRouter = router({
   retry: generateJobMutationProcedure(async (job) => {
-    if ("isFailed" in job) {
-      if (await job.isFailed()) {
-        await job.retry();
+    if ("retry" in job) {
+      if ("isFailed" in job) {
+        if (await job.isFailed()) await job.retry();
       } else {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-        });
+        await job.retry();
       }
     } else {
       throw new TRPCError({
@@ -99,6 +103,12 @@ export const jobRouter = router({
           await queueInCtx.queue.createJob(job.data).save();
         } else if (queueInCtx.type === "bullmq" && "name" in job) {
           await queueInCtx.queue.add(job.name, job.data, {});
+        } else if (queueInCtx.type === "groupmq") {
+          await queueInCtx.queue.add({
+            groupId:
+              job.data.groupId || Math.random().toString(36).substring(2, 8),
+            data: job.data,
+          });
         } else {
           await queueInCtx.queue.add(job.data, {});
         }
@@ -213,6 +223,34 @@ export const jobRouter = router({
           queueName,
         });
 
+        // GroupMQ handling
+        if (queueInCtx.type === "groupmq") {
+          try {
+            const jobs = await queueInCtx.queue.getJobsByStatus(
+              [status],
+              cursor,
+              cursor + limit - 1,
+            );
+            const counts = await queueInCtx.queue.getJobCounts();
+            const totalCount = counts[status] || 0;
+
+            const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
+
+            return {
+              totalCount,
+              numOfPages: Math.ceil(totalCount / limit),
+              nextCursor: hasNextPage ? cursor + limit : undefined,
+              jobs: jobs.map((job) => formatJob({ job, queueInCtx })),
+            };
+          } catch (e) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: e instanceof Error ? e.message : undefined,
+            });
+          }
+        }
+
+        // Bee-Queue handling
         if (queueInCtx.type === "bee") {
           try {
             const normalizedStatus =
@@ -223,13 +261,26 @@ export const jobRouter = router({
               queueInCtx.queue.getJobs(normalizedStatus, {
                 start: cursor,
                 end: cursor + limit - 1,
+                size: limit,
               }),
               client.connect(),
             ]);
 
-            const totalCount = await client.sCard(
-              `${queueInCtx.queue.settings.keyPrefix}${normalizedStatus}`,
-            );
+            // Bee-Queue stores different statuses in different Redis structures
+            // waiting/active use lists (LLEN), others use sets (SCARD)
+            const prefix = queueInCtx.queue.settings.keyPrefix;
+            let totalCount: number;
+
+            if (
+              normalizedStatus === "waiting" ||
+              normalizedStatus === "active"
+            ) {
+              // These are stored as Redis lists
+              totalCount = await client.lLen(`${prefix}${normalizedStatus}`);
+            } else {
+              // succeeded, failed, delayed are stored as Redis sets
+              totalCount = await client.sCard(`${prefix}${normalizedStatus}`);
+            }
 
             await client.disconnect();
 
@@ -249,6 +300,7 @@ export const jobRouter = router({
           }
         }
 
+        // Bull/BullMQ handling
         try {
           const isBullMq = queueInCtx.type === "bullmq";
 

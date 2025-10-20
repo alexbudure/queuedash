@@ -2,6 +2,7 @@ import { initTRPC } from "@trpc/server";
 import type Bull from "bull";
 import type BullMQ from "bullmq";
 import type BeeQueue from "bee-queue";
+import type { Queue as GroupMQQueue } from "groupmq";
 
 type Queue = {
   // Display name of the queue in the UI
@@ -20,6 +21,10 @@ type Queue = {
   | {
       queue: BeeQueue;
       type: "bee";
+    }
+  | {
+      queue: GroupMQQueue;
+      type: "groupmq";
     }
 );
 

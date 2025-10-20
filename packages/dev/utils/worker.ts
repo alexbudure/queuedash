@@ -1,6 +1,8 @@
 import { queues } from "./fake-data";
 import Bull from "bull";
 import { Queue as BullMQQueue, Worker } from "bullmq";
+import { Worker as GroupMQWorker } from "groupmq";
+import BeeQueue from "bee-queue";
 
 const sleep = (t: number) =>
   new Promise((resolve) => setTimeout(resolve, t * 1000));
@@ -18,7 +20,7 @@ for (const item of queues) {
 
       return Promise.resolve();
     });
-  } else {
+  } else if (item.type === "bullmq") {
     new Worker(
       item.queue.name,
       async (job) => {
@@ -38,7 +40,35 @@ for (const item of queues) {
       },
       {
         connection: {},
-      }
+      },
     );
+  } else if (item.type === "groupmq") {
+    const worker = new GroupMQWorker({
+      queue: item.queue,
+      handler: async () => {
+        await sleep(Math.random() * 20);
+
+        const completedCount = await item.queue.getCompletedCount();
+
+        if (completedCount === 48) {
+          throw new Error("Generic error");
+        }
+
+        return Promise.resolve();
+      },
+    });
+    worker.run();
+  } else if (item.type === "bee") {
+    new BeeQueue(item.queue.name).process(async (job) => {
+      await sleep(Math.random() * 20);
+
+      const completedCount = (await job.queue.checkHealth()).succeeded;
+
+      if (completedCount === 48) {
+        throw new Error("Generic error");
+      }
+
+      return Promise.resolve();
+    });
   }
 }

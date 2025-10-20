@@ -3,6 +3,7 @@ import type BullMQ from "bullmq";
 import { TRPCError } from "@trpc/server";
 import type { Context } from "../trpc";
 import type BeeQueue from "bee-queue";
+import type { Job as GroupMQJob } from "groupmq";
 
 type QueueDashOptions = {
   priority?: number;
@@ -56,11 +57,15 @@ export const formatJob = ({
   job,
   queueInCtx,
 }: {
-  job: Bull.Job | BullMQ.Job | BeeQueue.Job<Record<string, unknown>>;
+  job:
+    | Bull.Job
+    | BullMQ.Job
+    | BeeQueue.Job<Record<string, unknown>>
+    | GroupMQJob;
   queueInCtx: Context["queues"][0];
 }): QueueDashJob => {
+  // Bee-Queue job detection
   if ("status" in job) {
-    // TODO:
     return {
       id: job.id as string,
       name: queueInCtx.jobName
@@ -69,7 +74,7 @@ export const formatJob = ({
           ? "Default"
           : job.id,
       data: job.data as object,
-      opts: job.options,
+      opts: {},
       createdAt: new Date(),
       processedAt: new Date(),
       finishedAt: new Date(),
@@ -79,6 +84,7 @@ export const formatJob = ({
     };
   }
 
+  // Bull/BullMQ jobs
   return {
     id: job.id as string,
     name: queueInCtx.jobName

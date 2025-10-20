@@ -144,7 +144,7 @@ Example configuration:
 }
 ```
 
-Supported queue types: `bull`, `bullmq`, `bee`
+Supported queue types: `bull`, `bullmq`, `bee`, `groupmq`
 
 
 See the [./examples](./examples) folder for more.
