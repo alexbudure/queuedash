@@ -95,7 +95,7 @@ export const queueRouter = router({
             });
           }
 
-          await queueInCtx.queue.clean(0, 0, status);
+          await queueInCtx.queue.clean(0, 100_000, status);
         } else if (status !== "prioritized" && status !== "waiting-children") {
           await queueInCtx.queue.clean(
             0,
