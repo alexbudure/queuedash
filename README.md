@@ -67,6 +67,56 @@ app.listen(3000, () => {
 
 `pnpm install @queuedash/api @queuedash/ui`
 
+#### App Router
+```typescript jsx
+// app/admin/queuedash/[[...slug]]/page.tsx
+"use client";
+
+import { QueueDashApp } from "@queuedash/ui";
+import "@queuedash/ui/dist/styles.css";
+
+function getBaseUrl() {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/queuedash`;
+  }
+
+  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
+}
+
+export default function QueueDashPages() {
+  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queuedash" />;
+}
+```
+
+```typescript jsx
+// app/api/queuedash/[...trpc]/route.ts
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "@queuedash/api";
+
+const reportQueue = new Bull("report-queue");
+
+function handler(req: Request) {
+  return fetchRequestHandler({
+    endpoint: "/api/queuedash",
+    req,
+    router: appRouter,
+    allowBatching: true,
+    createContext: () => ({
+    queues: [
+      {
+        queue: reportQueue,
+        displayName: "Reports",
+        type: "bull" as const,
+      },
+    ],
+  });
+}
+
+export { handler as GET, handler as POST };
+```
+
+#### Pages Router
+
 ```typescript jsx
 // pages/admin/queuedash/[[...slug]].tsx
 import { QueueDashApp } from "@queuedash/ui";
@@ -84,7 +134,9 @@ const QueueDashPages = () => {
 };
 
 export default QueueDashPages;
+```
 
+```typescript jsx
 // pages/api/queuedash/[trpc].ts
 import * as trpcNext from "@trpc/server/adapters/next";
 import { appRouter } from "@queuedash/api";
