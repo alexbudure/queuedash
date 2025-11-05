@@ -1,5 +1,5 @@
 import { ActionMenu } from "./ActionMenu";
-import type { Job } from "../utils/trpc";
+import type { Job, Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import {
   CounterClockwiseClockIcon,
@@ -11,11 +11,13 @@ import { useEffect } from "react";
 type JobActionMenuProps = {
   job: Job;
   queueName: string;
+  queue?: Queue;
   onRemove?: () => void;
 };
 export const JobActionMenu = ({
   job,
   queueName,
+  queue,
   onRemove,
 }: JobActionMenuProps) => {
   const { mutate: retry, isSuccess: retrySuccess } =
@@ -38,48 +40,52 @@ export const JobActionMenu = ({
     jobId: job.id,
   };
 
-  return (
-    <ActionMenu
-      actions={[
-        ...(job.failedReason
-          ? [
-              {
-                label: "Retry",
-                onSelect: () => {
-                  retry(input);
-                },
-                icon: <CounterClockwiseClockIcon />,
-              },
-            ]
-          : []),
-        ...(job.finishedAt
-          ? [
-              {
-                label: "Rerun",
-                onSelect: () => {
-                  rerun(input);
-                },
-                icon: <CounterClockwiseClockIcon />,
-              },
-            ]
-          : [
-              {
-                label: "Discard",
-                onSelect: () => {
-                  discard(input);
-                },
-                icon: <HobbyKnifeIcon />,
-              },
-            ]),
+  // Check if operations are supported by the queue adapter
+  const supportsRetry = queue?.supports.retry !== false;
 
-        {
-          label: "Remove",
-          onSelect: () => {
-            remove(input);
+  // Build actions array based on job state and queue support
+  const actions = [
+    // Retry action - only for failed jobs and if retry is supported
+    ...(job.failedReason && supportsRetry
+      ? [
+          {
+            label: "Retry",
+            onSelect: () => {
+              retry(input);
+            },
+            icon: <CounterClockwiseClockIcon />,
           },
-          icon: <TrashIcon />,
-        },
-      ]}
-    />
-  );
+        ]
+      : []),
+    // Rerun or Discard - based on whether job is finished
+    ...(job.finishedAt
+      ? [
+          {
+            label: "Rerun",
+            onSelect: () => {
+              rerun(input);
+            },
+            icon: <CounterClockwiseClockIcon />,
+          },
+        ]
+      : [
+          {
+            label: "Discard",
+            onSelect: () => {
+              discard(input);
+            },
+            icon: <HobbyKnifeIcon />,
+          },
+        ]),
+    // Remove - always available
+    {
+      label: "Remove",
+      onSelect: () => {
+        remove(input);
+      },
+      icon: <TrashIcon />,
+    },
+  ];
+
+  return <ActionMenu actions={actions} />;
 };

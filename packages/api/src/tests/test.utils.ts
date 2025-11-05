@@ -23,7 +23,62 @@ export const sleep = (t: number) =>
 type QueueType = "bull" | "bullmq" | "bee" | "groupmq";
 
 export const type: QueueType =
-  (process.env.QUEUE_TYPE as unknown as QueueType) || "bullmq";
+  (process.env.QUEUE_TYPE as unknown as QueueType) || "groupmq";
+
+// Helper to check if current queue type supports a feature
+export const supportsFeature = (feature: keyof typeof featureSupport) => {
+  return featureSupport[feature];
+};
+
+// Feature support matrix for current queue type
+const featureSupport = {
+  pause: type !== "bee",
+  resume: type !== "bee",
+  clean: type !== "bee",
+  retry: type !== "bee",
+  promote: type === "bullmq" || type === "groupmq",
+  logs: type === "bullmq",
+  schedulers: type === "bullmq",
+  empty: type !== "groupmq" && type !== "bee",
+} as const;
+
+// Helper to create multiple queues for multi-queue tests
+export const initMultipleQueues = async (count: number = 2) => {
+  const queues = await Promise.all(
+    Array.from({ length: count }, async (_, i) => {
+      const instance = await initRedisInstance();
+      return {
+        ...instance.firstQueue,
+        displayName: `${QUEUE_DISPLAY_NAME} ${i + 1}`,
+      };
+    })
+  );
+
+  return {
+    ctx: { queues } satisfies Context,
+    queues,
+  };
+};
+
+// Helper to expect TRPC error
+export const expectTRPCError = async (
+  fn: () => Promise<any>,
+  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR"
+) => {
+  const { TRPCError } = await import("@trpc/server");
+  try {
+    await fn();
+    throw new Error("Expected function to throw TRPCError");
+  } catch (e) {
+    if (!(e instanceof TRPCError)) {
+      throw e;
+    }
+    if (code && e.code !== code) {
+      throw new Error(`Expected error code ${code}, got ${e.code}`);
+    }
+    return e;
+  }
+};
 
 export const initRedisInstance = async () => {
   switch (type) {

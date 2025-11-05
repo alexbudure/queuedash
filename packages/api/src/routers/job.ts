@@ -1,45 +1,32 @@
-import { procedure, router } from "../trpc";
-import type Bull from "bull";
-import type BullMQ from "bullmq";
+import { procedure, router, transformContext } from "../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { findQueueInCtxOrFail, formatJob } from "../utils/global.utils";
-import type BeeQueue from "bee-queue";
-import { createClient } from "redis";
-import type { Job as GroupMQJob } from "groupmq";
+import { findQueueInCtxOrFail } from "../utils/global.utils";
 
-const generateJobMutationProcedure = (
-  action: (
-    job:
-      | Bull.Job
-      | BullMQ.Job
-      | BeeQueue.Job<Record<string, unknown>>
-      | GroupMQJob,
-  ) => Promise<unknown> | void,
-) => {
-  return procedure
+export const jobRouter = router({
+  retry: procedure
     .input(
       z.object({
         queueName: z.string(),
         jobId: z.string(),
       }),
     )
-    .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
+    .mutation(async ({ input: { jobId, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
-      const job = await queueInCtx.queue.getJob(jobId);
-
-      if (!job) {
+      if (!queueInCtx.adapter.supports.retry) {
         throw new TRPCError({
           code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support retrying jobs`,
         });
       }
 
       try {
-        await action(job);
+        await queueInCtx.adapter.retryJob(jobId);
       } catch (e) {
         if (e instanceof TRPCError) {
           throw e;
@@ -51,32 +38,51 @@ const generateJobMutationProcedure = (
         }
       }
 
-      return formatJob({ job, queueInCtx });
-    });
-};
-
-export const jobRouter = router({
-  retry: generateJobMutationProcedure(async (job) => {
-    if ("retry" in job) {
-      if ("isFailed" in job) {
-        if (await job.isFailed()) await job.retry();
-      } else {
-        await job.retry();
+      const job = await queueInCtx.adapter.getJob(jobId);
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
       }
-    } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Bee-Queue does not support retrying jobs",
+      return job;
+    }),
+  discard: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      }),
+    )
+    .mutation(async ({ input: { jobId, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
       });
-    }
-  }),
-  discard: generateJobMutationProcedure((job) => {
-    if ("discard" in job) {
-      return job.discard();
-    } else {
-      return job.remove();
-    }
-  }),
+
+      try {
+        await queueInCtx.adapter.discardJob(jobId);
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+
+      const job = await queueInCtx.adapter.getJob(jobId);
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+      return job;
+    }),
   rerun: procedure
     .input(
       z.object({
@@ -84,34 +90,24 @@ export const jobRouter = router({
         jobId: z.string(),
       }),
     )
-    .mutation(async ({ input: { jobId, queueName }, ctx: { queues } }) => {
+    .mutation(async ({ input: { jobId, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
-      const job = await queueInCtx.queue.getJob(jobId);
+      const job = await queueInCtx.adapter.getJob(jobId);
 
       if (!job) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
+          code: "NOT_FOUND",
+          message: "Job not found",
         });
       }
 
       try {
-        if (queueInCtx.type === "bee") {
-          await queueInCtx.queue.createJob(job.data).save();
-        } else if (queueInCtx.type === "bullmq" && "name" in job) {
-          await queueInCtx.queue.add(job.name, job.data, {});
-        } else if (queueInCtx.type === "groupmq") {
-          await queueInCtx.queue.add({
-            groupId:
-              job.data.groupId || Math.random().toString(36).substring(2, 8),
-            data: job.data,
-          });
-        } else {
-          await queueInCtx.queue.add(job.data, {});
-        }
+        await queueInCtx.adapter.addJob(job.data);
       } catch (e) {
         if (e instanceof TRPCError) {
           throw e;
@@ -123,19 +119,89 @@ export const jobRouter = router({
         }
       }
 
-      return formatJob({ job, queueInCtx });
+      return job;
     }),
-  promote: generateJobMutationProcedure((job) => {
-    if ("promote" in job) {
-      return job.promote();
-    } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Bee-Queue does not support promoting jobs",
+  promote: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      }),
+    )
+    .mutation(async ({ input: { jobId, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
       });
-    }
-  }),
-  remove: generateJobMutationProcedure((job) => job.remove()),
+
+      if (!queueInCtx.adapter.supports.promote) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support promoting jobs`,
+        });
+      }
+
+      try {
+        await queueInCtx.adapter.promoteJob(jobId);
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+
+      const job = await queueInCtx.adapter.getJob(jobId);
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+      return job;
+    }),
+  remove: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      }),
+    )
+    .mutation(async ({ input: { jobId, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      const job = await queueInCtx.adapter.getJob(jobId);
+
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
+      try {
+        await queueInCtx.adapter.removeJob(jobId);
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+
+      return job;
+    }),
   bulkRemove: procedure
     .input(
       z.object({
@@ -143,28 +209,30 @@ export const jobRouter = router({
         jobIds: z.array(z.string()),
       }),
     )
-    .mutation(async ({ input: { jobIds, queueName }, ctx: { queues } }) => {
+    .mutation(async ({ input: { jobIds, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
       try {
         const jobs = await Promise.all(
           jobIds.map(async (jobId) => {
-            const job = await queueInCtx.queue.getJob(jobId);
+            const job = await queueInCtx.adapter.getJob(jobId);
 
             if (!job) {
               throw new TRPCError({
-                code: "BAD_REQUEST",
+                code: "NOT_FOUND",
+                message: `Job ${jobId} not found`,
               });
             }
-            await job.remove();
+            await queueInCtx.adapter.removeJob(jobId);
 
             return job;
           }),
         );
-        return jobs.map((job) => formatJob({ job, queueInCtx }));
+        return jobs;
       } catch (e) {
         if (e instanceof TRPCError) {
           throw e;
@@ -183,17 +251,18 @@ export const jobRouter = router({
         jobId: z.string(),
       }),
     )
-    .query(async ({ input: { queueName, jobId }, ctx: { queues } }) => {
+    .query(async ({ input: { queueName, jobId }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
-      if (queueInCtx.type !== "bullmq") {
+
+      if (!queueInCtx.adapter.supports.logs) {
         return null;
       }
-      const { logs } = await queueInCtx.queue.getJobLogs(jobId);
 
-      return logs;
+      return await queueInCtx.adapter.getJobLogs(jobId);
     }),
   list: procedure
     .input(
@@ -213,131 +282,35 @@ export const jobRouter = router({
         ] as const),
       }),
     )
-    .query(
-      async ({
-        input: { queueName, status, limit, cursor },
-        ctx: { queues },
-      }) => {
-        const queueInCtx = findQueueInCtxOrFail({
-          queues,
-          queueName,
+    .query(async ({ input: { queueName, status, limit, cursor }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      try {
+        const jobs = await queueInCtx.adapter.getJobs(
+          status,
+          cursor,
+          cursor + limit - 1,
+        );
+        const counts = await queueInCtx.adapter.getJobCounts();
+        const totalCount = counts[status] || 0;
+
+        const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
+
+        return {
+          totalCount,
+          numOfPages: Math.ceil(totalCount / limit),
+          nextCursor: hasNextPage ? cursor + limit : undefined,
+          jobs,
+        };
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
         });
-
-        // GroupMQ handling
-        if (queueInCtx.type === "groupmq") {
-          try {
-            const jobs = await queueInCtx.queue.getJobsByStatus(
-              [status],
-              cursor,
-              cursor + limit - 1,
-            );
-            const counts = await queueInCtx.queue.getJobCounts();
-            const totalCount = counts[status] || 0;
-
-            const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
-
-            return {
-              totalCount,
-              numOfPages: Math.ceil(totalCount / limit),
-              nextCursor: hasNextPage ? cursor + limit : undefined,
-              jobs: jobs.map((job) => formatJob({ job, queueInCtx })),
-            };
-          } catch (e) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: e instanceof Error ? e.message : undefined,
-            });
-          }
-        }
-
-        // Bee-Queue handling
-        if (queueInCtx.type === "bee") {
-          try {
-            const normalizedStatus =
-              status === "completed" ? "succeeded" : status;
-            const client = createClient(queueInCtx.queue.settings.redis);
-
-            const [jobs] = await Promise.all([
-              queueInCtx.queue.getJobs(normalizedStatus, {
-                start: cursor,
-                end: cursor + limit - 1,
-                size: limit,
-              }),
-              client.connect(),
-            ]);
-
-            // Bee-Queue stores different statuses in different Redis structures
-            // waiting/active use lists (LLEN), others use sets (SCARD)
-            const prefix = queueInCtx.queue.settings.keyPrefix;
-            let totalCount: number;
-
-            if (
-              normalizedStatus === "waiting" ||
-              normalizedStatus === "active"
-            ) {
-              // These are stored as Redis lists
-              totalCount = await client.lLen(`${prefix}${normalizedStatus}`);
-            } else {
-              // succeeded, failed, delayed are stored as Redis sets
-              totalCount = await client.sCard(`${prefix}${normalizedStatus}`);
-            }
-
-            await client.disconnect();
-
-            const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
-
-            return {
-              totalCount,
-              numOfPages: Math.ceil(totalCount / limit),
-              nextCursor: hasNextPage ? cursor + limit : undefined,
-              jobs: jobs.map((job) => formatJob({ job, queueInCtx })),
-            };
-          } catch (e) {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: e instanceof Error ? e.message : undefined,
-            });
-          }
-        }
-
-        // Bull/BullMQ handling
-        try {
-          const isBullMq = queueInCtx.type === "bullmq";
-
-          const [jobs, totalCountWithWrongType] = await Promise.all([
-            (status === "prioritized" || status === "waiting-children") &&
-            isBullMq
-              ? queueInCtx.queue.getJobs([status], cursor, cursor + limit - 1)
-              : status === "prioritized" || status === "waiting-children"
-                ? []
-                : queueInCtx.queue.getJobs(
-                    [status],
-                    cursor,
-                    cursor + limit - 1,
-                  ),
-            (status === "prioritized" || status === "waiting-children") &&
-            isBullMq
-              ? queueInCtx.queue.getJobCountByTypes(status)
-              : status === "prioritized" || status === "waiting-children"
-                ? 0
-                : queueInCtx.queue.getJobCountByTypes(status),
-          ]);
-          const totalCount = totalCountWithWrongType as unknown as number;
-
-          const hasNextPage = jobs.length > 0 && cursor + limit < totalCount;
-
-          return {
-            totalCount,
-            numOfPages: Math.ceil(totalCount / limit),
-            nextCursor: hasNextPage ? cursor + limit : undefined,
-            jobs: jobs.map((job) => formatJob({ job, queueInCtx })),
-          };
-        } catch (e) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
-          });
-        }
-      },
-    ),
+      }
+    }),
 });

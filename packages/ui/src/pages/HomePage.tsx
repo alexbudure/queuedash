@@ -20,10 +20,10 @@ type CountStatProps = {
 };
 const CountStat = ({ count, variant }: CountStatProps) => {
   const colorMap: Record<CountStatProps["variant"], string> = {
-    active: "text-cyan-600",
-    completed: "text-green-600",
-    failed: "text-red-600",
-    waiting: "text-amber-600",
+    active: "text-cyan-600 dark:text-cyan-400",
+    completed: "text-green-600 dark:text-green-400",
+    failed: "text-red-600 dark:text-red-400",
+    waiting: "text-amber-600 dark:text-amber-400",
   };
   const iconMap: Record<CountStatProps["variant"], ReactNode> = {
     active: <PlusCircledIcon width={16} height={16} />,
@@ -69,7 +69,7 @@ const QueueCard = ({ queueName }: { queueName: string }) => {
         </p>
         <div>
           {queueReq.data.paused ? (
-            <div className="flex h-7 items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 text-sm font-medium text-yellow-900 transition duration-150 ease-in-out">
+            <div className="flex h-7 items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 text-sm font-medium text-yellow-900 transition duration-150 ease-in-out dark:bg-yellow-950/30 dark:text-yellow-400">
               <span>Paused</span>
             </div>
           ) : null}

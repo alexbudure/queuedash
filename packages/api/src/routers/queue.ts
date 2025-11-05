@@ -1,31 +1,66 @@
-import { procedure, router } from "../trpc";
+import { procedure, router, transformContext } from "../trpc";
 import { z } from "zod";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
-import type Bull from "bull";
-import type BullMQ from "bullmq";
 import { TRPCError } from "@trpc/server";
-import type BeeQueue from "bee-queue";
 import type { RedisInfo } from "redis-info";
-import { parse } from "redis-info";
-import type { Queue as GroupMQQueue } from "groupmq";
 
-const generateQueueMutationProcedure = (
-  action: (queue: Bull.Queue | BullMQ.Queue | BeeQueue | GroupMQQueue) => void,
-) => {
-  return procedure
+export const queueRouter = router({
+  clean: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        status: z.string(),
+      }),
+    )
+    .mutation(async ({ input: { queueName, status }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.clean) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support cleaning jobs`,
+        });
+      }
+
+      if (!queueInCtx.adapter.canCleanStatus(status)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support cleaning jobs with status "${status}"`,
+        });
+      }
+
+      try {
+        await queueInCtx.adapter.clean(status, 0);
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
+
+      return {
+        name: queueName,
+      };
+    }),
+  empty: procedure
     .input(
       z.object({
         queueName: z.string(),
       }),
     )
-    .mutation(async ({ input: { queueName }, ctx: { queues } }) => {
+    .mutation(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
       try {
-        await action(queueInCtx.queue);
+        await queueInCtx.adapter.empty();
       } catch (e) {
         if (e instanceof TRPCError) {
           throw e;
@@ -40,133 +75,103 @@ const generateQueueMutationProcedure = (
       return {
         name: queueName,
       };
-    });
-};
-
-export const queueRouter = router({
-  clean: procedure
+    }),
+  pause: procedure
     .input(
       z.object({
         queueName: z.string(),
-        status: z.enum([
-          "completed",
-          "failed",
-          "delayed",
-          "active",
-          "waiting",
-          "waiting-children",
-          "prioritized",
-          "paused",
-        ] as const),
       }),
     )
-    .mutation(async ({ input: { queueName, status }, ctx: { queues } }) => {
+    .mutation(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
-      if (queueInCtx.type === "bee") {
+      if (!queueInCtx.adapter.supports.pause) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot clean Bee-Queue queues",
+          message: `${queueInCtx.adapter.getType()} does not support pausing`,
         });
       }
 
       try {
-        if (queueInCtx.type === "bullmq") {
-          await queueInCtx.queue.clean(
-            0,
-            0,
-            status === "waiting" || status === "waiting-children"
-              ? "wait"
-              : status,
-          );
-        } else if (queueInCtx.type === "groupmq") {
-          if (
-            status !== "completed" &&
-            status !== "failed" &&
-            status !== "delayed"
-          ) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message:
-                "Can only clean completed, failed, or delayed jobs in GroupMQ queues",
-            });
-          }
-
-          await queueInCtx.queue.clean(0, 100_000, status);
-        } else if (status !== "prioritized" && status !== "waiting-children") {
-          await queueInCtx.queue.clean(
-            0,
-            status === "waiting" ? "wait" : status,
-          );
-        }
+        await queueInCtx.adapter.pause();
       } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
-        });
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
       }
 
       return {
         name: queueName,
       };
     }),
-  empty: generateQueueMutationProcedure((queue) => {
-    if ("empty" in queue) {
-      return queue.empty();
-    } else if ("drain" in queue) {
-      return queue.drain();
-    } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Cannot empty Bee-Queue queues",
-      });
-    }
-  }),
-  pause: generateQueueMutationProcedure((queue) => {
-    if ("pause" in queue) {
-      return queue.pause();
-    } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Cannot pause Bee-Queue queues",
-      });
-    }
-  }),
-  pauseAll: procedure.mutation(async ({ ctx: { queues } }) => {
-    await Promise.all([
-      queues.map((queue) => {
-        if ("pause" in queue.queue) {
-          return queue.queue.pause();
-        } else {
-          return null;
+  pauseAll: procedure.mutation(async ({ ctx }) => {
+    const internalCtx = transformContext(ctx);
+    await Promise.all(
+      internalCtx.queues.map((q) => {
+        if (q.adapter.supports.pause) {
+          return q.adapter.pause();
         }
+        return null;
       }),
-    ]);
+    );
     return "ok";
   }),
-  resume: generateQueueMutationProcedure((queue) => {
-    if ("resume" in queue) {
-      return queue.resume();
-    } else {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Cannot resume Bee-Queue queues",
-      });
-    }
-  }),
-  resumeAll: procedure.mutation(async ({ ctx: { queues } }) => {
-    await Promise.all([
-      queues.map((queue) => {
-        if ("resume" in queue.queue) {
-          return queue.queue.resume();
-        } else {
-          return null;
-        }
+  resume: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
       }),
-    ]);
+    )
+    .mutation(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.resume) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support resuming`,
+        });
+      }
+
+      try {
+        await queueInCtx.adapter.resume();
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+
+      return {
+        name: queueName,
+      };
+    }),
+  resumeAll: procedure.mutation(async ({ ctx }) => {
+    const internalCtx = transformContext(ctx);
+    await Promise.all(
+      internalCtx.queues.map((q) => {
+        if (q.adapter.supports.resume) {
+          return q.adapter.resume();
+        }
+        return null;
+      }),
+    );
     return "ok";
   }),
   addJob: procedure
@@ -176,27 +181,15 @@ export const queueRouter = router({
         data: z.object({}).passthrough(),
       }),
     )
-    .mutation(async ({ input: { queueName, data }, ctx: { queues } }) => {
+    .mutation(async ({ input: { queueName, data }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
       try {
-        if ("add" in queueInCtx.queue) {
-          if (queueInCtx.type === "bullmq") {
-            queueInCtx.queue.add("Manual add", data);
-          } else if (queueInCtx.type === "groupmq") {
-            await queueInCtx.queue.add({
-              groupId: Math.random().toString(36).substring(2, 8),
-              data,
-            });
-          } else {
-            await queueInCtx.queue.add(data, {});
-          }
-        } else {
-          await queueInCtx.queue.createJob(data).save();
-        }
+        await queueInCtx.adapter.addJob(data);
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -227,46 +220,37 @@ export const queueRouter = router({
           .optional(),
       }),
     )
-    .mutation(
-      async ({ input: { queueName, template, opts }, ctx: { queues } }) => {
-        const queueInCtx = findQueueInCtxOrFail({
-          queues,
-          queueName,
+    .mutation(async ({ input: { queueName, template, opts }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.schedulers) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
+      }
 
-        if (queueInCtx.type !== "bullmq") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job schedulers are only supported for BullMQ queues",
-          });
-        }
+      try {
+        await queueInCtx.adapter.addScheduler?.(
+          `scheduler-${Date.now()}`,
+          opts || {},
+          template,
+        );
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
 
-        try {
-          await queueInCtx.queue.upsertJobScheduler(
-            `scheduler-${Date.now()}`,
-            {
-              every: opts?.every,
-              pattern: opts?.pattern,
-              tz: opts?.tz,
-            },
-            {
-              name: template.name,
-              data: template.data,
-              opts: template.opts,
-            },
-          );
-        } catch (e) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
-          });
-        }
-
-        return {
-          name: queueName,
-        };
-      },
-    ),
+      return {
+        name: queueName,
+      };
+    }),
 
   byName: procedure
     .input(
@@ -274,57 +258,40 @@ export const queueRouter = router({
         queueName: z.string(),
       }),
     )
-    .query(async ({ input: { queueName }, ctx: { queues } }) => {
+    .query(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
-        queues,
+        queues: internalCtx.queues,
         queueName,
       });
 
-      const isBee = queueInCtx.type === "bee";
-      const isGroupMQ = queueInCtx.type === "groupmq";
-
       try {
-        const [counts, isPaused] = await Promise.all([
-          isBee
-            ? queueInCtx.queue.checkHealth()
-            : queueInCtx.queue.getJobCounts(),
-          isBee
-            ? queueInCtx.queue.paused
-            : isGroupMQ
-              ? queueInCtx.queue.isPaused()
-              : queueInCtx.queue.isPaused(),
+        const [counts, isPaused, redisInfo] = await Promise.all([
+          queueInCtx.adapter.getJobCounts(),
+          queueInCtx.adapter.isPaused(),
+          queueInCtx.adapter.getRedisInfo(),
         ]);
 
-        const info: RedisInfo & {
-          maxclients: string;
-        } = isBee
-          ? // @ts-expect-error Bee-Queue does not have a client property
-            queueInCtx.queue.client.server_info
-          : isGroupMQ
-            ? parse(await queueInCtx.queue.redis.info())
-            : queueInCtx.type === "bullmq"
-              ? parse(await (await queueInCtx.queue.client).info())
-              : parse(await queueInCtx.queue.client.info());
+        const info: RedisInfo & { maxclients: string } = {
+          ...redisInfo,
+          maxclients: redisInfo.maxclients || "0",
+        };
 
         return {
-          displayName: queueInCtx.displayName,
-          name: queueInCtx.queue.name,
+          displayName: queueInCtx.adapter.getDisplayName(),
+          name: queueInCtx.adapter.getName(),
           paused: isPaused,
-          type: queueInCtx.type,
+          type: queueInCtx.adapter.getType(),
+          supports: queueInCtx.adapter.supports,
           counts: {
-            active: counts.active,
-            completed:
-              "completed" in counts ? counts.completed : counts.succeeded,
-            delayed: counts.delayed,
-            failed: counts.failed,
-            ...("prioritized" in counts
-              ? { prioritized: counts.prioritized }
-              : {}),
-            waiting: counts.waiting,
-            ...("waiting-children" in counts
-              ? { "waiting-children": counts["waiting-children"] }
-              : {}),
-            paused: "paused" in counts ? counts.paused : 0,
+            active: counts.active || 0,
+            completed: counts.completed || 0,
+            delayed: counts.delayed || 0,
+            failed: counts.failed || 0,
+            waiting: counts.waiting || 0,
+            prioritized: counts.prioritized || 0,
+            "waiting-children": counts["waiting-children"] || 0,
+            paused: counts.paused || 0,
           },
           client: {
             usedMemoryPercentage:
@@ -345,11 +312,12 @@ export const queueRouter = router({
         });
       }
     }),
-  list: procedure.query(async ({ ctx: { queues } }) => {
-    return queues.map((queue) => {
+  list: procedure.query(async ({ ctx }) => {
+    const internalCtx = transformContext(ctx);
+    return internalCtx.queues.map((q) => {
       return {
-        displayName: queue.displayName,
-        name: queue.queue.name,
+        displayName: q.adapter.getDisplayName(),
+        name: q.adapter.getName(),
       };
     });
   }),

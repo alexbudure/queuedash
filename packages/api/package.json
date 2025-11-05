@@ -27,16 +27,60 @@
   ],
   "dependencies": {
     "@trpc/server": "^11.6.0",
-    "groupmq": "^1.0.0",
-    "memoirist": "^0.4.0",
     "redis": "^4.7.0",
     "redis-info": "^3.1.0",
     "zod": "^3.24.2"
+  },
+  "peerDependencies": {
+    "@elysiajs/trpc": "^1.0.0",
+    "@hono/trpc-server": "^0.3.0",
+    "bee-queue": "^1.0.0",
+    "bull": "^3.0.0 || ^4.0.0",
+    "bullmq": "^1.0.0 || ^5.0.0",
+    "elysia": "^1.0.0",
+    "express": "^4.0.0 || ^5.0.0",
+    "fastify": "^4.0.0 || ^5.0.0",
+    "groupmq": "^1.0.0",
+    "hono": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@elysiajs/trpc": {
+      "optional": true
+    },
+    "@hono/trpc-server": {
+      "optional": true
+    },
+    "bee-queue": {
+      "optional": true
+    },
+    "bull": {
+      "optional": true
+    },
+    "bullmq": {
+      "optional": true
+    },
+    "elysia": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "fastify": {
+      "optional": true
+    },
+    "groupmq": {
+      "optional": true
+    },
+    "hono": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@elysiajs/trpc": "^1.1.0",
     "@faker-js/faker": "^10.1.0",
     "@hono/trpc-server": "^0.3.4",
+    "groupmq": "^1.0.0",
+    "memoirist": "^0.4.0",
     "@rollup/plugin-typescript": "^12.1.4",
     "@types/express": "^5.0.3",
     "@types/express-serve-static-core": "^5.1.0",
