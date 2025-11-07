@@ -37,6 +37,7 @@ export class BullMQAdapter extends QueueAdapter<
     flows: true,
     priorities: true,
     empty: true,
+    metrics: true,
     statuses: [
       "waiting",
       "waiting-children",
@@ -187,6 +188,14 @@ export class BullMQAdapter extends QueueAdapter<
 
   async removeScheduler(key: string): Promise<void> {
     await this.queue.removeJobScheduler(key);
+  }
+
+  async getMetrics(
+    type: "completed" | "failed",
+    start: number,
+    end: number,
+  ) {
+    return await this.queue.getMetrics(type, start, end);
   }
 
   private adaptJob(job: BullMQJob): AdaptedJob {

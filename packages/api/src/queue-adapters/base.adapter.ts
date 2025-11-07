@@ -44,6 +44,7 @@ export type FeatureSupport<SupportedStatus extends string = string> = {
   flows: boolean;
   priorities: boolean;
   empty: boolean; // Whether queue can be completely emptied
+  metrics: boolean; // Whether queue supports time-based metrics (completed/failed counts)
   statuses: SupportedStatus[]; // Which statuses this queue actually supports
 };
 
@@ -60,6 +61,16 @@ export type SchedulerInfo = {
   next?: number;
   template?: {
     data?: Record<string, unknown>;
+  };
+};
+
+export type QueueMetrics = {
+  data: number[]; // Array of job counts per minute
+  count: number; // Total count in the time range
+  meta: {
+    count: number; // Total since queue started
+    prevTS: number; // Previous timestamp
+    prevCount: number; // Count from previous period
   };
 };
 
@@ -123,6 +134,13 @@ export abstract class QueueAdapter<
     template: Record<string, unknown>,
   ): Promise<void>;
   removeScheduler?(key: string): Promise<void>;
+
+  // Metrics operations (optional - only for queues that support it)
+  getMetrics?(
+    type: "completed" | "failed",
+    start: number,
+    end: number,
+  ): Promise<QueueMetrics>;
 
   // Helper methods
   protected getJobName(

@@ -321,4 +321,43 @@ export const queueRouter = router({
       };
     });
   }),
+  metrics: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        type: z.enum(["completed", "failed"]),
+        start: z.number(),
+        end: z.number(),
+      }),
+    )
+    .query(async ({ input: { queueName, type, start, end }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.metrics) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support metrics`,
+        });
+      }
+
+      if (!queueInCtx.adapter.getMetrics) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "getMetrics method not implemented",
+        });
+      }
+
+      try {
+        return await queueInCtx.adapter.getMetrics(type, start, end);
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
+    }),
 });

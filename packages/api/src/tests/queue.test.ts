@@ -510,3 +510,133 @@ test("list queues returns all queues", async () => {
   expect(queues[0]).toHaveProperty("name");
   expect(queues[0]).toHaveProperty("displayName");
 });
+
+// ============================================================================
+// METRICS TESTS
+// ============================================================================
+
+test("get metrics for completed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bullmq") {
+    const metrics = await caller.queue.metrics({
+      queueName: firstQueue.queue.name,
+      type: "completed",
+      start: 0,
+      end: 60, // Last 60 minutes
+    });
+
+    expect(metrics).toBeDefined();
+    expect(metrics).toHaveProperty("data");
+    expect(metrics).toHaveProperty("count");
+    expect(metrics).toHaveProperty("meta");
+    expect(Array.isArray(metrics.data)).toBe(true);
+    expect(typeof metrics.count).toBe("number");
+    expect(typeof metrics.meta.count).toBe("number");
+  } else {
+    // Non-BullMQ adapters should throw error
+    try {
+      await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "completed",
+        start: 0,
+        end: 60,
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      if (e instanceof TRPCError) {
+        expect(e.code).toBe("BAD_REQUEST");
+      }
+    }
+  }
+});
+
+test("get metrics for failed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bullmq") {
+    const metrics = await caller.queue.metrics({
+      queueName: firstQueue.queue.name,
+      type: "failed",
+      start: 0,
+      end: 60,
+    });
+
+    expect(metrics).toBeDefined();
+    expect(metrics).toHaveProperty("data");
+    expect(metrics).toHaveProperty("count");
+    expect(metrics).toHaveProperty("meta");
+  }
+});
+
+test("get metrics with different time ranges", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bullmq") {
+    // Test 1 minute
+    const oneMin = await caller.queue.metrics({
+      queueName: firstQueue.queue.name,
+      type: "completed",
+      start: 0,
+      end: 1,
+    });
+    expect(oneMin).toBeDefined();
+
+    // Test 1 hour
+    const oneHour = await caller.queue.metrics({
+      queueName: firstQueue.queue.name,
+      type: "completed",
+      start: 0,
+      end: 60,
+    });
+    expect(oneHour).toBeDefined();
+
+    // Test 24 hours
+    const twentyFourHours = await caller.queue.metrics({
+      queueName: firstQueue.queue.name,
+      type: "completed",
+      start: 0,
+      end: 1440,
+    });
+    expect(twentyFourHours).toBeDefined();
+  }
+});
+
+test("metrics endpoint validates queue name", async () => {
+  const { ctx } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  try {
+    await caller.queue.metrics({
+      queueName: "non-existent-queue",
+      type: "completed",
+      start: 0,
+      end: 60,
+    });
+    throw new Error("Should have thrown TRPCError");
+  } catch (e) {
+    expect(e).toBeInstanceOf(TRPCError);
+    if (e instanceof TRPCError) {
+      expect(e.code).toBe("NOT_FOUND");
+    }
+  }
+});
+
+test("supports.metrics flag is correct", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const queue = await caller.queue.byName({
+    queueName: firstQueue.queue.name,
+  });
+
+  if (firstQueue.type === "bullmq") {
+    expect(queue.supports.metrics).toBe(true);
+  } else {
+    expect(queue.supports.metrics).toBe(false);
+  }
+});
