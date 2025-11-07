@@ -14,6 +14,7 @@ import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router";
 import { SchedulerTable } from "../components/SchedulerTable";
+import { MetricsSection } from "../components/MetricsSection";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -144,6 +145,10 @@ export const QueuePage = () => {
           </div>
 
           <div className="space-y-8">
+            {queueReq.data?.supports.metrics ? (
+              <MetricsSection queueName={queueName} />
+            ) : null}
+
             {queueReq.data?.supports.schedulers ? (
               <SchedulerTable queueName={queueName} />
             ) : null}

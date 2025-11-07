@@ -37,6 +37,7 @@ export class GroupMQAdapter extends QueueAdapter<
     flows: false,
     priorities: true,
     empty: false,
+    metrics: false,
     statuses: [
       "waiting",
       "active",

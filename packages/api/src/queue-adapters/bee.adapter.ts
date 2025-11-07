@@ -25,6 +25,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     flows: false,
     priorities: false,
     empty: false,
+    metrics: false,
     statuses: ["waiting", "active", "completed", "failed", "delayed"],
   };
 

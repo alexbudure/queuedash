@@ -40,6 +40,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     flows: false,
     priorities: true,
     empty: true,
+    metrics: false,
     statuses: ["completed", "failed", "delayed", "active", "waiting", "paused"],
   };
 

@@ -1,6 +1,6 @@
 import { queues } from "./fake-data";
 import Bull from "bull";
-import { Queue as BullMQQueue, Worker } from "bullmq";
+import { Queue as BullMQQueue, Worker, MetricsTime } from "bullmq";
 import { Worker as GroupMQWorker } from "groupmq";
 import BeeQueue from "bee-queue";
 
@@ -40,6 +40,9 @@ for (const item of queues) {
       },
       {
         connection: {},
+        metrics: {
+          maxDataPoints: MetricsTime.ONE_WEEK * 2,
+        },
       },
     );
   } else if (item.type === "groupmq") {
