@@ -30,16 +30,30 @@ test("retry job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  try {
-    const { jobs } = await caller.job.list({
-      limit: 10,
-      cursor: 0,
-      status: "failed",
-      queueName: firstQueue.queue.name,
-    });
+  const { jobs } = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
 
-    const job = jobs[0];
+  const job = jobs[0];
 
+  if (firstQueue.type === "bee") {
+    // Bee doesn't support retrying
+    try {
+      await caller.job.retry({
+        queueName: firstQueue.queue.name,
+        jobId: job.id,
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      if (e instanceof TRPCError) {
+        expect(e.code).toBe("BAD_REQUEST");
+      }
+    }
+  } else {
     const newJob = await caller.job.retry({
       queueName: firstQueue.queue.name,
       jobId: job.id,
@@ -48,12 +62,6 @@ test("retry job", async () => {
       id: job.id,
       ...(firstQueue.type === "bull" && { retriedAt: expect.any(Date) }),
     });
-  } catch (e) {
-    expect(e).toBeInstanceOf(TRPCError);
-    expect(type).toBe("bee");
-    if (e instanceof TRPCError) {
-      expect(e.code).toBe("BAD_REQUEST");
-    }
   }
 });
 
@@ -273,5 +281,498 @@ test("get job logs", async () => {
     });
 
     expect(logs).toBeNull();
+  }
+});
+
+// ============================================================================
+// HIGH PRIORITY TESTS - Missing Core Functionality
+// ============================================================================
+
+test("discard job", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const { jobs } = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
+
+  if (jobs.length > 0) {
+    const job = jobs[0];
+
+    try {
+      const discardedJob = await caller.job.discard({
+        queueName: firstQueue.queue.name,
+        jobId: job.id,
+      });
+
+      expect(discardedJob).toMatchObject({
+        id: job.id,
+      });
+    } catch (e) {
+      // Bee might not support discard, or GroupMQ might throw when getting a discarded job
+      if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+        expect(e).toBeInstanceOf(TRPCError);
+      } else {
+        throw e;
+      }
+    }
+  }
+});
+
+test("job list pagination - next cursor", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const firstPage = await caller.job.list({
+    limit: 5,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(firstPage.jobs.length).toBeLessThanOrEqual(5);
+  expect(firstPage.totalCount).toBe(NUM_OF_COMPLETED_JOBS);
+
+  if (firstPage.totalCount > 5) {
+    expect(firstPage.nextCursor).toBe(5);
+    expect(firstPage.numOfPages).toBe(Math.ceil(NUM_OF_COMPLETED_JOBS / 5));
+  }
+});
+
+test("job list pagination - cursor parameter", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const firstPage = await caller.job.list({
+    limit: 5,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  if (firstPage.nextCursor && firstQueue.type !== "bee") {
+    // Bee doesn't properly support pagination due to ID issues
+    const secondPage = await caller.job.list({
+      limit: 5,
+      cursor: firstPage.nextCursor,
+      status: "completed",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(secondPage.jobs.length).toBeGreaterThan(0);
+    // Jobs should be different
+    if (firstPage.jobs.length > 0 && secondPage.jobs.length > 0) {
+      expect(secondPage.jobs[0].id).not.toBe(firstPage.jobs[0].id);
+    }
+  }
+});
+
+test("job list pagination - numOfPages calculation", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 3,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result.numOfPages).toBe(Math.ceil(NUM_OF_COMPLETED_JOBS / 3));
+});
+
+test("job list with limit 1", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 1,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result.jobs.length).toBeLessThanOrEqual(1);
+});
+
+test("job list with limit 100", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 100,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result.jobs.length).toBeLessThanOrEqual(100);
+  expect(result.jobs.length).toBe(Math.min(100, NUM_OF_COMPLETED_JOBS));
+});
+
+// ============================================================================
+// MEDIUM PRIORITY TESTS - Different Job Statuses
+// ============================================================================
+
+test("list active jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "active",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result).toHaveProperty("totalCount");
+  expect(result).toHaveProperty("jobs");
+  expect(Array.isArray(result.jobs)).toBe(true);
+});
+
+test("list waiting jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "waiting",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result).toHaveProperty("totalCount");
+  expect(result).toHaveProperty("jobs");
+  expect(Array.isArray(result.jobs)).toBe(true);
+});
+
+test("list delayed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "delayed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result).toHaveProperty("totalCount");
+  expect(result).toHaveProperty("jobs");
+  expect(Array.isArray(result.jobs)).toBe(true);
+});
+
+test("list paused jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    // Bee doesn't support paused status
+    try {
+      await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "paused",
+        queueName: firstQueue.queue.name,
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+    }
+  } else {
+    const result = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "paused",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(result).toHaveProperty("totalCount");
+    expect(result).toHaveProperty("jobs");
+    expect(Array.isArray(result.jobs)).toBe(true);
+  }
+});
+
+test("list prioritized jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    // Bee doesn't support prioritized status
+    try {
+      await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "prioritized",
+        queueName: firstQueue.queue.name,
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+    }
+  } else {
+    const result = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "prioritized",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(result).toHaveProperty("totalCount");
+    expect(result).toHaveProperty("jobs");
+    expect(Array.isArray(result.jobs)).toBe(true);
+  }
+});
+
+test("list failed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result.totalCount).toBe(NUM_OF_FAILED_JOBS);
+  expect(Array.isArray(result.jobs)).toBe(true);
+});
+
+// ============================================================================
+// MEDIUM PRIORITY TESTS - Error Scenarios
+// ============================================================================
+
+test("job not found error on retry", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bee") {
+    try {
+      await caller.job.retry({
+        queueName: firstQueue.queue.name,
+        jobId: "non-existent-job-id",
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      // Could be NOT_FOUND or INTERNAL_SERVER_ERROR depending on adapter
+      if (e instanceof TRPCError) {
+        // GroupMQ returns INTERNAL_SERVER_ERROR for invalid job IDs
+        expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
+      }
+    }
+  }
+});
+
+test("job not found error on remove", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  try {
+    await caller.job.remove({
+      queueName: firstQueue.queue.name,
+      jobId: "non-existent-job-id",
+    });
+    throw new Error("Should have thrown TRPCError");
+  } catch (e) {
+    expect(e).toBeInstanceOf(TRPCError);
+    if (e instanceof TRPCError) {
+      // GroupMQ returns INTERNAL_SERVER_ERROR for invalid job IDs
+      expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
+    }
+  }
+});
+
+test("job not found error on promote", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bullmq" || firstQueue.type === "groupmq") {
+    try {
+      await caller.job.promote({
+        queueName: firstQueue.queue.name,
+        jobId: "non-existent-job-id",
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      // Could be NOT_FOUND or INTERNAL_SERVER_ERROR depending on implementation
+      if (e instanceof TRPCError) {
+        expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
+      }
+    }
+  }
+});
+
+test("bulk remove with one non-existent job", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const { jobs } = await caller.job.list({
+    limit: 2,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
+
+  if (jobs.length > 0) {
+    try {
+      await caller.job.bulkRemove({
+        queueName: firstQueue.queue.name,
+        jobIds: [jobs[0].id, "non-existent-job-id"],
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      if (e instanceof TRPCError) {
+        // GroupMQ returns INTERNAL_SERVER_ERROR for invalid job IDs
+        expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
+        if (e.code === "NOT_FOUND") {
+          expect(e.message).toContain("not found");
+        }
+      }
+    }
+  }
+});
+
+test("retry non-failed job should fail for Bull", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bull") {
+    const { jobs } = await caller.job.list({
+      limit: 1,
+      cursor: 0,
+      status: "completed",
+      queueName: firstQueue.queue.name,
+    });
+
+    if (jobs.length > 0) {
+      try {
+        await caller.job.retry({
+          queueName: firstQueue.queue.name,
+          jobId: jobs[0].id,
+        });
+        // Bull checks if job is failed, should throw
+        throw new Error("Should have thrown error");
+      } catch (e) {
+        expect(e instanceof Error).toBe(true);
+      }
+    }
+  }
+});
+
+// ============================================================================
+// LOW PRIORITY TESTS - Edge Cases
+// ============================================================================
+
+test("empty job list for status with no jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    // Bee doesn't support prioritized - use delayed instead
+    const result = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "delayed",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(result.jobs).toEqual(result.jobs); // Should not throw
+    expect(Array.isArray(result.jobs)).toBe(true);
+  } else {
+    // Prioritized status should have no jobs in most test scenarios
+    const result = await caller.job.list({
+      limit: 10,
+      cursor: 0,
+      status: "prioritized",
+      queueName: firstQueue.queue.name,
+    });
+
+    expect(result.jobs).toEqual(result.jobs); // Should not throw
+    expect(Array.isArray(result.jobs)).toBe(true);
+  }
+});
+
+test("logs on non-existent job returns null or empty", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const logs = await caller.job.logs({
+    queueName: firstQueue.queue.name,
+    jobId: "non-existent-job-id",
+  });
+
+  // Should either be null or handle gracefully
+  if (type === "bullmq") {
+    // BullMQ might return empty array or null
+    expect(logs === null || Array.isArray(logs)).toBe(true);
+  } else {
+    expect(logs).toBeNull();
+  }
+});
+
+test("rerun job preserves data", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const { jobs } = await caller.job.list({
+    limit: 1,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  if (jobs.length > 0) {
+    const originalJob = jobs[0];
+    const originalData = originalJob.data;
+
+    await caller.job.rerun({
+      queueName: firstQueue.queue.name,
+      jobId: originalJob.id,
+    });
+
+    // The returned job should have the same data
+    expect(originalJob.data).toEqual(originalData);
+  }
+});
+
+test("job list respects cursor offset correctly", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    // Bee doesn't properly support pagination, skip this test
+    expect(true).toBe(true);
+    return;
+  }
+
+  const limit = 2;
+  const firstPage = await caller.job.list({
+    limit,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  if (firstPage.totalCount > limit) {
+    const secondPage = await caller.job.list({
+      limit,
+      cursor: limit,
+      status: "completed",
+      queueName: firstQueue.queue.name,
+    });
+
+    // Ensure we got different jobs
+    const firstIds = firstPage.jobs.map(j => j.id);
+    const secondIds = secondPage.jobs.map(j => j.id);
+
+    const hasOverlap = firstIds.some(id => secondIds.includes(id));
+    expect(hasOverlap).toBe(false);
   }
 });

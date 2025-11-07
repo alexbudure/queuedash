@@ -17,7 +17,19 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["events"],
+      external: [
+        "events",
+        "elysia",
+        "@elysiajs/trpc",
+        "express",
+        "fastify",
+        "hono",
+        "@hono/trpc-server",
+        "bull",
+        "bullmq",
+        "bee-queue",
+        "groupmq",
+      ],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

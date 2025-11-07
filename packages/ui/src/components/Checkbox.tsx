@@ -12,11 +12,11 @@ export const Checkbox = ({
         `flex size-4 cursor-pointer rounded-sm border shadow-sm`,
         className,
         {
-          "border-slate-300 hover:border-slate-500 hover:bg-slate-100":
+          "border-slate-300 hover:border-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:hover:border-slate-400 dark:hover:bg-slate-800":
             !props.checked,
           "border-brand-500 bg-brand-500 text-brand-50 hover:border-brand-600 hover:bg-brand-600":
             props.checked === true,
-          "border-slate-500 text-slate-500 hover:border-slate-700 hover:bg-slate-100":
+          "border-slate-500 text-slate-500 hover:border-slate-700 hover:bg-slate-100 dark:border-slate-400 dark:text-slate-400 dark:hover:border-slate-300 dark:hover:bg-slate-800":
             props.checked === "indeterminate",
         }
       )}

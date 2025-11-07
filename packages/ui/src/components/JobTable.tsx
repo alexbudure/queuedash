@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -157,7 +157,7 @@ const columns = [
               label={opts.delay}
             />
           ) : null}
-          {opts.repeat ? (
+          {opts.repeat?.count ? (
             <JobOptionTag
               icon={<LoopIcon width={12} height={12} />}
               label={opts.repeat.count}
@@ -275,7 +275,7 @@ export const JobTable = ({
             ))}
             {!isLoading && isEmpty ? (
               <div className="flex items-center justify-center py-10">
-                <p className="text-slate-500">No jobs found</p>
+                <p className="text-slate-500 dark:text-slate-400">No jobs found</p>
               </div>
             ) : null}
           </div>
@@ -284,7 +284,7 @@ export const JobTable = ({
       {!isLoading && isEmpty ? null : (
         <div ref={ref} className="my-3 flex justify-center">
           <div className="flex flex-col items-center space-y-2">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               You&apos;ve viewed {jobs.length} of {totalJobs} jobs
             </p>
             <Meter value={progress}>
@@ -294,7 +294,7 @@ export const JobTable = ({
                     style={{
                       transform: "translateZ(0)",
                     }}
-                    className="relative h-0.5 w-[144px] overflow-hidden rounded-sm bg-slate-200"
+                    className="relative h-0.5 w-[144px] overflow-hidden rounded-sm bg-slate-200 dark:bg-slate-700"
                   >
                     <div
                       className="size-full bg-cyan-500 transition duration-300 ease-in-out"
@@ -306,7 +306,7 @@ export const JobTable = ({
             </Meter>
 
             {isFetchingNextPage ? (
-              <SlashIcon className="animate-spin text-slate-300" />
+              <SlashIcon className="animate-spin text-slate-300 dark:text-slate-600" />
             ) : null}
           </div>
         </div>
@@ -314,8 +314,8 @@ export const JobTable = ({
 
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur">
-            <p>{table.getSelectedRowModel().rows.length} selected</p>
+          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+            <p className="text-slate-900 dark:text-slate-100">{table.getSelectedRowModel().rows.length} selected</p>
             {status === "completed" || status === "failed" ? (
               <Button
                 label={status === "failed" ? "Retry" : "Rerun"}
@@ -388,35 +388,35 @@ const LifecycleItem = ({ variant, date }: LifecycleItemProps) => {
           <PlusCircledIcon
             width={14}
             height={14}
-            className="rounded-full bg-cyan-50 text-cyan-900"
+            className="rounded-full bg-cyan-50 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-400"
           />
         )}
         {variant === "processing" && (
           <ClockIcon
             width={14}
             height={14}
-            className="rounded-full bg-slate-50 text-slate-900"
+            className="rounded-full bg-slate-50 text-slate-900 dark:bg-slate-800 dark:text-slate-300"
           />
         )}
         {variant === "retried" && (
           <CounterClockwiseClockIcon
             width={14}
             height={14}
-            className="rounded-full bg-amber-50 text-amber-900"
+            className="rounded-full bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-400"
           />
         )}
         {variant === "completed" && (
           <CheckCircledIcon
             width={14}
             height={14}
-            className="rounded-full bg-green-50 text-green-900"
+            className="rounded-full bg-green-50 text-green-900 dark:bg-green-950 dark:text-green-400"
           />
         )}
         {variant === "failed" && (
           <CrossCircledIcon
             width={14}
             height={14}
-            className="rounded-full bg-red-50 text-red-900"
+            className="rounded-full bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-400"
           />
         )}
 
@@ -431,7 +431,7 @@ const LifecycleItem = ({ variant, date }: LifecycleItemProps) => {
 const LoadingIntervalDivider = () => {
   return (
     <div className="flex items-center space-x-1.5">
-      <DotsHorizontalIcon width={14} height={14} className="text-slate-300" />
+      <DotsHorizontalIcon width={14} height={14} className="text-slate-300 dark:text-slate-600" />
       <SlashIcon
         width={14}
         height={14}
@@ -449,7 +449,7 @@ type TimeIntervalDividerProps = {
 const TimeIntervalDivider = ({ date, baseDate }: TimeIntervalDividerProps) => {
   return (
     <div className="flex items-center space-x-1.5">
-      <DotsHorizontalIcon width={14} height={14} className="text-slate-300" />
+      <DotsHorizontalIcon width={14} height={14} className="text-slate-300 dark:text-slate-600" />
 
       <p className="w-7 rounded-sm text-center text-xs text-slate-500 dark:text-slate-400">
         {formatDistanceStrict(date, baseDate, {

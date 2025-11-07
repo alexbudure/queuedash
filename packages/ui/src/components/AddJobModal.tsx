@@ -75,12 +75,12 @@ export const AddJobModal = ({
         }
       }}
     >
-      <Modal isDismissable className="fixed inset-0 bg-black/10">
-        <Dialog className="fixed left-1/2 top-1/2 max-h-[85vh] w-full max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl">
+      <Modal isDismissable className="fixed inset-0 bg-black/20 dark:bg-black/40">
+        <Dialog className="fixed left-1/2 top-1/2 max-h-[85vh] w-full max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
           {({ close }) => (
             <>
               <button
-                className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50"
+                className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
                 aria-label="Close"
                 onClick={() => {
                   close();
@@ -91,7 +91,7 @@ export const AddJobModal = ({
               </button>
 
               <div className="flex items-center space-x-4">
-                <Heading className="mb-1 text-xl font-semibold text-slate-900">
+                <Heading className="mb-1 text-xl font-semibold text-slate-900 dark:text-slate-100">
                   Add {isJob ? "job" : "scheduler"} to{" "}
                   {queue.displayName.toLocaleLowerCase()}
                 </Heading>
@@ -102,7 +102,7 @@ export const AddJobModal = ({
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-slate-600">
+                    <label className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                       Template
                     </label>
                     <JSONEditor
@@ -111,7 +111,7 @@ export const AddJobModal = ({
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase text-slate-600">
+                    <label className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                       Options
                     </label>
                     <JSONEditor value={optsValue} onChange={setOptsValue} />

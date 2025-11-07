@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -30,7 +30,7 @@ function getTimezoneAbbreviation(timeZone: string, date: Date = new Date()) {
   return tzPart?.value || "";
 }
 
-const columns = [
+const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
   columnHelper.display({
     id: "select",
     header: ({ table }) => (
@@ -56,7 +56,10 @@ const columns = [
           checked: row.getIsSomeSelected()
             ? "indeterminate"
             : row.getIsSelected(),
-          onCheckedChange: row.getToggleSelectedHandler(),
+          onCheckedChange: (checked) => {
+            row.getToggleSelectedHandler()(checked);
+            onCheckboxClick(row.index);
+          },
         }}
       />
     ),
@@ -107,7 +110,7 @@ const columns = [
           <div className="flex items-center space-x-1.5">
             <p className="text-slate-900 dark:text-slate-200">
               In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
-              <span className="text-sm text-slate-700">
+              <span className="text-sm text-slate-700 dark:text-slate-400">
                 ({props.cell.row.original.iterationCount} run
                 {props.cell.row.original.iterationCount === 1 ? "" : "s"} total)
               </span>
@@ -125,11 +128,18 @@ type SchedulerTableProps = {
 };
 export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
   const [rowSelection, setRowSelection] = useState({});
+  const lastClickedIndexRef = useRef<number | null>(null);
   const { data, isLoading } = trpc.scheduler.list.useQuery({
     queueName,
   });
 
   const isEmpty = data?.length === 0;
+
+  const handleCheckboxClick = (rowIndex: number) => {
+    lastClickedIndexRef.current = rowIndex;
+  };
+
+  const columns = createColumns(handleCheckboxClick);
 
   const table = useReactTable({
     data: data || [],
@@ -146,6 +156,29 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
   );
 
   const { mutate: bulkRemove } = trpc.scheduler.bulkRemove.useMutation();
+
+  const handleRowClick = (
+    e: React.MouseEvent<HTMLDivElement>,
+    rowIndex: number
+  ) => {
+    if (e.shiftKey && lastClickedIndexRef.current !== null) {
+      // Shift-click: select range
+      e.preventDefault();
+      const start = Math.min(lastClickedIndexRef.current, rowIndex);
+      const end = Math.max(lastClickedIndexRef.current, rowIndex);
+      const newSelection: Record<string, boolean> = { ...rowSelection };
+
+      for (let i = start; i <= end; i++) {
+        newSelection[i] = true;
+      }
+
+      setRowSelection(newSelection);
+    } else {
+      // Regular click: open modal
+      setSelectedScheduler(table.getRowModel().rows[rowIndex].original);
+      lastClickedIndexRef.current = rowIndex;
+    }
+  };
 
   if (!isLoading && isEmpty) return null;
 
@@ -190,7 +223,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
                 isSelected={row.getIsSelected()}
-                onClick={() => setSelectedScheduler(row.original)}
+                onClick={(e) => handleRowClick(e, rowIndex)}
                 layoutVariant="scheduler"
               >
                 {row.getVisibleCells().map((cell, cellIndex) => (
@@ -211,8 +244,8 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
 
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur">
-            <p>{table.getSelectedRowModel().rows.length} selected</p>
+          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
+            <p className="text-slate-900 dark:text-slate-100">{table.getSelectedRowModel().rows.length} selected</p>
 
             <Button
               label="Delete"

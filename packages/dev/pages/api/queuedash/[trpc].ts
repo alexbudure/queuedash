@@ -14,13 +14,6 @@ export default trpcNext.createNextApiHandler({
     enabled: true,
   },
   createContext: () => ({
-    queues: queues.map((queue) => {
-      return {
-        queue: queue.queue,
-        displayName: queue.displayName,
-        type: queue.type,
-        jobName: queue.jobName,
-      };
-    }),
+    queues,
   }),
 });

@@ -96,7 +96,7 @@ export const QueuePage = () => {
                   <QueueActionMenu queue={queueReq.data} />
                 ) : null}
                 {queueReq.data?.paused ? (
-                  <div className="flex h-7 cursor-default items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 text-sm font-medium text-yellow-900 transition duration-150 ease-in-out">
+                  <div className="flex h-7 cursor-default items-center justify-center space-x-1.5 rounded-md bg-yellow-50 px-2 text-sm font-medium text-yellow-900 transition duration-150 ease-in-out dark:bg-yellow-950/30 dark:text-yellow-400">
                     <span>Paused</span>
                   </div>
                 ) : null}
@@ -107,24 +107,24 @@ export const QueuePage = () => {
             <div className="flex items-center space-x-2">
               {queueReq.data ? (
                 <>
-                  <p className="text-slate-600">
-                    <span className="text-green-800">
+                  <p className="text-slate-600 dark:text-slate-400">
+                    <span className="text-green-800 dark:text-green-400">
                       {numberFormat(queueReq.data.client.connectedClients)}{" "}
                       connected
                     </span>{" "}
                     and{" "}
-                    <span className="text-red-800">
+                    <span className="text-red-800 dark:text-red-400">
                       {numberFormat(queueReq.data.client.blockedClients)}{" "}
                       blocked
                     </span>{" "}
                     out of{" "}
-                    <span className="text-slate-900">
+                    <span className="text-slate-900 dark:text-slate-100">
                       {numberFormat(queueReq.data.client.maxClients)} max
                       clients
                     </span>
                   </p>
-                  <p className="text-slate-600">·</p>
-                  <p className="text-slate-600">
+                  <p className="text-slate-600 dark:text-slate-400">·</p>
+                  <p className="text-slate-600 dark:text-slate-400">
                     {queueReq.data.client.usedMemoryHuman} /{" "}
                     {queueReq.data.client.totalMemoryHuman} (
                     {(queueReq.data.client.usedMemoryPercentage * 100).toFixed(
@@ -132,8 +132,8 @@ export const QueuePage = () => {
                     )}
                     %)
                   </p>
-                  <p className="text-slate-600">·</p>
-                  <p className="text-slate-600">
+                  <p className="text-slate-600 dark:text-slate-400">·</p>
+                  <p className="text-slate-600 dark:text-slate-400">
                     Redis v{queueReq.data.client.version}
                   </p>
                 </>
@@ -144,7 +144,7 @@ export const QueuePage = () => {
           </div>
 
           <div className="space-y-8">
-            {queueReq.data?.type === "bullmq" ? (
+            {queueReq.data?.supports.schedulers ? (
               <SchedulerTable queueName={queueName} />
             ) : null}
 

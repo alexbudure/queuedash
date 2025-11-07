@@ -23,10 +23,11 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
     queueName: queue.name,
   };
 
-  return (
-    <>
-      <ActionMenu
-        actions={[
+  // Build actions array based on what the queue supports
+  const actions = [
+    // Pause/Resume - only show if supported
+    ...(queue.supports.pause && queue.supports.resume
+      ? [
           {
             label: queue.paused ? "Resume" : "Pause",
             onSelect: () => {
@@ -38,24 +39,31 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             },
             icon: queue.paused ? <PlayIcon /> : <PauseIcon />,
           },
+        ]
+      : []),
+    // Add job - always available
+    {
+      label: "Add job",
+      onSelect: () => {
+        setShowAddJobModal(true);
+      },
+      icon: <PlusIcon />,
+    },
+    // Add scheduler - only for queues that support it
+    ...(queue.supports.schedulers
+      ? [
           {
-            label: "Add job",
+            label: "Add scheduler",
             onSelect: () => {
-              setShowAddJobModal(true);
+              setShowAddSchedulerModal(true);
             },
             icon: <PlusIcon />,
           },
-          ...(queue.type === "bullmq"
-            ? [
-                {
-                  label: "Add scheduler",
-                  onSelect: () => {
-                    setShowAddSchedulerModal(true);
-                  },
-                  icon: <PlusIcon />,
-                },
-              ]
-            : []),
+        ]
+      : []),
+    // Empty - only if supported
+    ...(queue.supports.empty
+      ? [
           {
             label: "Empty",
             onSelect: () => {
@@ -63,8 +71,13 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             },
             icon: <TrashIcon />,
           },
-        ]}
-      />
+        ]
+      : []),
+  ];
+
+  return (
+    <>
+      <ActionMenu actions={actions} />
       {showAddJobModal ? (
         <AddJobModal
           queue={queue}

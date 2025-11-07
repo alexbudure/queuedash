@@ -27,7 +27,7 @@ export const Button = ({
       onClick={onClick}
       disabled={isLoading || disabled}
       className={clsx(
-        "flex items-center space-x-1 rounded-md border text-sm font-medium",
+        "flex items-center space-x-1 rounded-md border text-sm font-medium transition-colors duration-150",
         {
           "py-0.5": size === "sm",
           "py-1": size === "md",
@@ -41,18 +41,24 @@ export const Button = ({
         {
           "cursor-not-allowed opacity-50": isLoading || disabled,
 
-          "border-yellow-900 text-yellow-900 hover:bg-yellow-50 focus:bg-yellow-50":
+          // Yellow outline
+          "border-yellow-900 text-yellow-900 hover:bg-yellow-50 focus:bg-yellow-50 dark:border-yellow-400 dark:text-yellow-400 dark:hover:bg-yellow-950/30 dark:focus:bg-yellow-950/30":
             colorScheme === "yellow" && variant === "outline",
-          "border-slate-900 text-slate-900 hover:bg-slate-50 focus:bg-slate-50":
+          // Slate outline
+          "border-slate-900 text-slate-900 hover:bg-slate-50 focus:bg-slate-50 dark:border-slate-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:bg-slate-800":
             colorScheme === "slate" && variant === "outline",
-          "border-red-900 text-red-900 hover:bg-red-50 focus:bg-red-50":
+          // Red outline
+          "border-red-900 text-red-900 hover:bg-red-50 focus:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950/30 dark:focus:bg-red-950/30":
             colorScheme === "red" && variant === "outline",
 
-          "border-yellow-800 bg-yellow-800 text-yellow-50 hover:border-yellow-900 hover:bg-yellow-900 focus:border-yellow-900 focus:bg-yellow-900":
+          // Yellow filled
+          "border-yellow-800 bg-yellow-800 text-yellow-50 hover:border-yellow-900 hover:bg-yellow-900 focus:border-yellow-900 focus:bg-yellow-900 dark:border-yellow-600 dark:bg-yellow-600 dark:hover:border-yellow-500 dark:hover:bg-yellow-500 dark:focus:border-yellow-500 dark:focus:bg-yellow-500":
             colorScheme === "yellow" && variant === "filled",
-          "border-slate-800 bg-slate-800 text-slate-50 hover:border-slate-900 hover:bg-slate-900 focus:border-slate-900 focus:bg-slate-900":
+          // Slate filled
+          "border-slate-800 bg-slate-800 text-slate-50 hover:border-slate-900 hover:bg-slate-900 focus:border-slate-900 focus:bg-slate-900 dark:border-slate-600 dark:bg-slate-600 dark:hover:border-slate-500 dark:hover:bg-slate-500 dark:focus:border-slate-500 dark:focus:bg-slate-500":
             colorScheme === "slate" && variant === "filled",
-          "border-red-800 bg-red-800 text-red-50 hover:border-red-900 hover:bg-red-900 focus:border-red-900 focus:bg-red-900":
+          // Red filled
+          "border-red-800 bg-red-800 text-red-50 hover:border-red-900 hover:bg-red-900 focus:border-red-900 focus:bg-red-900 dark:border-red-600 dark:bg-red-600 dark:hover:border-red-500 dark:hover:bg-red-500 dark:focus:border-red-500 dark:focus:bg-red-500":
             colorScheme === "red" && variant === "filled",
         }
       )}

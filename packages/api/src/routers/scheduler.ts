@@ -1,8 +1,8 @@
-import { procedure, router } from "../trpc";
+import { procedure, router, transformContext } from "../trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import type { QueueDashScheduler } from "../utils/global.utils";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
+import type { SchedulerInfo } from "../queue-adapters/base.adapter";
 
 export const schedulerRouter = router({
   list: procedure
@@ -11,23 +11,22 @@ export const schedulerRouter = router({
         queueName: z.string(),
       }),
     )
-    .query(
-      async ({
-        input: { queueName },
-        ctx: { queues },
-      }): Promise<QueueDashScheduler[]> => {
-        const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
+    .query(async ({ input: { queueName }, ctx }): Promise<SchedulerInfo[]> => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
 
-        if (queueInCtx.type !== "bullmq") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Scheduled jobs are only supported for BullMQ queues",
-          });
-        }
+      if (!queueInCtx.adapter.supports.schedulers) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
+        });
+      }
 
-        return queueInCtx.queue.getJobSchedulers();
-      },
-    ),
+      return (await queueInCtx.adapter.getSchedulers?.()) || [];
+    }),
 
   add: procedure
     .input(
@@ -40,28 +39,34 @@ export const schedulerRouter = router({
         tz: z.string().optional(),
       }),
     )
-    .mutation(async ({ input, ctx: { queues } }) => {
+    .mutation(async ({ input, ctx }) => {
       const { queueName, jobName, data, pattern, every, tz } = input;
 
       if (!pattern && !every) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "You must provide either `cron` or `every`",
+          message: "You must provide either `pattern` or `every`",
         });
       }
 
-      const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
 
-      if (queueInCtx.type !== "bullmq") {
+      if (!queueInCtx.adapter.supports.schedulers) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Scheduled jobs are only supported for BullMQ queues",
+          message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
       }
 
-      await queueInCtx.queue.add(jobName, data, {
-        repeat: { pattern, every, tz },
-      });
+      await queueInCtx.adapter.addScheduler?.(
+        `scheduler-${Date.now()}`,
+        { pattern, every, tz },
+        { name: jobName, data },
+      );
 
       return { success: true };
     }),
@@ -73,28 +78,30 @@ export const schedulerRouter = router({
         jobSchedulerId: z.string(),
       }),
     )
-    .mutation(
-      async ({ input: { queueName, jobSchedulerId }, ctx: { queues } }) => {
-        const queueInCtx = findQueueInCtxOrFail({ queues, queueName });
+    .mutation(async ({ input: { queueName, jobSchedulerId }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
 
-        if (queueInCtx.type !== "bullmq") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Scheduled jobs are only supported for BullMQ queues",
-          });
-        }
+      if (!queueInCtx.adapter.supports.schedulers) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
+        });
+      }
 
-        try {
-          await queueInCtx.queue.removeJobScheduler(jobSchedulerId);
-          return { success: true };
-        } catch (e) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
-          });
-        }
-      },
-    ),
+      try {
+        await queueInCtx.adapter.removeScheduler?.(jobSchedulerId);
+        return { success: true };
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
+    }),
 
   bulkRemove: procedure
     .input(
@@ -106,36 +113,41 @@ export const schedulerRouter = router({
     .mutation(
       async ({
         input: { jobSchedulerIds, queueName },
-        ctx: { queues },
-      }): Promise<QueueDashScheduler[]> => {
+        ctx,
+      }): Promise<SchedulerInfo[]> => {
+        const internalCtx = transformContext(ctx);
         const queueInCtx = findQueueInCtxOrFail({
-          queues,
+          queues: internalCtx.queues,
           queueName,
         });
 
-        if (queueInCtx.type !== "bullmq") {
+        if (!queueInCtx.adapter.supports.schedulers) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Scheduled jobs are only supported for BullMQ queues",
+            message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
           });
         }
 
         try {
-          return Promise.all(
-            jobSchedulerIds.map(async (jobSchedulerId) => {
-              const scheduler =
-                await queueInCtx.queue.getJobScheduler(jobSchedulerId);
-
-              if (!scheduler) {
-                throw new TRPCError({
-                  code: "BAD_REQUEST",
-                });
-              }
-              await queueInCtx.queue.removeJobScheduler(jobSchedulerId);
-
-              return scheduler;
-            }),
+          const schedulers = await queueInCtx.adapter.getSchedulers?.();
+          const schedulersToRemove = schedulers?.filter((s) =>
+            jobSchedulerIds.includes(s.key),
           );
+
+          if (!schedulersToRemove || schedulersToRemove.length === 0) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "No schedulers found with provided IDs",
+            });
+          }
+
+          await Promise.all(
+            jobSchedulerIds.map((id) =>
+              queueInCtx.adapter.removeScheduler?.(id),
+            ),
+          );
+
+          return schedulersToRemove;
         } catch (e) {
           if (e instanceof TRPCError) {
             throw e;
