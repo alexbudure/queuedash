@@ -6,13 +6,15 @@ export type JobOptions = {
   attempts?: number;
   delay?: number;
   lifo?: boolean;
+  timeout?: number;
+  removeOnComplete?: boolean | number;
+  removeOnFail?: boolean | number;
   repeat?: {
     count?: number;
     pattern?: string;
     every?: number;
     limit?: number;
   };
-  [key: string]: unknown; // Allow additional adapter-specific options
 };
 
 export type AdaptedJob = {
