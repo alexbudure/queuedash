@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.10.0
+
+### Minor Changes
+
+- [#63](https://github.com/alexbudure/queuedash/pull/63) [`e72a16b`](https://github.com/alexbudure/queuedash/commit/e72a16b0bbc405b720d8a93be6bf27043ca9fe59) Thanks [@alexbudure](https://github.com/alexbudure)! - Add metrics
+
+### Patch Changes
+
+- Updated dependencies [[`e72a16b`](https://github.com/alexbudure/queuedash/commit/e72a16b0bbc405b720d8a93be6bf27043ca9fe59)]:
+  - @queuedash/api@3.10.0
+
 ## 3.9.0
 
 ### Minor Changes
