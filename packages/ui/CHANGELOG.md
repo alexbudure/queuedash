@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.9.0
+
+### Minor Changes
+
+- [#61](https://github.com/alexbudure/queuedash/pull/61) [`1626a08`](https://github.com/alexbudure/queuedash/commit/1626a08d5216544e2cd678056eda22ecc361913d) Thanks [@alexbudure](https://github.com/alexbudure)! - Adapter pattern, dark mode polish, and more tests
+
+### Patch Changes
+
+- Updated dependencies [[`1626a08`](https://github.com/alexbudure/queuedash/commit/1626a08d5216544e2cd678056eda22ecc361913d)]:
+  - @queuedash/api@3.9.0
+
 ## 3.8.0
 
 ### Minor Changes
