@@ -157,7 +157,7 @@ const columns = [
               label={opts.delay}
             />
           ) : null}
-          {opts.repeat ? (
+          {opts.repeat?.count ? (
             <JobOptionTag
               icon={<LoopIcon width={12} height={12} />}
               label={opts.repeat.count}

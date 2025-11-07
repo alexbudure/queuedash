@@ -1,10 +1,25 @@
 import type { RedisInfo } from "redis-info";
 
+// Common job options shared across queue adapters
+export type JobOptions = {
+  priority?: number;
+  attempts?: number;
+  delay?: number;
+  lifo?: boolean;
+  repeat?: {
+    count?: number;
+    pattern?: string;
+    every?: number;
+    limit?: number;
+  };
+  [key: string]: unknown; // Allow additional adapter-specific options
+};
+
 export type AdaptedJob = {
   id: string;
   name: string;
   data: Record<string, unknown>;
-  opts: Record<string, unknown>;
+  opts: JobOptions;
   createdAt: Date;
   processedAt: Date | null;
   finishedAt: Date | null;
