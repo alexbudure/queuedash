@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.10.0
+
+### Minor Changes
+
+- [#63](https://github.com/alexbudure/queuedash/pull/63) [`e72a16b`](https://github.com/alexbudure/queuedash/commit/e72a16b0bbc405b720d8a93be6bf27043ca9fe59) Thanks [@alexbudure](https://github.com/alexbudure)! - Add metrics
+
 ## 3.9.0
 
 ### Minor Changes
