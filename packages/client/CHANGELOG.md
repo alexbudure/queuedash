@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.11.0
+
+### Minor Changes
+
+- [#66](https://github.com/alexbudure/queuedash/pull/66) [`b83a399`](https://github.com/alexbudure/queuedash/commit/b83a3991a50c00c17c992c50f4297a5986978725) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix api imports
+
 ## 3.10.0
 
 ### Minor Changes
