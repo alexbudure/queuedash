@@ -1,15 +1,15 @@
 import Bull from "bull";
 import { faker } from "@faker-js/faker";
 import type { Context } from "../trpc";
-import BullMQ from "bullmq";
+import BullMQ, { MetricsTime } from "bullmq";
 import BeeQueue from "bee-queue";
 import { Queue as GroupMQQueue, Worker as GroupMQWorker } from "groupmq";
 import Redis from "ioredis";
 
 export const NUM_OF_JOBS = 20;
 export const NUM_OF_SCHEDULERS = 3;
-export const NUM_OF_COMPLETED_JOBS = NUM_OF_JOBS / 2;
-export const NUM_OF_FAILED_JOBS = NUM_OF_JOBS / 2;
+export const NUM_OF_COMPLETED_JOBS = 7; // Different from failed to catch wrong metrics type bugs
+export const NUM_OF_FAILED_JOBS = 13; // Different from completed to catch wrong metrics type bugs
 export const NUM_OF_WAITING_CHILDREN_JOBS = 2;
 const QUEUE_NAME_PREFIX = "flight-bookings";
 const QUEUE_DISPLAY_NAME = "Flight bookings";
@@ -123,7 +123,8 @@ export const initRedisInstance = async () => {
         type: "bullmq" as const,
       };
 
-      new BullMQ.Worker(
+      // Create and store Worker reference to keep it alive for metrics collection
+      const worker = new BullMQ.Worker(
         flightBookingsQueue.queue.name,
         async (job) => {
           if (job.data.index > NUM_OF_COMPLETED_JOBS) {
@@ -134,8 +135,15 @@ export const initRedisInstance = async () => {
         },
         {
           connection: {},
+          metrics: {
+            maxDataPoints: MetricsTime.ONE_WEEK * 2,
+          },
         },
       );
+
+      // Store worker reference to prevent garbage collection
+      // This ensures metrics continue to be recorded
+      (flightBookingsQueue as any).worker = worker;
 
       await flightBookingsQueue.queue.addBulk(
         [...new Array(NUM_OF_JOBS)].map((_, index) => {

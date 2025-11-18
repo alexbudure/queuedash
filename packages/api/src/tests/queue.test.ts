@@ -1,6 +1,12 @@
 import { appRouter } from "../routers/_app";
 import { expect, test } from "vitest";
-import { initRedisInstance, sleep, type } from "./test.utils";
+import {
+  initRedisInstance,
+  sleep,
+  type,
+  NUM_OF_COMPLETED_JOBS,
+  NUM_OF_FAILED_JOBS,
+} from "./test.utils";
 import { TRPCError } from "@trpc/server";
 
 test("list queues", async () => {
@@ -640,3 +646,161 @@ test("supports.metrics flag is correct", async () => {
     expect(queue.supports.metrics).toBe(false);
   }
 });
+
+test(
+  "metrics count matches actual completed jobs",
+  async () => {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+
+    if (firstQueue.type === "bullmq") {
+      // Wait for jobs to be processed and metrics to be aggregated
+      // BullMQ aggregates metrics at minute boundaries, so calculate wait time
+      // to reach 10 seconds after the next minute boundary
+      const now = Date.now();
+      const currentSeconds = Math.floor(now / 1000) % 60;
+      const secondsUntilNextMinute = 60 - currentSeconds;
+      const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
+      await sleep(waitTime);
+
+      const metrics = await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "completed",
+        start: 0,
+        end: 60, // Last 60 minutes
+      });
+
+      expect(metrics).toBeDefined();
+
+      // Verify that count is the sum of data array (this is the fix we made)
+      const sumOfData = metrics.data.reduce(
+        (sum: number, count: number) => sum + count,
+        0,
+      );
+      expect(metrics.count).toBe(sumOfData);
+
+      // If we have metrics data, verify the count matches expected jobs
+      // Note: metrics might be 0 if aggregation hasn't happened yet, but the fix should still work
+      if (sumOfData > 0) {
+        expect(metrics.count).toBeGreaterThanOrEqual(NUM_OF_COMPLETED_JOBS);
+      }
+    }
+  },
+  100000, // Max wait ~70s + buffer for test execution
+);
+
+test(
+  "metrics count matches actual failed jobs",
+  async () => {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+
+    if (firstQueue.type === "bullmq") {
+      // Wait for jobs to be processed and metrics to be aggregated
+      // BullMQ aggregates metrics at minute boundaries, so calculate wait time
+      // to reach 10 seconds after the next minute boundary
+      const now = Date.now();
+      const currentSeconds = Math.floor(now / 1000) % 60;
+      const secondsUntilNextMinute = 60 - currentSeconds;
+      const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
+      await sleep(waitTime);
+
+      const metrics = await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "failed",
+        start: 0,
+        end: 60, // Last 60 minutes
+      });
+
+      expect(metrics).toBeDefined();
+
+      // Verify that count is the sum of data array (this is the fix we made)
+      const sumOfData = metrics.data.reduce(
+        (sum: number, count: number) => sum + count,
+        0,
+      );
+      expect(metrics.count).toBe(sumOfData);
+
+      // If we have metrics data, verify the count matches expected jobs
+      // Note: metrics might be 0 if aggregation hasn't happened yet, but the fix should still work
+      if (sumOfData > 0) {
+        expect(metrics.count).toBeGreaterThanOrEqual(NUM_OF_FAILED_JOBS);
+      }
+    }
+  },
+  100000, // Max wait ~70s + buffer for test execution
+);
+
+test("metrics count is sum of data array for completed jobs", async () => {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+
+    if (firstQueue.type === "bullmq") {
+      // Wait for metrics to be aggregated (BullMQ aggregates at minute boundaries)
+      // Calculate wait time to reach 10 seconds after the next minute boundary
+      const now = Date.now();
+      const currentSeconds = Math.floor(now / 1000) % 60;
+      const secondsUntilNextMinute = 60 - currentSeconds;
+      const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
+      await sleep(waitTime);
+
+      const metrics = await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "completed",
+        start: 0,
+        end: 60,
+      });
+
+      // This test specifically verifies the bug fix:
+      // count should be the sum of all values in the data array,
+      // not the length of the array (number of data points)
+      const sumOfData = metrics.data.reduce(
+        (sum: number, count: number) => sum + count,
+        0,
+      );
+      expect(metrics.count).toBe(sumOfData);
+      // Only check this if we have data points (metrics might be empty if no jobs completed yet)
+      if (metrics.data.length > 0) {
+        expect(metrics.count).not.toBe(metrics.data.length); // Should not be the number of data points
+      }
+    }
+  },
+  100000, // Max wait ~70s + buffer for test execution
+);
+
+test("metrics count is sum of data array for failed jobs", async () => {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+
+    if (firstQueue.type === "bullmq") {
+      // Wait for metrics to be aggregated (BullMQ aggregates at minute boundaries)
+      // Calculate wait time to reach 10 seconds after the next minute boundary
+      const now = Date.now();
+      const currentSeconds = Math.floor(now / 1000) % 60;
+      const secondsUntilNextMinute = 60 - currentSeconds;
+      const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
+      await sleep(waitTime);
+
+      const metrics = await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "failed",
+        start: 0,
+        end: 60,
+      });
+
+      // This test specifically verifies the bug fix:
+      // count should be the sum of all values in the data array,
+      // not the length of the array (number of data points)
+      const sumOfData = metrics.data.reduce(
+        (sum: number, count: number) => sum + count,
+        0,
+      );
+      expect(metrics.count).toBe(sumOfData);
+      // Only check this if we have data points (metrics might be empty if no jobs failed yet)
+      if (metrics.data.length > 0) {
+        expect(metrics.count).not.toBe(metrics.data.length); // Should not be the number of data points
+      }
+    }
+  },
+  100000, // Max wait ~70s + buffer for test execution
+);

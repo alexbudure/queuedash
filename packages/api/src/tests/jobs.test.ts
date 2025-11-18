@@ -97,8 +97,9 @@ test("bulk remove job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
+  // Get all failed jobs (use a limit larger than expected failed jobs)
   const { jobs } = await caller.job.list({
-    limit: 10,
+    limit: 100, // Large enough to get all failed jobs
     cursor: 0,
     status: "failed",
     queueName: firstQueue.queue.name,
