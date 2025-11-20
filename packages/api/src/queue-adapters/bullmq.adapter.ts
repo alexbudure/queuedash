@@ -195,7 +195,16 @@ export class BullMQAdapter extends QueueAdapter<
     start: number,
     end: number,
   ) {
-    return await this.queue.getMetrics(type, start, end);
+    const metrics = await this.queue.getMetrics(type, start, end);
+    
+    // BullMQ's getMetrics returns count as the number of data points,
+    // but we need the sum of jobs (completed or failed). Calculate it by summing the data array.
+    const totalCount = metrics.data.reduce((sum: number, count: number) => sum + count, 0);
+    
+    return {
+      ...metrics,
+      count: totalCount,
+    };
   }
 
   private adaptJob(job: BullMQJob): AdaptedJob {
