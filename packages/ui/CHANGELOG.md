@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.12.0
+
+### Minor Changes
+
+- [#69](https://github.com/alexbudure/queuedash/pull/69) [`6c61759`](https://github.com/alexbudure/queuedash/commit/6c61759906ab0923ea51c4e99ce5857b9da918af) Thanks [@gcleaves](https://github.com/gcleaves)! - fix completed tile in metrics
+
+### Patch Changes
+
+- Updated dependencies [[`6c61759`](https://github.com/alexbudure/queuedash/commit/6c61759906ab0923ea51c4e99ce5857b9da918af)]:
+  - @queuedash/api@3.12.0
+
 ## 3.11.0
 
 ### Minor Changes

@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.12.0
+
+### Minor Changes
+
+- [#69](https://github.com/alexbudure/queuedash/pull/69) [`6c61759`](https://github.com/alexbudure/queuedash/commit/6c61759906ab0923ea51c4e99ce5857b9da918af) Thanks [@gcleaves](https://github.com/gcleaves)! - fix completed tile in metrics
+
 ## 3.11.0
 
 ### Minor Changes
