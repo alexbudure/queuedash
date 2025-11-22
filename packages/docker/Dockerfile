@@ -45,8 +45,14 @@ ENV NODE_ENV=production PORT=3000
 # copy the pruned, deploy output
 COPY --from=builder /repo/out/ ./
 
+# Add Tini
+ENV TINI_VERSION=v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+
+
 USER node
 EXPOSE 3000
 
-ENTRYPOINT ["tini", "--"]
+ENTRYPOINT ["/tini", "--"]
 CMD ["node", "main.mjs"]
