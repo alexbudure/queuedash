@@ -42,6 +42,10 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
 
+# Install tini
+RUN apt-get update && apt-get install -y --no-install-recommends tini && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # copy the pruned, deploy output
 COPY --from=builder /repo/out/ ./
 
