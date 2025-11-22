@@ -42,17 +42,15 @@ FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
 
+# Install tini
+RUN apt-get update && apt-get install -y --no-install-recommends tini && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # copy the pruned, deploy output
 COPY --from=builder /repo/out/ ./
-
-# Add Tini
-ENV TINI_VERSION=v0.19.0
-ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
-
 
 USER node
 EXPOSE 3000
 
-ENTRYPOINT ["/tini", "--"]
+ENTRYPOINT ["tini", "--"]
 CMD ["node", "main.mjs"]
