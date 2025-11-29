@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/api",
-  "version": "3.12.0",
+  "version": "3.12.1",
   "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
   "scripts": {
     "build": "tsc && vite build",

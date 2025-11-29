@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.12.1
+
+### Patch Changes
+
+- [#71](https://github.com/alexbudure/queuedash/pull/71) [`3838d79`](https://github.com/alexbudure/queuedash/commit/3838d79398655522d2607988f8a915f550d537f6) Thanks [@ajshovon](https://github.com/ajshovon)! - Fix missing tini executable in Docker image
+
 ## 3.12.0
 
 ### Minor Changes
