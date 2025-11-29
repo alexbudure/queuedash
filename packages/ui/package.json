@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/ui",
-  "version": "3.12.0",
+  "version": "3.12.1",
   "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",
