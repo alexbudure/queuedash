@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue.
+  A stunning, sleek dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ.
 <p>
 
 <p align="center">
@@ -25,7 +25,9 @@
 - 📊&nbsp; Stats for job counts, job durations, and job wait times
 - ✨&nbsp; Top-level overview page of all queues
 - 🔋&nbsp; Integrates with Next.js, Express.js, and Fastify
-- ⚡️&nbsp; Compatible with Bull, BullMQ, and Bee-Queue
+- ⚡️&nbsp; Compatible with Bull, BullMQ, Bee-Queue, and GroupMQ
+- 📅&nbsp; Job scheduler support
+- 📈&nbsp; Metrics for queue performance
 
 ## Getting Started
 
@@ -67,6 +69,56 @@ app.listen(3000, () => {
 
 `pnpm install @queuedash/api @queuedash/ui`
 
+#### App Router
+```typescript jsx
+// app/admin/queuedash/[[...slug]]/page.tsx
+"use client";
+
+import { QueueDashApp } from "@queuedash/ui";
+import "@queuedash/ui/dist/styles.css";
+
+function getBaseUrl() {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/queuedash`;
+  }
+
+  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
+}
+
+export default function QueueDashPages() {
+  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queuedash" />;
+}
+```
+
+```typescript jsx
+// app/api/queuedash/[...trpc]/route.ts
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { appRouter } from "@queuedash/api";
+
+const reportQueue = new Bull("report-queue");
+
+function handler(req: Request) {
+  return fetchRequestHandler({
+    endpoint: "/api/queuedash",
+    req,
+    router: appRouter,
+    allowBatching: true,
+    createContext: () => ({
+    queues: [
+      {
+        queue: reportQueue,
+        displayName: "Reports",
+        type: "bull" as const,
+      },
+    ],
+  });
+}
+
+export { handler as GET, handler as POST };
+```
+
+#### Pages Router
+
 ```typescript jsx
 // pages/admin/queuedash/[[...slug]].tsx
 import { QueueDashApp } from "@queuedash/ui";
@@ -84,7 +136,9 @@ const QueueDashPages = () => {
 };
 
 export default QueueDashPages;
+```
 
+```typescript jsx
 // pages/api/queuedash/[trpc].ts
 import * as trpcNext from "@trpc/server/adapters/next";
 import { appRouter } from "@queuedash/api";
@@ -108,6 +162,45 @@ export default trpcNext.createNextApiHandler({
 });
 ```
 
+### Docker
+
+The fastest way to get started is using the official Docker image:
+
+```bash
+docker run -p 3000:3000 \
+  -e QUEUES_CONFIG_JSON='{"queues":[{"name":"my-queue","displayName":"My Queue","type":"bullmq","connectionUrl":"redis://localhost:6379"}]}' \
+  ghcr.io/alexbudure/queuedash:latest
+```
+
+Then visit http://localhost:3000
+
+#### Environment Variables
+
+- `QUEUES_CONFIG_JSON` - **Required**. JSON string containing queue configuration
+
+Example configuration:
+```json
+{
+  "queues": [
+    {
+      "name": "cancellation-follow-ups",
+      "displayName": "Cancellation follow-ups",
+      "type": "bullmq",
+      "connectionUrl": "redis://localhost:6379"
+    },
+    {
+      "name": "email-queue",
+      "displayName": "Email Queue",
+      "type": "bull",
+      "connectionUrl": "redis://localhost:6379"
+    }
+  ]
+}
+```
+
+Supported queue types: `bull`, `bullmq`, `bee`, `groupmq`
+
+
 See the [./examples](./examples) folder for more.
 
 ---
@@ -130,7 +223,7 @@ type QueueDashContext = {
 type QueueDashQueue = {
   queue: Bull.Queue | BullMQ.Queue | BeeQueue; // Queue instance
   displayName: string; // Display name for the queue
-  type: "bull" | "bullmq" | "bee"; // Queue type
+  type: "bull" | "bullmq" | "bee" | "groupmq"; // Queue type
 };
 ```
 
@@ -143,24 +236,14 @@ type QueueDashAppProps = {
 };
 ```
 
-## Roadmap
+## Need more?
 
-- Supports Celery and other queueing systems
-- Command+K bar and shortcuts
-- Ability to whitelabel the UI
-
-## Pro Version
-
-Right now, QueueDash simply taps into your Redis instance, making it very easy to set up, but also limited in functionality.
-
-I'm thinking about building a free-to-host version on top of this which will require external services (db, auth, etc.), but it will make the following features possible:
+If you need more capabilities, check out [queuedash.com](https://www.queuedash.com):
 
 - Alerts and notifications
 - Quick search and filtering
 - Queue trends and analytics
 - Invite team members
-
-If you're interested in this version, please let me know!
 
 ## Acknowledgements
 

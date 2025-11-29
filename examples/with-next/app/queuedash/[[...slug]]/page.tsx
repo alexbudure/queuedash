@@ -1,7 +1,12 @@
+"use client";
+
 import { QueueDashApp } from "@queuedash/ui";
-import { NextPage } from "next";
 
 function getBaseUrl() {
+  if (typeof window !== "undefined") {
+    return `/api/queuedash`;
+  }
+
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}/api/queuedash`;
   }
@@ -9,8 +14,6 @@ function getBaseUrl() {
   return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
 }
 
-const Page: NextPage = () => {
+export default function Page() {
   return <QueueDashApp apiUrl={getBaseUrl()} basename="/queuedash" />;
-};
-
-export default Page;
+}

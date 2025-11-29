@@ -8,14 +8,14 @@
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.7",
-    "@queuedash/api": "^3.4.0",
+    "@hono/node-server": "^1.19.6",
+    "@queuedash/api": "^3.12.0",
     "bull": "^4.16.5",
-    "hono": "^4.6.16"
+    "hono": "^4.10.7"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.2"
   }
 }

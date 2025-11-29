@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue.
+  A stunning, sleek dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ.
 <p>
 
 <p align="center">
@@ -25,7 +25,9 @@
 - 📊&nbsp; Stats for job counts, job durations, and job wait times
 - ✨&nbsp; Top-level overview page of all queues
 - 🔋&nbsp; Integrates with Next.js, Express.js, and Fastify
-- ⚡️&nbsp; Compatible with Bull, BullMQ, and Bee-Queue
+- ⚡️&nbsp; Compatible with Bull, BullMQ, Bee-Queue, and GroupMQ
+- 📅&nbsp; Job scheduler support
+- 📈&nbsp; Metrics for queue performance
 
 ## Getting Started
 
@@ -221,7 +223,7 @@ type QueueDashContext = {
 type QueueDashQueue = {
   queue: Bull.Queue | BullMQ.Queue | BeeQueue; // Queue instance
   displayName: string; // Display name for the queue
-  type: "bull" | "bullmq" | "bee"; // Queue type
+  type: "bull" | "bullmq" | "bee" | "groupmq"; // Queue type
 };
 ```
 
@@ -234,24 +236,14 @@ type QueueDashAppProps = {
 };
 ```
 
-## Roadmap
+## Need more?
 
-- Supports Celery and other queueing systems
-- Command+K bar and shortcuts
-- Ability to whitelabel the UI
-
-## Pro Version
-
-Right now, QueueDash simply taps into your Redis instance, making it very easy to set up, but also limited in functionality.
-
-I'm thinking about building a free-to-host version on top of this which will require external services (db, auth, etc.), but it will make the following features possible:
+If you need more capabilities, check out [queuedash.com](https://www.queuedash.com):
 
 - Alerts and notifications
 - Quick search and filtering
 - Queue trends and analytics
 - Invite team members
-
-If you're interested in this version, please let me know!
 
 ## Acknowledgements
 
