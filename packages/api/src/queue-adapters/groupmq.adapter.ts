@@ -178,6 +178,7 @@ export class GroupMQAdapter extends QueueAdapter<
       failedReason: job.failedReason,
       stacktrace: Array.isArray(job.stacktrace) ? job.stacktrace : [],
       retriedAt: null,
+      returnValue: job.returnvalue
     };
   }
 }

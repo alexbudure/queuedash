@@ -96,7 +96,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 </div>
               </div>
 
-              <div className="space-y-2 pt-4">
+              <div className="space-y-2 py-4">
                 <p className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                   Data
                 </p>
@@ -105,8 +105,19 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 </div>
               </div>
 
+              {job.returnValue && (
+                <div className="space-y-2 py-4 border-t border-t-slate-200 dark:border-b-slate-700">
+                  <p className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
+                    Return value
+                  </p>
+                  <div className="data-json-renderer [&>ul]:max-h-[400px]">
+                    <JSONTree data={job.returnValue} theme="monokai" />
+                  </div>
+                </div>
+              )}
+
               {queueReq.data?.supports.logs && data?.length ? (
-                <div className="mt-4 space-y-2 border-t border-t-slate-200 pt-4 dark:border-t-slate-700">
+                <div className="space-y-2 border-t border-t-slate-200 pt-4 dark:border-t-slate-700">
                   <p className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                     Logs
                   </p>

@@ -36,6 +36,13 @@ for (const item of queues) {
           throw new Error("Generic error");
         }
 
+
+        if (job.id === '8') {
+          return {
+            jobName: job.data.name
+          }
+        }
+
         return Promise.resolve();
       },
       {

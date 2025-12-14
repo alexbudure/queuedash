@@ -28,6 +28,7 @@ export type AdaptedJob = {
   failedReason?: string;
   stacktrace?: string[];
   retriedAt: Date | null;
+  returnValue?: any;
 };
 
 export type JobCounts = Partial<Record<string, number>>;
