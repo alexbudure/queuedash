@@ -1,6 +1,7 @@
 ---
 "@queuedash/api": minor
+"@queuedash/client": minor
 "@queuedash/ui": minor
 ---
 
-Display jobs return value to Job Modal
+Display job return value in job modal
