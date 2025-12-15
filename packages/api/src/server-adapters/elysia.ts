@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { trpc } from "@elysiajs/trpc";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { Context } from "../routers/_app";
 import { appRouter } from "../routers/_app";
 import { createQueuedashHtml } from "./utils";
@@ -14,14 +14,14 @@ export function queuedash({
   return new Elysia({
     name: "queuedash",
   })
-    .use(
-      trpc(appRouter, {
+    .all(`${baseUrl}/trpc/*`, async ({ request }) => {
+      return fetchRequestHandler({
         endpoint: `${baseUrl}/trpc`,
-        createContext: (params) => {
-          return { ...params, ...ctx };
-        },
-      }),
-    )
+        router: appRouter,
+        req: request,
+        createContext: () => ctx,
+      });
+    })
     .get(
       baseUrl,
       async () =>

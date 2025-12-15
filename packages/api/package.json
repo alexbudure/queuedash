@@ -32,7 +32,6 @@
     "zod": "^3.24.2"
   },
   "peerDependencies": {
-    "@elysiajs/trpc": "^1.0.0",
     "@hono/trpc-server": "^0.3.0",
     "bee-queue": "^1.0.0",
     "bull": "^3.0.0 || ^4.0.0",
@@ -44,9 +43,6 @@
     "hono": "^4.0.0"
   },
   "peerDependenciesMeta": {
-    "@elysiajs/trpc": {
-      "optional": true
-    },
     "@hono/trpc-server": {
       "optional": true
     },
@@ -76,7 +72,6 @@
     }
   },
   "devDependencies": {
-    "@elysiajs/trpc": "^1.1.0",
     "@faker-js/faker": "^10.1.0",
     "@hono/trpc-server": "^0.3.4",
     "groupmq": "^1.0.0",
