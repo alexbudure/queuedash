@@ -1,5 +1,18 @@
 # @queuedash/ui
 
+## 3.13.0
+
+### Minor Changes
+
+- [#76](https://github.com/alexbudure/queuedash/pull/76) [`3eb1416`](https://github.com/alexbudure/queuedash/commit/3eb141680de9d0d84a62e2d1954e422742ff3617) Thanks [@adamjkb](https://github.com/adamjkb)! - Display job return value in job modal
+
+### Patch Changes
+
+- [#79](https://github.com/alexbudure/queuedash/pull/79) [`e480e9f`](https://github.com/alexbudure/queuedash/commit/e480e9f5dae0ede682cc72cc4efbac7283d4545c) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix Elysia adapter
+
+- Updated dependencies [[`e480e9f`](https://github.com/alexbudure/queuedash/commit/e480e9f5dae0ede682cc72cc4efbac7283d4545c), [`3eb1416`](https://github.com/alexbudure/queuedash/commit/3eb141680de9d0d84a62e2d1954e422742ff3617)]:
+  - @queuedash/api@3.13.0
+
 ## 3.12.1
 
 ### Patch Changes
