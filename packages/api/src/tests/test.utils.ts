@@ -94,6 +94,11 @@ export const initRedisInstance = async () => {
           throw new Error("Generic error");
         }
 
+        // Return a value for job with index 1 to test returnValue
+        if (job.data.index === 1) {
+          return { processed: true, index: job.data.index };
+        }
+
         return Promise.resolve();
       });
 
@@ -129,6 +134,11 @@ export const initRedisInstance = async () => {
         async (job) => {
           if (job.data.index > NUM_OF_COMPLETED_JOBS) {
             throw new Error("Generic error");
+          }
+
+          // Return a value for job with index 1 to test returnValue
+          if (job.data.index === 1) {
+            return { processed: true, index: job.data.index };
           }
 
           return Promise.resolve();
@@ -264,6 +274,11 @@ export const initRedisInstance = async () => {
         handler: async (job) => {
           if (job.data.index > NUM_OF_COMPLETED_JOBS) {
             throw new Error("Generic error");
+          }
+
+          // Return a value for job with index 1 to test returnValue
+          if (job.data.index === 1) {
+            return { processed: true, index: job.data.index };
           }
 
           return Promise.resolve();

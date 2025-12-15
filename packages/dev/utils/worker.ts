@@ -36,6 +36,12 @@ for (const item of queues) {
           throw new Error("Generic error");
         }
 
+        if (Number(job.id) % 2 === 0) {
+          return {
+            jobName: job.data.name,
+          };
+        }
+
         return Promise.resolve();
       },
       {

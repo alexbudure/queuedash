@@ -26,6 +26,34 @@ test("list completed jobs", async () => {
   expect(list.totalCount).toBe(NUM_OF_COMPLETED_JOBS);
 });
 
+test("job has returnValue when worker returns data", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  // Get completed jobs - job with index 1 should have a return value
+  const { jobs } = await caller.job.list({
+    limit: 100,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+
+  // Find the job with index 1 (the one that returns a value)
+  const jobWithReturnValue = jobs.find((j) => j.data.index === 1);
+
+  if (firstQueue.type === "bee") {
+    // Bee-Queue doesn't support return values
+    expect(jobWithReturnValue?.returnValue).toBeUndefined();
+  } else {
+    // Bull, BullMQ, and GroupMQ should have the return value
+    expect(jobWithReturnValue).toBeDefined();
+    expect(jobWithReturnValue?.returnValue).toEqual({
+      processed: true,
+      index: 1,
+    });
+  }
+});
+
 test("retry job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
