@@ -185,7 +185,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
       retriedAt: jobWithRetry.retriedOn
         ? new Date(jobWithRetry.retriedOn)
         : null,
-      returnValue: job.returnvalue
+      returnValue: job.returnvalue,
     };
   }
 }

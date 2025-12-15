@@ -164,6 +164,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
       failedReason: "",
       stacktrace: [],
       retriedAt: new Date(),
+      returnValue: undefined, // Bee-Queue doesn't support return values
     };
   }
 }

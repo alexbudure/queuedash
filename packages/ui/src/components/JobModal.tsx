@@ -37,31 +37,33 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
       <Dialog className="fixed left-1/2 top-1/2 max-h-[85vh] w-full max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
         {({ close }) => (
           <>
-            <button
-              className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-              aria-label="Close"
-              onClick={() => {
-                onDismiss();
-                close();
-              }}
-            >
-              <Cross2Icon />
-            </button>
-
-            <div className="flex items-center space-x-4">
-              <Heading className="mb-1 flex items-center space-x-2">
-                <span className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <Heading className="text-xl font-semibold text-slate-900 dark:text-slate-100">
                   {job.name}
+                </Heading>
+                <span className="text-sm text-slate-500 dark:text-slate-400">
+                  #{job.id}
                 </span>
-
-                <span className="rounded-md text-slate-500 dark:text-slate-400">#{job.id}</span>
-              </Heading>
-              <JobActionMenu
-                queueName={queueName}
-                job={job}
-                queue={queueReq.data ?? undefined}
-                onRemove={onDismiss}
-              />
+              </div>
+              <div className="flex items-center space-x-1">
+                <JobActionMenu
+                  queueName={queueName}
+                  job={job}
+                  queue={queueReq.data ?? undefined}
+                  onRemove={onDismiss}
+                />
+                <button
+                  className="flex size-7 items-center justify-center rounded-md bg-slate-50 text-slate-900 outline-none transition duration-150 ease-in-out hover:bg-slate-100 focus:bg-slate-100 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 dark:focus:bg-slate-700"
+                  aria-label="Close"
+                  onClick={() => {
+                    onDismiss();
+                    close();
+                  }}
+                >
+                  <Cross2Icon />
+                </button>
+              </div>
             </div>
 
             <div>
@@ -70,7 +72,9 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                   <p className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                     Error
                   </p>
-                  <p className="text-sm text-red-600 dark:text-red-400">{job.failedReason}</p>
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    {job.failedReason}
+                  </p>
                   {/*TODO: Add stacktrace */}
                   <Button
                     label="Retry"
@@ -105,8 +109,8 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 </div>
               </div>
 
-              {job.returnValue && (
-                <div className="space-y-2 py-4 border-t border-t-slate-200 dark:border-b-slate-700">
+              {job.returnValue !== undefined && job.returnValue !== null && (
+                <div className="space-y-2 border-t border-t-slate-200 py-4 dark:border-b-slate-700">
                   <p className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
                     Return value
                   </p>
@@ -129,7 +133,9 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                           className="flex items-center space-x-2"
                         >
                           <div className="h-4 w-1 rounded-sm bg-slate-300 dark:bg-slate-600" />
-                          <p className="font-mono text-sm text-slate-900 dark:text-slate-100">{log}</p>
+                          <p className="font-mono text-sm text-slate-900 dark:text-slate-100">
+                            {log}
+                          </p>
                         </div>
                       );
                     })}

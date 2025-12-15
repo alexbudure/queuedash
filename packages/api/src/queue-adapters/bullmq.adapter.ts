@@ -224,7 +224,7 @@ export class BullMQAdapter extends QueueAdapter<
       failedReason: job.failedReason,
       stacktrace: job.stacktrace,
       retriedAt: null, // BullMQ doesn't track retry time
-      returnValue: job.returnvalue
+      returnValue: job.returnvalue,
     };
   }
 }
