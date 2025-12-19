@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/client",
-  "version": "3.13.0",
+  "version": "3.14.0",
   "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
   "files": [
     "dist"

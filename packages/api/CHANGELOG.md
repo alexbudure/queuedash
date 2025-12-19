@@ -1,5 +1,11 @@
 # @queuedash/api
 
+## 3.14.0
+
+### Minor Changes
+
+- [#81](https://github.com/alexbudure/queuedash/pull/81) [`ae35e0c`](https://github.com/alexbudure/queuedash/commit/ae35e0cf0be6b23650603c48ed61aa5b11edc687) Thanks [@alexbudure](https://github.com/alexbudure)! - Add headers prop for tRPC
+
 ## 3.13.0
 
 ### Minor Changes
