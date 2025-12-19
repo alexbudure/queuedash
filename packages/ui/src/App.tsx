@@ -13,8 +13,12 @@ type QueueDashPagesProps = {
   apiUrl: string;
   // Base path for the app
   basename: string;
+  // Optional headers for tRPC requests (e.g., Authorization)
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>);
 };
-export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {
+export const App = ({ apiUrl, basename, headers }: QueueDashPagesProps) => {
   const [ready, setReady] = useState(false);
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
@@ -22,6 +26,7 @@ export const App = ({ apiUrl, basename }: QueueDashPagesProps) => {
       links: [
         httpBatchLink({
           url: apiUrl,
+          headers,
         }),
       ],
     }),
