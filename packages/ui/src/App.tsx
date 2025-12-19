@@ -13,8 +13,10 @@ type QueueDashPagesProps = {
   apiUrl: string;
   // Base path for the app
   basename: string;
-  // Optional function to return headers for tRPC requests (e.g., Authorization)
-  headers?: () => Record<string, string> | Promise<Record<string, string>>;
+  // Optional headers for tRPC requests (e.g., Authorization)
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>);
 };
 export const App = ({ apiUrl, basename, headers }: QueueDashPagesProps) => {
   const [ready, setReady] = useState(false);
