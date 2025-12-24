@@ -48,6 +48,7 @@ export class BullMQAdapter extends QueueAdapter<
       "paused",
       "prioritized",
     ],
+    groups: false,
   };
 
   constructor(
@@ -213,11 +214,15 @@ export class BullMQAdapter extends QueueAdapter<
         ? "Default"
         : this.getJobName(job.data, job.name);
 
+    // Extract groupId from BullMQ Pro's group option if present
+    const opts = job.opts as Record<string, unknown>;
+    const groupId = (opts.group as { id?: string } | undefined)?.id;
+
     return {
       id: job.id as string,
       name: jobName,
       data: job.data,
-      opts: job.opts as Record<string, unknown>,
+      opts,
       createdAt: new Date(job.timestamp),
       processedAt: job.processedOn ? new Date(job.processedOn) : null,
       finishedAt: job.finishedOn ? new Date(job.finishedOn) : null,
@@ -225,6 +230,9 @@ export class BullMQAdapter extends QueueAdapter<
       stacktrace: job.stacktrace,
       retriedAt: null, // BullMQ doesn't track retry time
       returnValue: job.returnvalue,
+      groupId,
+      progress: typeof job.progress === "number" ? job.progress : undefined,
+      attemptsMade: job.attemptsMade,
     };
   }
 }

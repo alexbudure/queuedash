@@ -15,6 +15,7 @@ import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router";
 import { SchedulerTable } from "../components/SchedulerTable";
 import { MetricsSection } from "../components/MetricsSection";
+import { GroupsSection } from "../components/GroupsSection";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -25,6 +26,7 @@ export const QueuePage = () => {
   const [searchParams] = useSearchParams();
 
   const [status, setStatus] = useState<Status>("completed");
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const {
     data,
     fetchNextPage,
@@ -37,6 +39,7 @@ export const QueuePage = () => {
       queueName,
       limit: JOBS_PER_PAGE,
       status,
+      groupId: selectedGroupId ?? undefined,
     },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -149,6 +152,15 @@ export const QueuePage = () => {
               <MetricsSection queueName={queueName} />
             ) : null}
 
+            {queueReq.data?.supports.groups ? (
+              <GroupsSection
+                queueName={queueName}
+                selectedGroupId={selectedGroupId}
+                onSelectGroup={setSelectedGroupId}
+                visibleJobIds={jobs.map((j) => j.id)}
+              />
+            ) : null}
+
             {queueReq.data?.supports.schedulers ? (
               <SchedulerTable queueName={queueName} />
             ) : null}
@@ -159,6 +171,7 @@ export const QueuePage = () => {
                 queueName={queueName}
                 status={status}
                 queue={queueReq.data}
+                jobIds={jobs.map((j) => j.id)}
               />
               <JobTable
                 onBottomInView={() => {
