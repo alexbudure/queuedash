@@ -12,7 +12,7 @@
   "dependencies": {
     "@queuedash/api": "workspace:*",
     "@queuedash/ui": "workspace:*",
-    "@trpc/server": "^11.6.0",
+    "@trpc/server": "^11.8.1",
     "bee-queue": "^1.7.1",
     "bull": "^4.16.5",
     "bullmq": "^5.61.0",
