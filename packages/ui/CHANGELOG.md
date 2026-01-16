@@ -1,5 +1,14 @@
 # @queuedash/ui
 
+## 3.14.1
+
+### Patch Changes
+
+- [#84](https://github.com/alexbudure/queuedash/pull/84) [`9e5f8ff`](https://github.com/alexbudure/queuedash/commit/9e5f8ff8f319388346e1291c57791cb029bca2bb) Thanks [@larsvaehrens](https://github.com/larsvaehrens)! - Bump @trpc/server to 11.8.1 to fix [CVE-2025-68130](https://github.com/advisories/GHSA-43p4-m455-4f4j)
+
+- Updated dependencies [[`9e5f8ff`](https://github.com/alexbudure/queuedash/commit/9e5f8ff8f319388346e1291c57791cb029bca2bb)]:
+  - @queuedash/api@3.14.1
+
 ## 3.14.0
 
 ### Minor Changes
