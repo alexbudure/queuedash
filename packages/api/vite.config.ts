@@ -17,7 +17,7 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["events"],
+      external: ["events", "node:http"],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
