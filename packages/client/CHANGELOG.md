@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.14.1
+
+### Patch Changes
+
+- [`dcc7226`](https://github.com/alexbudure/queuedash/commit/dcc7226a6d240ac87d5f558b24208f77663d661e) Thanks [@alexbudure](https://github.com/alexbudure)! - Bump @trpc/server to 11.8.1 to fix [CVE-2025-68130](https://github.com/advisories/GHSA-43p4-m455-4f4j)
+
 ## 3.14.0
 
 ### Minor Changes
