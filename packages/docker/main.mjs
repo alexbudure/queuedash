@@ -26,10 +26,14 @@ const getQueuesFromConfig = () => {
   const config = queueConfigSchema.parse(JSON.parse(configJson));
 
   return config.queues.map((queueConfig) => {
+    // Check if connection URL uses TLS (rediss://)
+    const usesTls = queueConfig.connectionUrl.startsWith("rediss://");
+
     if (queueConfig.type === "bullmq") {
       const queue = new BullMQQueue(queueConfig.name, {
         connection: {
           url: queueConfig.connectionUrl,
+          ...(usesTls && { tls: {} }),
         },
       });
       return {
@@ -38,7 +42,11 @@ const getQueuesFromConfig = () => {
         type: "bullmq",
       };
     } else if (queueConfig.type === "bull") {
-      const queue = new Bull(queueConfig.name, queueConfig.connectionUrl);
+      const queue = new Bull(queueConfig.name, queueConfig.connectionUrl, {
+        redis: {
+          ...(usesTls && { tls: {} }),
+        },
+      });
       return {
         queue,
         displayName: queueConfig.displayName,
@@ -47,6 +55,7 @@ const getQueuesFromConfig = () => {
     } else {
       const queue = new BeeQueue(queueConfig.name, {
         redis: queueConfig.connectionUrl,
+        ...(usesTls && { tls: {} }),
       });
       return {
         queue,
