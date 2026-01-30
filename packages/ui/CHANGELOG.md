@@ -1,5 +1,14 @@
 # @queuedash/ui
 
+## 3.14.2
+
+### Patch Changes
+
+- [#88](https://github.com/alexbudure/queuedash/pull/88) [`30c75b3`](https://github.com/alexbudure/queuedash/commit/30c75b3788dba09da075d4aad82da753c9425991) Thanks [@schmkr](https://github.com/schmkr)! - Fix tls connections for BullMQ, Bull and Bee
+
+- Updated dependencies [[`30c75b3`](https://github.com/alexbudure/queuedash/commit/30c75b3788dba09da075d4aad82da753c9425991)]:
+  - @queuedash/api@3.14.2
+
 ## 3.14.1
 
 ### Patch Changes
