@@ -4,6 +4,7 @@ import { Queue as BullMQQueue } from "bullmq";
 import BeeQueue from "bee-queue";
 import express from "express";
 import { createQueueDashExpressMiddleware } from "@queuedash/api";
+import { readFileSync } from "node:fs";
 
 const queueConfigSchema = z.object({
   queues: z.array(
@@ -16,14 +17,22 @@ const queueConfigSchema = z.object({
   ),
 });
 
-const getQueuesFromConfig = () => {
-  const configJson = process.env.QUEUES_CONFIG_JSON;
-
-  if (!configJson) {
-    throw new Error("QUEUES_CONFIG_JSON environment variable is not set");
+const getConfigJson = () => {
+  if (process.env.QUEUES_CONFIG_JSON) {
+    return process.env.QUEUES_CONFIG_JSON;
   }
 
-  const config = queueConfigSchema.parse(JSON.parse(configJson));
+  if (process.env.QUEUES_CONFIG_FILE_PATH) {
+    return readFileSync(process.env.QUEUES_CONFIG_FILE);
+  }
+
+  throw new Error(
+    "Either QUEUES_CONFIG_JSON or QUEUES_CONFIG_FILE environment variables must be set",
+  );
+};
+
+const getQueuesFromConfig = () => {
+  const config = queueConfigSchema.parse(JSON.parse(getConfigJson()));
 
   return config.queues.map((queueConfig) => {
     // Check if connection URL uses TLS (rediss://)
