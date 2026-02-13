@@ -360,4 +360,30 @@ export const queueRouter = router({
         });
       }
     }),
+  groups: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+      }),
+    )
+    .query(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.groups) {
+        return [];
+      }
+
+      try {
+        return await queueInCtx.adapter.getGroups();
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
+    }),
 });

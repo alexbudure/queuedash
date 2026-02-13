@@ -244,6 +244,76 @@ export const jobRouter = router({
         }
       }
     }),
+  bulkRetry: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobIds: z.array(z.string()),
+      }),
+    )
+    .mutation(async ({ input: { jobIds, queueName }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.retry) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support retrying jobs`,
+        });
+      }
+
+      try {
+        const results = await Promise.allSettled(
+          jobIds.map(async (jobId) => {
+            await queueInCtx.adapter.retryJob(jobId);
+            return jobId;
+          }),
+        );
+
+        const succeeded = results
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => (r as PromiseFulfilledResult<string>).value);
+        const failed = results.filter((r) => r.status === "rejected").length;
+
+        return { succeeded: succeeded.length, failed };
+      } catch (e) {
+        if (e instanceof TRPCError) {
+          throw e;
+        } else {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
+        }
+      }
+    }),
+  byId: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        jobId: z.string(),
+      }),
+    )
+    .query(async ({ input: { queueName, jobId }, ctx }) => {
+      const internalCtx = transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      try {
+        const job = await queueInCtx.adapter.getJob(jobId);
+        return job;
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: e instanceof Error ? e.message : undefined,
+        });
+      }
+    }),
   logs: procedure
     .input(
       z.object({
@@ -280,9 +350,10 @@ export const jobRouter = router({
           "waiting-children",
           "paused",
         ] as const),
+        groupId: z.string().optional(),
       }),
     )
-    .query(async ({ input: { queueName, status, limit, cursor }, ctx }) => {
+    .query(async ({ input: { queueName, status, limit, cursor, groupId }, ctx }) => {
       const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
@@ -290,11 +361,17 @@ export const jobRouter = router({
       });
 
       try {
-        const jobs = await queueInCtx.adapter.getJobs(
+        let jobs = await queueInCtx.adapter.getJobs(
           status,
           cursor,
           cursor + limit - 1,
         );
+
+        // Filter by groupId if provided
+        if (groupId) {
+          jobs = jobs.filter((job) => job.groupId === groupId);
+        }
+
         const counts = await queueInCtx.adapter.getJobCounts();
         const totalCount = counts[status] || 0;
 

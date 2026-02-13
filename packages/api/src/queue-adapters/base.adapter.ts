@@ -29,6 +29,9 @@ export type AdaptedJob = {
   stacktrace?: string[];
   retriedAt: Date | null;
   returnValue?: unknown;
+  groupId?: string; // Group identifier for GroupMQ and BullMQ Pro
+  progress?: number; // Job progress (0-100)
+  attemptsMade?: number; // Number of attempts made
 };
 
 export type JobCounts = Partial<Record<string, number>>;
@@ -47,6 +50,7 @@ export type FeatureSupport<SupportedStatus extends string = string> = {
   empty: boolean; // Whether queue can be completely emptied
   metrics: boolean; // Whether queue supports time-based metrics (completed/failed counts)
   statuses: SupportedStatus[]; // Which statuses this queue actually supports
+  groups: boolean; // Whether queue supports job groups (GroupMQ, BullMQ Pro)
 };
 
 export type SchedulerInfo = {
@@ -73,6 +77,12 @@ export type QueueMetrics = {
     prevTS: number; // Previous timestamp
     prevCount: number; // Count from previous period
   };
+};
+
+export type GroupInfo = {
+  id: string;
+  count: number;
+  status: "active" | "paused" | "rate-limited";
 };
 
 export abstract class QueueAdapter<
@@ -142,6 +152,11 @@ export abstract class QueueAdapter<
     start: number,
     end: number,
   ): Promise<QueueMetrics>;
+
+  // Group operations (optional - only for queues that support it)
+  async getGroups(): Promise<GroupInfo[]> {
+    return []; // Default: no groups
+  }
 
   // Helper methods
   protected getJobName(

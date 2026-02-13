@@ -27,6 +27,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     empty: false,
     metrics: false,
     statuses: ["waiting", "active", "completed", "failed", "delayed"],
+    groups: false,
   };
 
   constructor(
@@ -153,18 +154,37 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     const jobName =
       job.id === "__default__" ? "Default" : this.getJobName(job.data, job.id);
 
+    // Bee-Queue job has status and progress properties
+    const jobWithMeta = job as BeeQueue.Job<Record<string, unknown>> & {
+      status?: string;
+      progress?: { created?: number; started?: number; succeeded?: number; failed?: number };
+    };
+
+    // Extract timestamps from job if available
+    const createdAt = jobWithMeta.progress?.created
+      ? new Date(jobWithMeta.progress.created)
+      : new Date();
+    const processedAt = jobWithMeta.progress?.started
+      ? new Date(jobWithMeta.progress.started)
+      : null;
+    // Use nullish coalescing to properly handle timestamps (succeeded takes priority over failed)
+    const finishedTimestamp = jobWithMeta.progress?.succeeded ?? jobWithMeta.progress?.failed;
+    const finishedAt = finishedTimestamp != null ? new Date(finishedTimestamp) : null;
+
     return {
       id: job.id as string,
       name: jobName,
       data: job.data,
       opts: job.options as Record<string, unknown>,
-      createdAt: new Date(),
-      processedAt: new Date(),
-      finishedAt: new Date(),
-      failedReason: "",
+      createdAt,
+      processedAt,
+      finishedAt,
+      failedReason: undefined,
       stacktrace: [],
-      retriedAt: new Date(),
+      retriedAt: null,
       returnValue: undefined, // Bee-Queue doesn't support return values
+      progress: undefined, // Bee-Queue doesn't expose progress in the same way
+      attemptsMade: undefined, // Bee-Queue doesn't track attempts
     };
   }
 }
