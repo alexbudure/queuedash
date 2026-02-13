@@ -23,11 +23,11 @@ const getConfigJson = () => {
   }
 
   if (process.env.QUEUES_CONFIG_FILE_PATH) {
-    return readFileSync(process.env.QUEUES_CONFIG_FILE);
+    return readFileSync(process.env.QUEUES_CONFIG_FILE_PATH, "utf-8");
   }
 
   throw new Error(
-    "Either QUEUES_CONFIG_JSON or QUEUES_CONFIG_FILE environment variables must be set",
+    "Either QUEUES_CONFIG_JSON or QUEUES_CONFIG_FILE_PATH environment variables must be set",
   );
 };
 
