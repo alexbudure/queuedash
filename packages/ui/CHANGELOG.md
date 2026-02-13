@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.15.0
+
+### Minor Changes
+
+- [#92](https://github.com/alexbudure/queuedash/pull/92) [`5aab10d`](https://github.com/alexbudure/queuedash/commit/5aab10da45650680268c00afb32b089cd8dddc4d) Thanks [@dvxam](https://github.com/dvxam)! - Support queue configuration from file for docker container
+
+### Patch Changes
+
+- Updated dependencies [[`5aab10d`](https://github.com/alexbudure/queuedash/commit/5aab10da45650680268c00afb32b089cd8dddc4d)]:
+  - @queuedash/api@3.15.0
+
 ## 3.14.2
 
 ### Patch Changes

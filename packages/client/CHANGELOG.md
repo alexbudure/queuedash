@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.15.0
+
+### Minor Changes
+
+- [#92](https://github.com/alexbudure/queuedash/pull/92) [`5aab10d`](https://github.com/alexbudure/queuedash/commit/5aab10da45650680268c00afb32b089cd8dddc4d) Thanks [@dvxam](https://github.com/dvxam)! - Support queue configuration from file for docker container
+
 ## 3.14.2
 
 ### Patch Changes
