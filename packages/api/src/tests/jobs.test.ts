@@ -345,10 +345,14 @@ test("promote job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  if (type === "bullmq" || type === "groupmq") {
+  if (type === "bull" || type === "bullmq" || type === "groupmq") {
     // Pause the queue first to prevent worker from processing promoted job
     const queueInCtx = ctx.queues[0];
-    if (queueInCtx.type === "bullmq") {
+    if (queueInCtx.type === "bull") {
+      await queueInCtx.queue.pause();
+
+      await queueInCtx.queue.add({ test: "data" }, { delay: 5000 });
+    } else if (queueInCtx.type === "bullmq") {
       await queueInCtx.queue.pause();
 
       await queueInCtx.queue.add(
@@ -405,6 +409,23 @@ test("promote job", async () => {
         queueName: firstQueue.queue.name,
       });
       expect(waitingList.jobs.some((j) => j.id === job.id)).toBe(true);
+    } else if (type === "bull") {
+      const pausedList = await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "paused",
+        queueName: firstQueue.queue.name,
+      });
+      const waitingList = await caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: "waiting",
+        queueName: firstQueue.queue.name,
+      });
+      expect(
+        pausedList.jobs.some((j) => j.id === job.id) ||
+          waitingList.jobs.some((j) => j.id === job.id),
+      ).toBe(true);
     } else {
       const pausedList = await caller.job.list({
         limit: 10,
