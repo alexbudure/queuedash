@@ -1,5 +1,34 @@
 # @queuedash/ui
 
+## 3.15.0
+
+### Minor Changes
+
+- [#92](https://github.com/alexbudure/queuedash/pull/92) [`5aab10d`](https://github.com/alexbudure/queuedash/commit/5aab10da45650680268c00afb32b089cd8dddc4d) Thanks [@dvxam](https://github.com/dvxam)! - Support queue configuration from file for docker container
+
+### Patch Changes
+
+- Updated dependencies [[`5aab10d`](https://github.com/alexbudure/queuedash/commit/5aab10da45650680268c00afb32b089cd8dddc4d)]:
+  - @queuedash/api@3.15.0
+
+## 3.14.2
+
+### Patch Changes
+
+- [#88](https://github.com/alexbudure/queuedash/pull/88) [`30c75b3`](https://github.com/alexbudure/queuedash/commit/30c75b3788dba09da075d4aad82da753c9425991) Thanks [@schmkr](https://github.com/schmkr)! - Fix tls connections for BullMQ, Bull and Bee
+
+- Updated dependencies [[`30c75b3`](https://github.com/alexbudure/queuedash/commit/30c75b3788dba09da075d4aad82da753c9425991)]:
+  - @queuedash/api@3.14.2
+
+## 3.14.1
+
+### Patch Changes
+
+- [#84](https://github.com/alexbudure/queuedash/pull/84) [`9e5f8ff`](https://github.com/alexbudure/queuedash/commit/9e5f8ff8f319388346e1291c57791cb029bca2bb) Thanks [@larsvaehrens](https://github.com/larsvaehrens)! - Bump @trpc/server to 11.8.1 to fix [CVE-2025-68130](https://github.com/advisories/GHSA-43p4-m455-4f4j)
+
+- Updated dependencies [[`9e5f8ff`](https://github.com/alexbudure/queuedash/commit/9e5f8ff8f319388346e1291c57791cb029bca2bb)]:
+  - @queuedash/api@3.14.1
+
 ## 3.14.0
 
 ### Minor Changes
