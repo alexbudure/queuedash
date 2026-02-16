@@ -176,7 +176,8 @@ Then visit http://localhost:3000
 
 #### Environment Variables
 
-- `QUEUES_CONFIG_JSON` - **Required**. JSON string containing queue configuration
+- `QUEUES_CONFIG_JSON` - Optional if `QUEUES_CONFIG_FILE_PATH` is set. JSON string containing queue configuration.
+- `QUEUES_CONFIG_FILE_PATH` - Optional if `QUEUES_CONFIG_JSON` is set. Path to a JSON file containing queue configuration.
 
 Example configuration:
 ```json
@@ -189,6 +190,16 @@ Example configuration:
       "connectionUrl": "redis://localhost:6379"
     },
     {
+      "name": "clustered-reports",
+      "displayName": "Clustered Reports",
+      "type": "bullmq",
+      "clusterNodes": [
+        { "host": "redis-cluster-0", "port": 6379 },
+        { "host": "redis-cluster-1", "port": 6379 },
+        { "host": "redis-cluster-2", "port": 6379 }
+      ]
+    },
+    {
       "name": "email-queue",
       "displayName": "Email Queue",
       "type": "bull",
@@ -197,6 +208,8 @@ Example configuration:
   ]
 }
 ```
+
+For `bullmq` queues, provide either `connectionUrl` (single-node Redis) or `clusterNodes` (Redis Cluster). `clusterNodes` is not supported for `bull` or `bee`.
 
 Supported queue types: `bull`, `bullmq`, `bee`, `groupmq`
 
