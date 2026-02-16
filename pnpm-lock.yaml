@@ -275,6 +275,9 @@ importers:
       bullmq:
         specifier: ^5.61.0
         version: 5.61.0
+      ioredis:
+        specifier: ^5.8.1
+        version: 5.8.1
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
