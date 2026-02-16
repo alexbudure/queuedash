@@ -17,15 +17,16 @@ type QueueStatusTabsProps = {
   status: Status;
   queueName: string;
   queue?: RouterOutput["queue"]["byName"];
-  /** Job IDs for bulk operations */
-  jobIds?: string[];
+  totalJobs?: number;
+  selectedGroupId?: string | null;
 };
 export const QueueStatusTabs = ({
   showCleanAllButton,
   queueName,
   status,
   queue,
-  jobIds = [],
+  totalJobs = 0,
+  selectedGroupId = null,
 }: QueueStatusTabsProps) => {
   const { mutate: cleanQueue, status: cleanQueueStatus } =
     trpc.queue.clean.useMutation({
@@ -35,7 +36,7 @@ export const QueueStatusTabs = ({
     });
 
   const { mutate: bulkRetry, status: bulkRetryStatus } =
-    trpc.job.bulkRetry.useMutation({
+    trpc.job.bulkRetryByFilter.useMutation({
       onSuccess(data) {
         toast.success(
           `Retried ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${data.failed > 0 ? `, ${data.failed} failed` : ""}`,
@@ -149,26 +150,31 @@ export const QueueStatusTabs = ({
         {showCleanAllButton &&
         status === "failed" &&
         queue?.supports.retry &&
-        jobIds.length > 0 ? (
+        totalJobs > 0 ? (
           <Alert
-            title="Retry all failed jobs?"
-            description={`This will retry ${jobIds.length} failed job${jobIds.length !== 1 ? "s" : ""}. Jobs will be moved back to waiting state.`}
+            title={
+              selectedGroupId
+                ? "Retry all failed jobs in this group?"
+                : "Retry all failed jobs?"
+            }
+            description={`This will retry ${totalJobs} failed job${totalJobs !== 1 ? "s" : ""}. Jobs will be moved back to waiting state.`}
             action={
               <Button
                 variant="filled"
-                colorScheme="blue"
+                colorScheme="slate"
                 label="Yes, retry all"
                 onClick={() =>
                   bulkRetry({
                     queueName,
-                    jobIds,
+                    status: "failed",
+                    groupId: selectedGroupId ?? undefined,
                   })
                 }
               />
             }
           >
             <Button
-              colorScheme="blue"
+              colorScheme="slate"
               icon={<ReloadIcon />}
               label="Retry all"
               size="sm"

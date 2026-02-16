@@ -5,6 +5,7 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type GroupInfo,
   type SchedulerInfo,
 } from "./base.adapter";
 
@@ -19,6 +20,12 @@ type BullMQStatus =
   | "prioritized";
 
 type BullMQCleanableStatus = BullMQStatus;
+
+type BullMQProQueueLike = {
+  getGroups?: (start?: number, end?: number) => Promise<unknown[]>;
+  getGroupJobsCount?: (groupId: string) => Promise<number>;
+  getGroupJobCount?: (groupId: string) => Promise<number>;
+};
 
 export class BullMQAdapter extends QueueAdapter<
   BullMQStatus,
@@ -58,6 +65,7 @@ export class BullMQAdapter extends QueueAdapter<
   ) {
     super(displayName, jobNameFn);
     this.queue = queue;
+    this.supports.groups = this.hasRuntimeGroupSupport();
   }
 
   getName(): string {
@@ -197,15 +205,68 @@ export class BullMQAdapter extends QueueAdapter<
     end: number,
   ) {
     const metrics = await this.queue.getMetrics(type, start, end);
-    
+
     // BullMQ's getMetrics returns count as the number of data points,
     // but we need the sum of jobs (completed or failed). Calculate it by summing the data array.
-    const totalCount = metrics.data.reduce((sum: number, count: number) => sum + count, 0);
-    
+    const totalCount = metrics.data.reduce(
+      (sum: number, count: number) => sum + count,
+      0,
+    );
+
     return {
       ...metrics,
       count: totalCount,
     };
+  }
+
+  async getGroups(): Promise<GroupInfo[]> {
+    if (!this.supports.groups) {
+      return [];
+    }
+
+    const queueWithGroups = this.queue as unknown as BullMQProQueueLike;
+    if (!queueWithGroups.getGroups) {
+      return [];
+    }
+
+    const groups = await queueWithGroups.getGroups(0, 1000);
+    const getGroupCount =
+      queueWithGroups.getGroupJobsCount || queueWithGroups.getGroupJobCount;
+
+    const groupIds = groups
+      .map((group) => {
+        if (typeof group === "string") {
+          return group;
+        }
+        if (
+          group &&
+          typeof group === "object" &&
+          "id" in group &&
+          typeof (group as { id?: unknown }).id === "string"
+        ) {
+          return (group as { id: string }).id;
+        }
+        return null;
+      })
+      .filter((id): id is string => Boolean(id));
+
+    const uniqueGroupIds = Array.from(new Set(groupIds));
+
+    if (!getGroupCount) {
+      return uniqueGroupIds.map((id) => ({
+        id,
+        count: 0,
+        status: "active",
+      }));
+    }
+
+    return Promise.all(
+      uniqueGroupIds.map(async (id) => ({
+        id,
+        count: await getGroupCount.call(queueWithGroups, id),
+        status: "active" as const,
+      })),
+    );
   }
 
   private adaptJob(job: BullMQJob): AdaptedJob {
@@ -234,5 +295,14 @@ export class BullMQAdapter extends QueueAdapter<
       progress: typeof job.progress === "number" ? job.progress : undefined,
       attemptsMade: job.attemptsMade,
     };
+  }
+
+  private hasRuntimeGroupSupport(): boolean {
+    const queueWithGroups = this.queue as unknown as BullMQProQueueLike;
+    return (
+      typeof queueWithGroups.getGroups === "function" &&
+      (typeof queueWithGroups.getGroupJobsCount === "function" ||
+        typeof queueWithGroups.getGroupJobCount === "function")
+    );
   }
 }

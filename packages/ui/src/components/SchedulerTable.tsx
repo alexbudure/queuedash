@@ -76,19 +76,25 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
   }),
   columnHelper.accessor("pattern", {
     cell: (props) => {
+      const scheduler = props.cell.row.original;
+      const patternDescription = scheduler.pattern
+        ? cronstrue.toString(scheduler.pattern, {
+            verbose: true,
+          })
+        : scheduler.every
+          ? `Every ${scheduler.every}`
+          : "";
+      const patternLabel = `${patternDescription}${
+        scheduler.tz ? ` (${getTimezoneAbbreviation(scheduler.tz)})` : ""
+      }`;
+
       return (
-        <span className="grow basis-full truncate text-slate-900 dark:text-slate-200">
-          {props.cell.row.original.pattern
-            ? cronstrue.toString(props.cell.row.original.pattern, {
-                verbose: true,
-              })
-            : props.cell.row.original.every
-              ? `Every ${props.cell.row.original.every}`
-              : ""}{" "}
-          {props.cell.row.original.tz
-            ? `(${getTimezoneAbbreviation(props.cell.row.original.tz)})`
-            : ""}
-        </span>
+        <p
+          className="w-full min-w-0 truncate text-slate-900 dark:text-slate-200"
+          title={patternLabel}
+        >
+          {patternLabel}
+        </p>
       );
     },
     header: "Pattern",
@@ -107,8 +113,8 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
             `dd MMM yyyy HH:mm:ss zzz`,
           )}
         >
-          <div className="flex items-center space-x-1.5">
-            <p className="text-slate-900 dark:text-slate-200">
+          <div className="flex w-full min-w-0 items-center space-x-1.5">
+            <p className="truncate text-slate-900 dark:text-slate-200">
               In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
               <span className="text-sm text-slate-700 dark:text-slate-400">
                 ({props.cell.row.original.iterationCount} run
@@ -159,7 +165,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
 
   const handleRowClick = (
     e: React.MouseEvent<HTMLDivElement>,
-    rowIndex: number
+    rowIndex: number,
   ) => {
     if (e.shiftKey && lastClickedIndexRef.current !== null) {
       // Shift-click: select range
@@ -198,13 +204,13 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
           <div>
             {table.getHeaderGroups().map((headerGroup, headerIndex) => (
               <div
-                className="sticky top-0 grid grid-cols-[auto,350px,1fr,1fr] rounded-t-md border-b border-slate-200 bg-slate-100/50 p-2 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/50"
+                className="sticky top-0 grid grid-cols-[auto,350px,minmax(0,1fr),minmax(0,1fr)] rounded-t-md border-b border-slate-200 bg-slate-100/50 p-2 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/50"
                 key={headerGroup.id}
               >
                 {headerGroup.headers.map((header) => (
                   <div
                     key={header.id}
-                    className={`flex h-full items-center text-sm font-semibold text-slate-700 dark:text-slate-300  ${
+                    className={`flex h-full min-w-0 items-center text-sm font-semibold text-slate-700 dark:text-slate-300  ${
                       headerIndex !== 0 ? "pr-10" : "pr-3"
                     }`}
                   >
@@ -229,7 +235,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
                 {row.getVisibleCells().map((cell, cellIndex) => (
                   <div
                     key={cell.id}
-                    className={`flex h-full items-center ${
+                    className={`flex h-full min-w-0 items-center ${
                       cellIndex !== 0 ? "pr-10" : "pr-3"
                     }`}
                   >
@@ -245,7 +251,9 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
           <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
-            <p className="text-slate-900 dark:text-slate-100">{table.getSelectedRowModel().rows.length} selected</p>
+            <p className="text-slate-900 dark:text-slate-100">
+              {table.getSelectedRowModel().rows.length} selected
+            </p>
 
             <Button
               label="Delete"

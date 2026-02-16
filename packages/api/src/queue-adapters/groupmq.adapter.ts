@@ -218,14 +218,31 @@ export class GroupMQAdapter extends QueueAdapter<
 
       for (const status of allStatuses) {
         try {
-          const jobs = await this.queue.getJobsByStatus([status], 0, 1000);
-          for (const job of jobs) {
-            if (job.groupId) {
-              groupCounts.set(
-                job.groupId,
-                (groupCounts.get(job.groupId) || 0) + 1,
-              );
+          const batchSize = 1000;
+          let start = 0;
+
+          while (true) {
+            const end = start + batchSize - 1;
+            const jobs = await this.queue.getJobsByStatus([status], start, end);
+
+            if (jobs.length === 0) {
+              break;
             }
+
+            for (const job of jobs) {
+              if (job.groupId) {
+                groupCounts.set(
+                  job.groupId,
+                  (groupCounts.get(job.groupId) || 0) + 1,
+                );
+              }
+            }
+
+            if (jobs.length < batchSize) {
+              break;
+            }
+
+            start += batchSize;
           }
         } catch {
           // Ignore errors for individual status queries

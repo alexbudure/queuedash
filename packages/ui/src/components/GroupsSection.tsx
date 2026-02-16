@@ -13,15 +13,12 @@ type GroupsSectionProps = {
   queueName: string;
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
-  /** Job IDs currently visible (for bulk delete) */
-  visibleJobIds?: string[];
 };
 
 export const GroupsSection = ({
   queueName,
   selectedGroupId,
   onSelectGroup,
-  visibleJobIds = [],
 }: GroupsSectionProps) => {
   const { data: groups, isLoading } = trpc.queue.groups.useQuery(
     { queueName },
@@ -32,9 +29,9 @@ export const GroupsSection = ({
   );
 
   const { mutate: bulkRemove, isPending: isDeleting } =
-    trpc.job.bulkRemove.useMutation();
+    trpc.job.bulkRemoveByGroup.useMutation();
 
-  if (isLoading) {
+  if (isLoading && !selectedGroupId) {
     return (
       <div className="space-y-4">
         <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
@@ -49,11 +46,12 @@ export const GroupsSection = ({
     );
   }
 
-  if (!groups || groups.length === 0) {
+  if ((!groups || groups.length === 0) && !selectedGroupId) {
     return null;
   }
 
-  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const selectedGroup = groups?.find((g) => g.id === selectedGroupId);
+  const selectedCount = selectedGroup?.count;
 
   return (
     <div className="space-y-4">
@@ -67,7 +65,7 @@ export const GroupsSection = ({
       </div>
 
       {/* Selected group banner */}
-      {selectedGroupId && selectedGroup && (
+      {selectedGroupId && (
         <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 dark:border-purple-800/50 dark:bg-purple-950/30">
           <div className="flex items-center gap-3">
             <MagnifyingGlassIcon className="h-4 w-4 text-purple-600 dark:text-purple-400" />
@@ -75,22 +73,23 @@ export const GroupsSection = ({
               Filtering by group:{" "}
               <span className="font-mono">{selectedGroupId}</span>
             </span>
-            <span className="text-xs text-purple-600 dark:text-purple-400">
-              ({visibleJobIds.length} job{visibleJobIds.length !== 1 ? "s" : ""}{" "}
-              shown)
-            </span>
+            {selectedCount !== undefined ? (
+              <span className="text-xs text-purple-600 dark:text-purple-400">
+                ({selectedCount} job{selectedCount !== 1 ? "s" : ""} total)
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
-            {visibleJobIds.length > 0 && (
+            {selectedGroupId ? (
               <Alert
                 title="Delete all jobs in this group?"
-                description={`This action cannot be undone. This will permanently remove ${visibleJobIds.length} job${visibleJobIds.length !== 1 ? "s" : ""} from this group.`}
+                description={`This action cannot be undone. This will permanently remove all jobs from group "${selectedGroupId}".`}
                 action={
                   <Button
                     variant="filled"
                     colorScheme="red"
                     label="Yes, delete all"
-                    onClick={() => bulkRemove({ queueName, jobIds: visibleJobIds })}
+                    onClick={() => bulkRemove({ queueName, groupId: selectedGroupId })}
                   />
                 }
               >
@@ -102,7 +101,7 @@ export const GroupsSection = ({
                   isLoading={isDeleting}
                 />
               </Alert>
-            )}
+            ) : null}
             <button
               onClick={() => onSelectGroup(null)}
               className="flex items-center gap-1 rounded-md bg-purple-100 px-2.5 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-300 dark:hover:bg-purple-900"
@@ -115,37 +114,39 @@ export const GroupsSection = ({
       )}
 
       {/* Group cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        {groups.map((group) => (
-          <button
-            key={group.id}
-            onClick={() =>
-              onSelectGroup(selectedGroupId === group.id ? null : group.id)
-            }
-            className={`group flex flex-col items-start rounded-xl border p-3 text-left transition-all ${
-              selectedGroupId === group.id
-                ? "border-purple-500 bg-purple-50 ring-1 ring-purple-500 dark:border-purple-400 dark:bg-purple-950/30"
-                : "border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/50 dark:border-slate-700/50 dark:bg-slate-900/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-            }`}
-          >
-            <div className="mb-1 flex w-full items-center justify-between">
-              <span className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
-                {group.id}
+      {groups && groups.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+          {groups.map((group) => (
+            <button
+              key={group.id}
+              onClick={() =>
+                onSelectGroup(selectedGroupId === group.id ? null : group.id)
+              }
+              className={`group flex flex-col items-start rounded-xl border p-3 text-left transition-all ${
+                selectedGroupId === group.id
+                  ? "border-purple-500 bg-purple-50 ring-1 ring-purple-500 dark:border-purple-400 dark:bg-purple-950/30"
+                  : "border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/50 dark:border-slate-700/50 dark:bg-slate-900/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
+              }`}
+            >
+              <div className="mb-1 flex w-full items-center justify-between">
+                <span className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
+                  {group.id}
+                </span>
+                <MagnifyingGlassIcon
+                  className={`h-3.5 w-3.5 transition ${
+                    selectedGroupId === group.id
+                      ? "text-purple-500"
+                      : "text-slate-400 opacity-0 group-hover:opacity-100 dark:text-slate-500"
+                  }`}
+                />
+              </div>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {group.count} job{group.count !== 1 ? "s" : ""}
               </span>
-              <MagnifyingGlassIcon
-                className={`h-3.5 w-3.5 transition ${
-                  selectedGroupId === group.id
-                    ? "text-purple-500"
-                    : "text-slate-400 opacity-0 group-hover:opacity-100 dark:text-slate-500"
-                }`}
-              />
-            </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {group.count} job{group.count !== 1 ? "s" : ""}
-            </span>
-          </button>
-        ))}
-      </div>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 };

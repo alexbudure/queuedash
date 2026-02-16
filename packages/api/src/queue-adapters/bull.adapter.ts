@@ -172,6 +172,11 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         : this.getJobName(job.data, job.name);
 
     const jobWithRetry = job as Bull.Job & { retriedOn?: number };
+    const progressRaw =
+      typeof job.progress === "function"
+        ? job.progress()
+        : (job as Bull.Job & { progress?: unknown }).progress;
+    const progress = typeof progressRaw === "number" ? progressRaw : undefined;
 
     return {
       id: job.id as string,
@@ -187,7 +192,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         ? new Date(jobWithRetry.retriedOn)
         : null,
       returnValue: job.returnvalue,
-      progress: typeof job.progress() === "number" ? (job.progress() as number) : undefined,
+      progress,
       attemptsMade: job.attemptsMade,
     };
   }

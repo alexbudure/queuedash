@@ -148,6 +148,153 @@ test("bulk remove job", async () => {
   expect(list.totalCount).toBe(0);
 });
 
+test("bulk retry by filter retries all failed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    try {
+      await caller.job.bulkRetryByFilter({
+        queueName: firstQueue.queue.name,
+        status: "failed",
+      });
+      throw new Error("Should have thrown TRPCError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(TRPCError);
+      if (e instanceof TRPCError) {
+        expect(e.code).toBe("BAD_REQUEST");
+      }
+    }
+    return;
+  }
+
+  const failedJobs = await caller.job.list({
+    limit: 100,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
+
+  const result = await caller.job.bulkRetryByFilter({
+    queueName: firstQueue.queue.name,
+    status: "failed",
+  });
+
+  expect(result.total).toBe(failedJobs.totalCount);
+  expect(result.succeeded + result.failed).toBe(failedJobs.totalCount);
+});
+
+test("list jobs by group id paginates correctly", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "groupmq") {
+    return;
+  }
+
+  const groupId = "group-pagination-test";
+  const numOfJobsInGroup = 7;
+
+  for (let i = 0; i < numOfJobsInGroup; i++) {
+    await firstQueue.queue.add({
+      groupId,
+      data: { index: NUM_OF_COMPLETED_JOBS + 100 + i },
+      maxAttempts: 0,
+    });
+  }
+
+  await sleep(500);
+
+  const firstPage = await caller.job.list({
+    limit: 3,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+    groupId,
+  });
+
+  expect(firstPage.totalCount).toBe(numOfJobsInGroup);
+  expect(firstPage.jobs.length).toBe(3);
+  expect(firstPage.nextCursor).toBe(3);
+
+  const secondPage = await caller.job.list({
+    limit: 3,
+    cursor: firstPage.nextCursor || 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+    groupId,
+  });
+
+  expect(secondPage.totalCount).toBe(numOfJobsInGroup);
+  expect(secondPage.jobs.length).toBe(3);
+  expect(secondPage.nextCursor).toBe(6);
+
+  const thirdPage = await caller.job.list({
+    limit: 3,
+    cursor: secondPage.nextCursor || 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+    groupId,
+  });
+
+  expect(thirdPage.totalCount).toBe(numOfJobsInGroup);
+  expect(thirdPage.jobs.length).toBe(1);
+  expect(thirdPage.nextCursor).toBeUndefined();
+});
+
+test("bulk remove by group removes matching jobs across statuses", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "groupmq") {
+    return;
+  }
+
+  const groupId = "group-remove-test";
+
+  await firstQueue.queue.add({
+    groupId,
+    data: { index: 1 },
+    maxAttempts: 0,
+  });
+  await firstQueue.queue.add({
+    groupId,
+    data: { index: NUM_OF_COMPLETED_JOBS + 200 },
+    maxAttempts: 0,
+  });
+  await firstQueue.queue.add({
+    groupId,
+    data: { index: NUM_OF_COMPLETED_JOBS + 201 },
+    maxAttempts: 0,
+    delay: 5_000,
+  });
+
+  await sleep(500);
+
+  const removeResult = await caller.job.bulkRemoveByGroup({
+    queueName: firstQueue.queue.name,
+    groupId,
+  });
+
+  expect(removeResult.total).toBeGreaterThan(0);
+  expect(removeResult.succeeded + removeResult.failed).toBe(removeResult.total);
+
+  const statusesToCheck = ["completed", "failed", "active", "waiting", "delayed"] as const;
+
+  for (const status of statusesToCheck) {
+    const list = await caller.job.list({
+      limit: 50,
+      cursor: 0,
+      status,
+      queueName: firstQueue.queue.name,
+      groupId,
+    });
+
+    expect(list.totalCount).toBe(0);
+    expect(list.jobs.length).toBe(0);
+  }
+});
+
 test("rerun job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
