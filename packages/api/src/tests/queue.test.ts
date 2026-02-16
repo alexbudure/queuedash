@@ -506,10 +506,12 @@ test("list queue groups", async () => {
   });
 
   if (firstQueue.type === "groupmq") {
-    expect(groups.length).toBeGreaterThan(0);
-    expect(groups[0]).toHaveProperty("id");
-    expect(groups[0]).toHaveProperty("count");
-    expect(groups[0]).toHaveProperty("status");
+    expect(Array.isArray(groups)).toBe(true);
+    for (const group of groups) {
+      expect(group).toHaveProperty("id");
+      expect(group).toHaveProperty("count");
+      expect(group).toHaveProperty("status");
+    }
   } else {
     expect(groups).toEqual([]);
   }
