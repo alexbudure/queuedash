@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.16.0
+
+### Minor Changes
+
+- [#95](https://github.com/alexbudure/queuedash/pull/95) [`851c7ed`](https://github.com/alexbudure/queuedash/commit/851c7edc51809163af63f48713172569c6560826) Thanks [@alexbudure](https://github.com/alexbudure)! - Add Redis Cluster support for Docker BullMQ queues via `clusterNodes` and `ioredis.Cluster`.
+
 ## 3.15.0
 
 ### Minor Changes
