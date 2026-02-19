@@ -15,6 +15,7 @@ import { QueueActionMenu } from "../components/QueueActionMenu";
 import { useParams, useSearchParams } from "react-router";
 import { SchedulerTable } from "../components/SchedulerTable";
 import { MetricsSection } from "../components/MetricsSection";
+import { GroupsSection } from "../components/GroupsSection";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 
@@ -25,6 +26,7 @@ export const QueuePage = () => {
   const [searchParams] = useSearchParams();
 
   const [status, setStatus] = useState<Status>("completed");
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const {
     data,
     fetchNextPage,
@@ -37,6 +39,7 @@ export const QueuePage = () => {
       queueName,
       limit: JOBS_PER_PAGE,
       status,
+      groupId: selectedGroupId ?? undefined,
     },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
@@ -68,12 +71,23 @@ export const QueuePage = () => {
     },
   );
 
+  useEffect(() => {
+    setSelectedGroupId(null);
+  }, [queueName]);
+
+  useEffect(() => {
+    if (queueReq.data && !queueReq.data.supports.groups && selectedGroupId) {
+      setSelectedGroupId(null);
+    }
+  }, [queueReq.data, selectedGroupId]);
+
   const jobs =
     data?.pages
       .map((page) => {
         return page.jobs;
       })
       .flat() ?? [];
+  const totalJobs = data?.pages.at(-1)?.totalCount || 0;
 
   return (
     <Layout>
@@ -149,16 +163,41 @@ export const QueuePage = () => {
               <MetricsSection queueName={queueName} />
             ) : null}
 
+            {selectedGroupId && !queueReq.data?.supports.groups ? (
+              <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 dark:border-purple-800/50 dark:bg-purple-950/30">
+                <span className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                  Filtering by group:{" "}
+                  <span className="font-mono">{selectedGroupId}</span>
+                </span>
+                <button
+                  onClick={() => setSelectedGroupId(null)}
+                  className="rounded-md bg-purple-100 px-2.5 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-300 dark:hover:bg-purple-900"
+                >
+                  Clear filter
+                </button>
+              </div>
+            ) : null}
+
+            {queueReq.data?.supports.groups ? (
+              <GroupsSection
+                queueName={queueName}
+                selectedGroupId={selectedGroupId}
+                onSelectGroup={setSelectedGroupId}
+              />
+            ) : null}
+
             {queueReq.data?.supports.schedulers ? (
               <SchedulerTable queueName={queueName} />
             ) : null}
 
             <div className="space-y-4">
               <QueueStatusTabs
-                showCleanAllButton={jobs.length > 0}
+                showCleanAllButton={totalJobs > 0}
                 queueName={queueName}
                 status={status}
                 queue={queueReq.data}
+                totalJobs={totalJobs}
+                selectedGroupId={selectedGroupId}
               />
               <JobTable
                 onBottomInView={() => {
@@ -166,7 +205,7 @@ export const QueuePage = () => {
                   fetchNextPage();
                 }}
                 status={status}
-                totalJobs={data?.pages.at(-1)?.totalCount || 0}
+                totalJobs={totalJobs}
                 jobs={jobs.map((j) => ({ ...j, status }))}
                 isLoading={isLoading}
                 isFetchingNextPage={isFetchingNextPage}

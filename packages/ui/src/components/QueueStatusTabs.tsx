@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { clsx } from "clsx";
 import { Button } from "./Button";
-import { TrashIcon } from "@radix-ui/react-icons";
+import { TrashIcon, ReloadIcon } from "@radix-ui/react-icons";
 import type { RouterOutput, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
@@ -17,17 +17,33 @@ type QueueStatusTabsProps = {
   status: Status;
   queueName: string;
   queue?: RouterOutput["queue"]["byName"];
+  totalJobs?: number;
+  selectedGroupId?: string | null;
 };
 export const QueueStatusTabs = ({
   showCleanAllButton,
   queueName,
   status,
   queue,
+  totalJobs = 0,
+  selectedGroupId = null,
 }: QueueStatusTabsProps) => {
   const { mutate: cleanQueue, status: cleanQueueStatus } =
     trpc.queue.clean.useMutation({
       onSuccess() {
         toast.success(`All ${status} jobs have been removed`);
+      },
+    });
+
+  const { mutate: bulkRetry, status: bulkRetryStatus } =
+    trpc.job.bulkRetryByFilter.useMutation({
+      onSuccess(data) {
+        toast.success(
+          `Retried ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${data.failed > 0 ? `, ${data.failed} failed` : ""}`,
+        );
+      },
+      onError(error) {
+        toast.error(error.message || "Failed to retry jobs");
       },
     });
 
@@ -129,35 +145,75 @@ export const QueueStatusTabs = ({
           );
         })}
       </div>
-      {showCleanAllButton &&
-      status !== "waiting-children" &&
-      queue?.supports.clean ? (
-        <Alert
-          title="Are you absolutely sure?"
-          description={`This action cannot be undone. This will permanently remove all ${status} jobs from the queue.`}
-          action={
+      <div className="flex items-center gap-2">
+        {/* Retry All button - only for failed jobs */}
+        {showCleanAllButton &&
+        status === "failed" &&
+        queue?.supports.retry &&
+        totalJobs > 0 ? (
+          <Alert
+            title={
+              selectedGroupId
+                ? "Retry all failed jobs in this group?"
+                : "Retry all failed jobs?"
+            }
+            description={`This will retry ${totalJobs} failed job${totalJobs !== 1 ? "s" : ""}. Jobs will be moved back to waiting state.`}
+            action={
+              <Button
+                variant="filled"
+                colorScheme="slate"
+                label="Yes, retry all"
+                onClick={() =>
+                  bulkRetry({
+                    queueName,
+                    status: "failed",
+                    groupId: selectedGroupId ?? undefined,
+                  })
+                }
+              />
+            }
+          >
             <Button
-              variant="filled"
-              colorScheme="red"
-              label="Yes, remove jobs"
-              onClick={() =>
-                cleanQueue({
-                  queueName,
-                  status,
-                })
-              }
+              colorScheme="slate"
+              icon={<ReloadIcon />}
+              label="Retry all"
+              size="sm"
+              isLoading={bulkRetryStatus === "pending"}
             />
-          }
-        >
-          <Button
-            colorScheme="yellow"
-            icon={<TrashIcon />}
-            label="Clean all"
-            size="sm"
-            isLoading={cleanQueueStatus === "pending"}
-          />
-        </Alert>
-      ) : null}
+          </Alert>
+        ) : null}
+
+        {/* Clean All button */}
+        {showCleanAllButton &&
+        status !== "waiting-children" &&
+        queue?.supports.clean ? (
+          <Alert
+            title="Are you absolutely sure?"
+            description={`This action cannot be undone. This will permanently remove all ${status} jobs from the queue.`}
+            action={
+              <Button
+                variant="filled"
+                colorScheme="red"
+                label="Yes, remove jobs"
+                onClick={() =>
+                  cleanQueue({
+                    queueName,
+                    status,
+                  })
+                }
+              />
+            }
+          >
+            <Button
+              colorScheme="yellow"
+              icon={<TrashIcon />}
+              label="Clean all"
+              size="sm"
+              isLoading={cleanQueueStatus === "pending"}
+            />
+          </Alert>
+        ) : null}
+      </div>
     </div>
   );
 };

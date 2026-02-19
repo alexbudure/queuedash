@@ -478,15 +478,42 @@ test("get queue by name returns correct supports flags", async () => {
   expect(typeof queue.supports.promote).toBe("boolean");
   expect(typeof queue.supports.logs).toBe("boolean");
   expect(typeof queue.supports.schedulers).toBe("boolean");
+  expect(typeof queue.supports.groups).toBe("boolean");
 
   // Verify correct values for current adapter
   if (type === "bee") {
     expect(queue.supports.pause).toBe(false);
     expect(queue.supports.clean).toBe(false);
     expect(queue.supports.retry).toBe(false);
+    expect(queue.supports.groups).toBe(false);
   } else if (type === "bullmq") {
     expect(queue.supports.schedulers).toBe(true);
     expect(queue.supports.logs).toBe(true);
+    expect(queue.supports.groups).toBe(false);
+  } else if (type === "groupmq") {
+    expect(queue.supports.groups).toBe(true);
+  } else {
+    expect(queue.supports.groups).toBe(false);
+  }
+});
+
+test("list queue groups", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const groups = await caller.queue.groups({
+    queueName: firstQueue.queue.name,
+  });
+
+  if (firstQueue.type === "groupmq") {
+    expect(Array.isArray(groups)).toBe(true);
+    for (const group of groups) {
+      expect(group).toHaveProperty("id");
+      expect(group).toHaveProperty("count");
+      expect(group).toHaveProperty("status");
+    }
+  } else {
+    expect(groups).toEqual([]);
   }
 });
 

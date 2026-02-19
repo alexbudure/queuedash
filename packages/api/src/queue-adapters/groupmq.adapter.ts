@@ -5,6 +5,7 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type GroupInfo,
 } from "./base.adapter";
 
 type GroupMQStatus =
@@ -47,6 +48,7 @@ export class GroupMQAdapter extends QueueAdapter<
       "paused",
       "prioritized",
     ],
+    groups: true,
   };
 
   constructor(
@@ -179,6 +181,79 @@ export class GroupMQAdapter extends QueueAdapter<
       stacktrace: Array.isArray(job.stacktrace) ? job.stacktrace : [],
       retriedAt: null,
       returnValue: job.returnvalue,
+      groupId: job.groupId,
+      attemptsMade: job.attemptsMade,
     };
+  }
+
+  async getGroups(): Promise<GroupInfo[]> {
+    try {
+      // Use native getUniqueGroups() for better performance
+      const groupIds = await this.queue.getUniqueGroups();
+
+      // Get count for each group using native getGroupJobCount()
+      const groups = await Promise.all(
+        groupIds.map(async (id) => {
+          const count = await this.queue.getGroupJobCount(id);
+          return {
+            id,
+            count,
+            status: "active" as const, // GroupMQ doesn't have per-group status
+          };
+        }),
+      );
+
+      return groups;
+    } catch {
+      // Fallback to manual aggregation if native methods fail
+      const allStatuses: GroupMQStatus[] = [
+        "waiting",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+      ];
+
+      const groupCounts = new Map<string, number>();
+
+      for (const status of allStatuses) {
+        try {
+          const batchSize = 1000;
+          let start = 0;
+
+          while (true) {
+            const end = start + batchSize - 1;
+            const jobs = await this.queue.getJobsByStatus([status], start, end);
+
+            if (jobs.length === 0) {
+              break;
+            }
+
+            for (const job of jobs) {
+              if (job.groupId) {
+                groupCounts.set(
+                  job.groupId,
+                  (groupCounts.get(job.groupId) || 0) + 1,
+                );
+              }
+            }
+
+            if (jobs.length < batchSize) {
+              break;
+            }
+
+            start += batchSize;
+          }
+        } catch {
+          // Ignore errors for individual status queries
+        }
+      }
+
+      return Array.from(groupCounts.entries()).map(([id, count]) => ({
+        id,
+        count,
+        status: "active" as const,
+      }));
+    }
   }
 }

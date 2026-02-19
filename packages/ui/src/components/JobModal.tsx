@@ -42,9 +42,26 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 <Heading className="text-xl font-semibold text-slate-900 dark:text-slate-100">
                   {job.name}
                 </Heading>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  #{job.id}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-slate-500 dark:text-slate-400">
+                    #{job.id}
+                  </span>
+                  {job.groupId && (
+                    <span className="text-sm text-purple-600 dark:text-purple-400">
+                      Group: {job.groupId}
+                    </span>
+                  )}
+                  {job.attemptsMade !== undefined && job.attemptsMade > 0 && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                      Attempt {job.attemptsMade}
+                    </span>
+                  )}
+                  {job.progress !== undefined && job.progress > 0 && (
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/50 dark:text-blue-400">
+                      {job.progress}% complete
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center space-x-1">
                 <JobActionMenu
@@ -75,7 +92,16 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                   <p className="text-sm text-red-600 dark:text-red-400">
                     {job.failedReason}
                   </p>
-                  {/*TODO: Add stacktrace */}
+                  {job.stacktrace && job.stacktrace.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300">
+                        Show stacktrace
+                      </summary>
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-md bg-slate-100 p-3 text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+                        {job.stacktrace.join("\n")}
+                      </pre>
+                    </details>
+                  )}
                   <Button
                     label="Retry"
                     size="sm"

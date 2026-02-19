@@ -34,7 +34,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
       ],
     },
     retry: true,
-    promote: false,
+    promote: true,
     logs: false,
     schedulers: false,
     flows: false,
@@ -42,6 +42,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     empty: true,
     metrics: false,
     statuses: ["completed", "failed", "delayed", "active", "waiting", "paused"],
+    groups: false,
   };
 
   constructor(
@@ -171,6 +172,11 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         : this.getJobName(job.data, job.name);
 
     const jobWithRetry = job as Bull.Job & { retriedOn?: number };
+    const progressRaw =
+      typeof job.progress === "function"
+        ? job.progress()
+        : (job as Bull.Job & { progress?: unknown }).progress;
+    const progress = typeof progressRaw === "number" ? progressRaw : undefined;
 
     return {
       id: job.id as string,
@@ -186,6 +192,8 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         ? new Date(jobWithRetry.retriedOn)
         : null,
       returnValue: job.returnvalue,
+      progress,
+      attemptsMade: job.attemptsMade,
     };
   }
 }
