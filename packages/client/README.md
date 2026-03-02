@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://www.queuedash.com" target="_blank" rel="noopener">
-    <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social.png" alt="QueueDash">
+    <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social-v2.png" alt="QueueDash">
   </a>
 </p>
 

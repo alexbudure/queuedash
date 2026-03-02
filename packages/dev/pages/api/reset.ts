@@ -11,7 +11,7 @@ export default async function handler(
     if (item.type === "bull") {
       const client = await item.queue.client;
       const pipeline = client.pipeline();
-      const keys = await client.keys("bull*");
+      const keys = await client.keys(`bull:${item.queue.name}:*`);
       keys.forEach((key) => {
         pipeline.del(key);
       });
@@ -36,22 +36,24 @@ export default async function handler(
         }),
       );
 
-      const flowProducer = new FlowProducer({ connection: {} });
+      if (item.flows.length > 0) {
+        const flowProducer = new FlowProducer({ connection: {} });
 
-      for (const flow of item.flows) {
-        await flowProducer.add({
-          name: flow.name,
-          queueName: item.queue.name,
-          data: flow.data,
-          children: flow.children.map((child) => ({
-            name: child.name,
+        for (const flow of item.flows) {
+          await flowProducer.add({
+            name: flow.name,
             queueName: item.queue.name,
-            data: child.data,
-          })),
-        });
-      }
+            data: flow.data,
+            children: flow.children.map((child) => ({
+              name: child.name,
+              queueName: item.queue.name,
+              data: child.data,
+            })),
+          });
+        }
 
-      await flowProducer.close();
+        await flowProducer.close();
+      }
     } else if (item.type === "bee") {
       await item.queue.destroy();
       for (const jobData of item.jobs) {
@@ -69,7 +71,7 @@ export default async function handler(
       for (const jobData of item.jobs) {
         await item.queue.add({
           data: jobData.data,
-          groupId: Math.random().toString(),
+          groupId: jobData.groupId,
         });
       }
     }

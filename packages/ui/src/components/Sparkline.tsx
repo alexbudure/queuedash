@@ -25,7 +25,7 @@ export const Sparkline = ({
     <ResponsiveContainer width={width} height={height}>
       <AreaChart
         data={chartData}
-        margin={{ top: 2, right: 0, bottom: 0, left: 0 }}
+        margin={{ top: 2, right: 0, bottom: 1, left: 0 }}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
