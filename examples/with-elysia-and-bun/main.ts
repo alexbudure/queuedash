@@ -14,7 +14,7 @@ const app = new Elysia().use(
         },
       ],
     },
-  })
+  }),
 );
 
 await app.listen(3000);

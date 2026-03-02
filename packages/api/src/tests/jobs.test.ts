@@ -10,7 +10,6 @@ import {
 } from "./test.utils";
 import { TRPCError } from "@trpc/server";
 import { faker } from "@faker-js/faker";
-import { pause } from "bullmq/dist/esm/scripts";
 
 test("list completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
@@ -279,7 +278,13 @@ test("bulk remove by group removes matching jobs across statuses", async () => {
   expect(removeResult.total).toBeGreaterThan(0);
   expect(removeResult.succeeded + removeResult.failed).toBe(removeResult.total);
 
-  const statusesToCheck = ["completed", "failed", "active", "waiting", "delayed"] as const;
+  const statusesToCheck = [
+    "completed",
+    "failed",
+    "active",
+    "waiting",
+    "delayed",
+  ] as const;
 
   for (const status of statusesToCheck) {
     const list = await caller.job.list({
@@ -966,10 +971,10 @@ test("job list respects cursor offset correctly", async () => {
     });
 
     // Ensure we got different jobs
-    const firstIds = firstPage.jobs.map(j => j.id);
-    const secondIds = secondPage.jobs.map(j => j.id);
+    const firstIds = firstPage.jobs.map((j) => j.id);
+    const secondIds = secondPage.jobs.map((j) => j.id);
 
-    const hasOverlap = firstIds.some(id => secondIds.includes(id));
+    const hasOverlap = firstIds.some((id) => secondIds.includes(id));
     expect(hasOverlap).toBe(false);
   }
 });

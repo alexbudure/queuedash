@@ -56,7 +56,7 @@ app.use(
         },
       ],
     },
-  })
+  }),
 );
 
 app.listen(3000, () => {
@@ -70,6 +70,7 @@ app.listen(3000, () => {
 `pnpm install @queuedash/api @queuedash/ui`
 
 #### App Router
+
 ```typescript jsx
 // app/admin/queuedash/[[...slug]]/page.tsx
 "use client";
@@ -180,6 +181,7 @@ Then visit http://localhost:3000
 - `QUEUES_CONFIG_FILE_PATH` - Optional if `QUEUES_CONFIG_JSON` is set. Path to a JSON file containing queue configuration.
 
 Example configuration:
+
 ```json
 {
   "queues": [
@@ -212,7 +214,6 @@ Example configuration:
 For `bullmq` queues, provide either `connectionUrl` (single-node Redis) or `clusterNodes` (Redis Cluster). `clusterNodes` is not supported for `bull` or `bee`.
 
 Supported queue types: `bull`, `bullmq`, `bee`, `groupmq`
-
 
 See the [./examples](./examples) folder for more.
 

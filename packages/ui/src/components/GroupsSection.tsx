@@ -1,8 +1,5 @@
-import {
-  MagnifyingGlassIcon,
-  Cross2Icon,
-  TrashIcon,
-} from "@radix-ui/react-icons";
+import { Search, X, Trash2 } from "lucide-react";
+import { clsx } from "clsx";
 import { trpc } from "../utils/trpc";
 import { Skeleton } from "./Skeleton";
 import { REFETCH_INTERVAL } from "../utils/config";
@@ -33,13 +30,13 @@ export const GroupsSection = ({
 
   if (isLoading && !selectedGroupId) {
     return (
-      <div className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
           Groups
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
           {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-xl" />
+            <Skeleton key={i} className="h-9 rounded-lg" />
           ))}
         </div>
       </div>
@@ -54,32 +51,27 @@ export const GroupsSection = ({
   const selectedCount = selectedGroup?.count;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-          Groups
-        </h2>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Click to filter jobs
-        </span>
-      </div>
+    <div className="space-y-3">
+      <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+        Groups
+      </h2>
 
       {/* Selected group banner */}
       {selectedGroupId && (
-        <div className="flex items-center justify-between rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 dark:border-purple-800/50 dark:bg-purple-950/30">
-          <div className="flex items-center gap-3">
-            <MagnifyingGlassIcon className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-            <span className="text-sm font-medium text-purple-900 dark:text-purple-100">
+        <div className="flex items-center justify-between rounded-lg bg-purple-50/80 px-3 py-2 dark:bg-purple-950/30">
+          <div className="flex items-center gap-2">
+            <Search className="size-3.5 text-purple-600 dark:text-purple-400" />
+            <span className="text-xs font-medium text-purple-900 dark:text-purple-100">
               Filtering by group:{" "}
               <span className="font-mono">{selectedGroupId}</span>
             </span>
             {selectedCount !== undefined ? (
-              <span className="text-xs text-purple-600 dark:text-purple-400">
-                ({selectedCount} job{selectedCount !== 1 ? "s" : ""} total)
+              <span className="font-mono text-[10px] text-purple-600 dark:text-purple-400">
+                ({selectedCount} job{selectedCount !== 1 ? "s" : ""})
               </span>
             ) : null}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {selectedGroupId ? (
               <Alert
                 title="Delete all jobs in this group?"
@@ -89,13 +81,16 @@ export const GroupsSection = ({
                     variant="filled"
                     colorScheme="red"
                     label="Yes, delete all"
-                    onClick={() => bulkRemove({ queueName, groupId: selectedGroupId })}
+                    onClick={() =>
+                      bulkRemove({ queueName, groupId: selectedGroupId })
+                    }
                   />
                 }
               >
                 <Button
+                  as="span"
                   colorScheme="red"
-                  icon={<TrashIcon className="h-3 w-3" />}
+                  icon={<Trash2 className="size-3" />}
                   label={isDeleting ? "Deleting..." : "Delete all"}
                   size="sm"
                   isLoading={isDeleting}
@@ -104,10 +99,10 @@ export const GroupsSection = ({
             ) : null}
             <button
               onClick={() => onSelectGroup(null)}
-              className="flex items-center gap-1 rounded-md bg-purple-100 px-2.5 py-1.5 text-xs font-medium text-purple-700 transition hover:bg-purple-200 dark:bg-purple-900/50 dark:text-purple-300 dark:hover:bg-purple-900"
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 transition-colors hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900/50"
             >
-              <Cross2Icon className="h-3 w-3" />
-              Clear filter
+              <X className="size-3" />
+              Clear
             </button>
           </div>
         </div>
@@ -115,36 +110,29 @@ export const GroupsSection = ({
 
       {/* Group cards */}
       {groups && groups.length > 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-          {groups.map((group) => (
-            <button
-              key={group.id}
-              onClick={() =>
-                onSelectGroup(selectedGroupId === group.id ? null : group.id)
-              }
-              className={`group flex flex-col items-start rounded-xl border p-3 text-left transition-all ${
-                selectedGroupId === group.id
-                  ? "border-purple-500 bg-purple-50 ring-1 ring-purple-500 dark:border-purple-400 dark:bg-purple-950/30"
-                  : "border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/50 dark:border-slate-700/50 dark:bg-slate-900/50 dark:hover:border-purple-700 dark:hover:bg-purple-950/20"
-              }`}
-            >
-              <div className="mb-1 flex w-full items-center justify-between">
-                <span className="truncate font-mono text-sm font-medium text-slate-900 dark:text-slate-100">
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
+          {groups.map((group) => {
+            const isSelected = selectedGroupId === group.id;
+            return (
+              <button
+                key={group.id}
+                onClick={() => onSelectGroup(isSelected ? null : group.id)}
+                className={clsx(
+                  "flex items-center justify-between rounded-lg px-3 py-2 text-left transition-colors",
+                  isSelected
+                    ? "bg-purple-50/60 dark:bg-purple-950/30"
+                    : "hover:bg-gray-100/60 dark:hover:bg-slate-800/50",
+                )}
+              >
+                <span className="min-w-0 truncate font-mono text-sm text-gray-900 dark:text-white">
                   {group.id}
                 </span>
-                <MagnifyingGlassIcon
-                  className={`h-3.5 w-3.5 transition ${
-                    selectedGroupId === group.id
-                      ? "text-purple-500"
-                      : "text-slate-400 opacity-0 group-hover:opacity-100 dark:text-slate-500"
-                  }`}
-                />
-              </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                {group.count} job{group.count !== 1 ? "s" : ""}
-              </span>
-            </button>
-          ))}
+                <span className="ml-2 shrink-0 font-mono text-xs text-gray-400 dark:text-slate-500">
+                  {group.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>

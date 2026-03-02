@@ -1,29 +1,16 @@
 module.exports = {
   root: true,
-  parser: "@typescript-eslint/parser",
-  parserOptions: {
-    tsconfigRootDir: __dirname,
-    project: "./tsconfig.json",
+  env: {
+    node: true,
+    es2022: true,
   },
-  ignorePatterns: [
-    "**/node_modules",
-    "**/.cache",
-    "build",
-    ".next",
-    ".eslintrc.js",
-    "next.config.js",
-  ],
-  plugins: ["@typescript-eslint", "tailwindcss"],
-  extends: [
-    "next/core-web-vitals",
-    "eslint:recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:tailwindcss/recommended",
-    "prettier",
-  ],
+  parserOptions: {
+    ecmaVersion: "latest",
+    sourceType: "module",
+  },
+  ignorePatterns: ["**/node_modules", "**/.cache", "dist", ".eslintrc.js"],
+  extends: ["eslint:recommended", "prettier"],
   rules: {
-    "@typescript-eslint/consistent-type-imports": "warn",
-    "@typescript-eslint/no-unused-vars": "error",
-    "@typescript-eslint/no-explicit-any": "error",
+    "no-unused-vars": "error",
   },
 };

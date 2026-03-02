@@ -1,8 +1,9 @@
-import { SlashIcon } from "@radix-ui/react-icons";
+import { RotateCw } from "lucide-react";
 import type { ReactElement } from "react";
 import { clsx } from "clsx";
 
 type ButtonProps = {
+  as?: "button" | "span";
   variant?: "outline" | "filled";
   colorScheme?: "yellow" | "slate" | "red";
   size?: "sm" | "md" | "lg";
@@ -10,9 +11,12 @@ type ButtonProps = {
   label: string;
   isLoading?: boolean;
   disabled?: boolean;
+  className?: string;
+  type?: "button" | "submit" | "reset";
   onClick?: () => void;
 };
 export const Button = ({
+  as = "button",
   colorScheme = "slate",
   variant = "outline",
   size = "md",
@@ -21,57 +25,68 @@ export const Button = ({
   isLoading,
   onClick,
   disabled,
+  className,
+  type = "button",
 }: ButtonProps) => {
-  return (
-    <button
-      onClick={onClick}
-      disabled={isLoading || disabled}
-      className={clsx(
-        "flex items-center space-x-1 rounded-md border text-sm font-medium transition-colors duration-150",
-        {
-          "py-0.5": size === "sm",
-          "py-1": size === "md",
-          "py-1.5": size === "lg",
-        },
-        [
-          size === "sm" && icon ? "pl-1.5 pr-2.5" : "px-2.5",
-          size === "md" && icon ? "pl-2 pr-3" : "px-3",
-          size === "lg" && icon ? "pl-2.5 pr-4" : "px-4",
-        ],
-        {
-          "cursor-not-allowed opacity-50": isLoading || disabled,
-
-          // Yellow outline
-          "border-yellow-900 text-yellow-900 hover:bg-yellow-50 focus:bg-yellow-50 dark:border-yellow-400 dark:text-yellow-400 dark:hover:bg-yellow-950/30 dark:focus:bg-yellow-950/30":
-            colorScheme === "yellow" && variant === "outline",
-          // Slate outline
-          "border-slate-900 text-slate-900 hover:bg-slate-50 focus:bg-slate-50 dark:border-slate-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:focus:bg-slate-800":
-            colorScheme === "slate" && variant === "outline",
-          // Red outline
-          "border-red-900 text-red-900 hover:bg-red-50 focus:bg-red-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950/30 dark:focus:bg-red-950/30":
-            colorScheme === "red" && variant === "outline",
-
-          // Yellow filled
-          "border-yellow-800 bg-yellow-800 text-yellow-50 hover:border-yellow-900 hover:bg-yellow-900 focus:border-yellow-900 focus:bg-yellow-900 dark:border-yellow-600 dark:bg-yellow-600 dark:hover:border-yellow-500 dark:hover:bg-yellow-500 dark:focus:border-yellow-500 dark:focus:bg-yellow-500":
-            colorScheme === "yellow" && variant === "filled",
-          // Slate filled
-          "border-slate-800 bg-slate-800 text-slate-50 hover:border-slate-900 hover:bg-slate-900 focus:border-slate-900 focus:bg-slate-900 dark:border-slate-600 dark:bg-slate-600 dark:hover:border-slate-500 dark:hover:bg-slate-500 dark:focus:border-slate-500 dark:focus:bg-slate-500":
-            colorScheme === "slate" && variant === "filled",
-          // Red filled
-          "border-red-800 bg-red-800 text-red-50 hover:border-red-900 hover:bg-red-900 focus:border-red-900 focus:bg-red-900 dark:border-red-600 dark:bg-red-600 dark:hover:border-red-500 dark:hover:bg-red-500 dark:focus:border-red-500 dark:focus:bg-red-500":
-            colorScheme === "red" && variant === "filled",
-        }
-      )}
-    >
+  const content = (
+    <>
       {isLoading ? (
         <div className="flex w-4 justify-center">
-          <SlashIcon width={10} height={10} className="animate-spin" />
+          <RotateCw width={12} height={12} className="animate-spin" />
         </div>
       ) : icon ? (
         <div className="flex w-4 justify-center">{icon}</div>
       ) : null}
 
       <span>{label}</span>
+    </>
+  );
+
+  const classNames = clsx(
+    "group inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900",
+    {
+      "h-7 px-3 text-xs": size === "sm",
+      "h-8 px-3.5 text-xs": size === "md",
+      "h-9 px-4 text-sm": size === "lg",
+    },
+    {
+      "cursor-not-allowed opacity-50": isLoading || disabled,
+
+      // Yellow outline
+      "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 dark:border-amber-800/80 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:border-amber-700 dark:hover:bg-amber-950":
+        colorScheme === "yellow" && variant === "outline",
+      // Slate outline (pro-style secondary)
+      "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-800":
+        colorScheme === "slate" && variant === "outline",
+      // Red outline
+      "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 dark:border-red-800/80 dark:bg-red-950/40 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-950":
+        colorScheme === "red" && variant === "outline",
+
+      // Yellow filled
+      "border-amber-600 bg-amber-600 text-white hover:border-amber-700 hover:bg-amber-700 dark:border-amber-500 dark:bg-amber-500 dark:hover:border-amber-400 dark:hover:bg-amber-400":
+        colorScheme === "yellow" && variant === "filled",
+      // Slate filled (pro-style primary)
+      "border-gray-700 bg-gray-700 text-white hover:border-gray-800 hover:bg-gray-800 dark:border-slate-300 dark:bg-slate-300 dark:text-slate-900 dark:hover:border-slate-200 dark:hover:bg-slate-200":
+        colorScheme === "slate" && variant === "filled",
+      // Red filled
+      "border-red-600 bg-red-600 text-white hover:border-red-700 hover:bg-red-700 dark:border-red-500 dark:bg-red-500 dark:hover:border-red-400 dark:hover:bg-red-400":
+        colorScheme === "red" && variant === "filled",
+    },
+    className,
+  );
+
+  if (as === "span") {
+    return <span className={classNames}>{content}</span>;
+  }
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={isLoading || disabled}
+      className={classNames}
+    >
+      {content}
     </button>
   );
 };

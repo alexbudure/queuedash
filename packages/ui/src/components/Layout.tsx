@@ -1,123 +1,195 @@
-import type { FC, PropsWithChildren, ReactNode } from "react";
+import {
+  type FC,
+  type PropsWithChildren,
+  type ReactNode,
+  useState,
+} from "react";
+import { clsx } from "clsx";
 import { trpc } from "../utils/trpc";
 import { NavLink } from "react-router";
 import { Skeleton } from "./Skeleton";
-import {
-  GitHubLogoIcon,
-  DashboardIcon,
-  ShadowNoneIcon,
-} from "@radix-ui/react-icons";
+import { Github, Layers, Menu } from "lucide-react";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 import { ErrorCard } from "./ErrorCard";
+import { SidePanelDialog } from "./SidePanelDialog";
 
 type QueueNavLinkProps = {
   to: string;
   label: string;
-  icon?: ReactNode;
+  onClick?: () => void;
 };
-const QueueNavLink = ({ to, label, icon }: QueueNavLinkProps) => {
+const QueueNavLink = ({ to, label, onClick }: QueueNavLinkProps) => {
   return (
     <NavLink
       to={to}
+      onClick={onClick}
       className={({ isActive }) =>
-        `relative -ml-px backdrop-blur-50 flex w-full items-center space-x-2 rounded-md pl-4 py-1 transition duration-150 ease-in-out ${
-          isActive
-            ? "bg-slate-100/90 font-medium text-slate-900 dark:bg-slate-900 dark:text-brand-300"
-            : "text-slate-500 dark:text-slate-400 border-slate-100 hover:bg-slate-50 dark:hover:bg-slate-900 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:hover:border-slate-600 dark:hover:text-slate-100"
-        }`
+        clsx(
+          "flex w-full items-center rounded-md py-1.5 text-sm transition-all duration-150",
+          {
+            "font-semibold text-gray-900 dark:text-white": isActive,
+            "font-medium text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300":
+              !isActive,
+          },
+        )
       }
     >
-      {icon}
-      <span className="block truncate">{label}</span>
+      <span className="truncate">{label}</span>
     </NavLink>
   );
 };
 
-export const Layout: FC<PropsWithChildren> = ({ children }) => {
+const SidebarContent = ({
+  data,
+  isLoading,
+  isError,
+  onNavClick,
+  showHeader = true,
+}: {
+  data: { name: string; displayName: string }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+  onNavClick?: () => void;
+  showHeader?: boolean;
+}) => (
+  <div className="flex min-h-0 flex-1 flex-col">
+    {showHeader && (
+      <>
+        <div className="pb-4 pt-3">
+          <NavLink
+            to="../"
+            onClick={onNavClick}
+            className="flex items-center gap-2 text-gray-900 dark:text-white"
+          >
+            <Layers className="size-5" strokeWidth={2.5} />
+            <p className="text-base font-semibold tracking-tight">Queuedash</p>
+          </NavLink>
+        </div>
+
+        <div className="border-t border-gray-200/80 dark:border-slate-800" />
+      </>
+    )}
+
+    <div className="min-h-0 flex-1 overflow-y-auto py-4">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-600">
+        Queues
+      </div>
+      <div className="space-y-0.5">
+        {isLoading ? (
+          [...new Array(10)].map((_, i) => {
+            return <Skeleton className="h-8 w-full rounded-md" key={i} />;
+          })
+        ) : isError ? (
+          <ErrorCard message="Could not fetch queues" />
+        ) : (
+          data?.map((queue) => {
+            return (
+              <QueueNavLink
+                key={queue.name}
+                to={`../${queue.name}`}
+                label={queue.displayName}
+                onClick={onNavClick}
+              />
+            );
+          })
+        )}
+      </div>
+    </div>
+
+    <div className="shrink-0 border-t border-gray-200/80 pt-3 dark:border-slate-800">
+      <div className="flex w-full items-center justify-between">
+        <a
+          href="https://github.com/alexbudure/queuedash"
+          target="_blank"
+          rel="noreferrer"
+          className="flex size-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:text-gray-900 dark:text-slate-600 dark:hover:text-white"
+        >
+          <Github size={15} />
+        </a>
+
+        <ThemeSwitcher />
+      </div>
+    </div>
+  </div>
+);
+
+const MobileNav = ({
+  data,
+  isLoading,
+  isError,
+}: {
+  data: { name: string; displayName: string }[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-gray-100/60 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-900/90 xl:hidden">
+        <NavLink
+          to="../"
+          className="flex items-center gap-2.5 text-gray-900 dark:text-white"
+        >
+          <Layers className="size-5" strokeWidth={2.5} />
+          <p className="text-base font-semibold tracking-tight">Queuedash</p>
+        </NavLink>
+        <button
+          onClick={() => setOpen(true)}
+          className="flex size-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:text-gray-900 dark:text-slate-500 dark:hover:text-white"
+          aria-label="Open menu"
+        >
+          <Menu className="size-5" />
+        </button>
+      </div>
+
+      {open && (
+        <SidePanelDialog
+          title="Queuedash"
+          open={open}
+          onOpenChange={setOpen}
+          panelClassName="!max-w-[288px]"
+        >
+          <div className="flex h-full flex-col px-5 py-4">
+            <SidebarContent
+              data={data}
+              isLoading={isLoading}
+              isError={isError}
+              onNavClick={() => setOpen(false)}
+              showHeader={false}
+            />
+          </div>
+        </SidePanelDialog>
+      )}
+    </>
+  );
+};
+
+type LayoutProps = PropsWithChildren<{
+  top?: ReactNode;
+}>;
+
+export const Layout: FC<LayoutProps> = ({ children, top }) => {
   const { data, isLoading, isError } = trpc.queue.list.useQuery();
 
   return (
-    <div className="grid xl:grid-cols-[auto,1fr]">
-      <div className="hidden w-64 xl:block">
-        <div className="sticky top-0 isolate flex h-full max-h-screen min-h-screen flex-col justify-between overflow-hidden border-r border-brand-50 px-4 pb-4 pt-8 shadow-sm dark:border-slate-700 dark:bg-black">
-          <svg
-            viewBox="0 0 1108 632"
-            aria-hidden="true"
-            className="absolute left-[calc(50%-24rem)] top-10 -z-10 w-[69.25rem] max-w-none rotate-90 transform-gpu opacity-50 blur-3xl lg:top-[calc(50%-30rem)]"
-          >
-            <path
-              fill="url(#175c433f-44f6-4d59-93f0-c5c51ad5566d)"
-              fillOpacity=".2"
-              d="M235.233 402.609 57.541 321.573.83 631.05l234.404-228.441 320.018 145.945c-65.036-115.261-134.286-322.756 109.01-230.655C968.382 433.026 1031 651.247 1092.23 459.36c48.98-153.51-34.51-321.107-82.37-385.717L810.952 324.222 648.261.088 235.233 402.609Z"
-            />
-            <defs>
-              <linearGradient
-                id="175c433f-44f6-4d59-93f0-c5c51ad5566d"
-                x1="1220.59"
-                x2="-85.053"
-                y1="432.766"
-                y2="638.714"
-                gradientUnits="userSpaceOnUse"
-              >
-                <stop stopColor="#bbebff" />
-                <stop offset={1} stopColor="#ffffff" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div className="space-y-8">
-            <div className="flex items-center space-x-2 text-slate-900 dark:text-brand-50">
-              <ShadowNoneIcon width={28} height={28} />
-              <p className="text-lg font-semibold">QueueDash</p>
-            </div>
+    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+      <MobileNav data={data} isLoading={isLoading} isError={isError} />
 
-            <div className="w-full space-y-4">
-              <QueueNavLink
-                label="Overview"
-                icon={
-                  <DashboardIcon className="mb-0.5" height={16} width={16} />
-                }
-                to={`../`}
-              />
-              <div className="h-px w-full bg-slate-100 dark:bg-slate-700" />
-              <div className="w-full space-y-1">
-                {isLoading ? (
-                  [...new Array(10)].map((_, i) => {
-                    return <Skeleton className="h-8 w-full" key={i} />;
-                  })
-                ) : isError ? (
-                  <ErrorCard message="Could not fetch queues" />
-                ) : (
-                  data?.map((queue) => {
-                    return (
-                      <QueueNavLink
-                        key={queue.name}
-                        to={`../${queue.name}`}
-                        label={queue.displayName}
-                      />
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+      {/* Desktop sidebar */}
+      <aside className="hidden w-72 shrink-0 xl:sticky xl:top-0 xl:block xl:h-screen">
+        <div className="flex h-screen flex-col px-5 py-4">
+          <SidebarContent data={data} isLoading={isLoading} isError={isError} />
+        </div>
+      </aside>
 
-          <div className="flex w-full items-center justify-between">
-            <a
-              href="https://github.com/alexbudure/queuedash"
-              target="_blank"
-              rel="noreferrer"
-              className="flex size-7 items-center justify-center rounded-md bg-slate-100 text-slate-900 shadow-sm transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 dark:bg-slate-600 dark:text-slate-50 dark:hover:bg-slate-500"
-            >
-              <GitHubLogoIcon />
-            </a>
-
-            <ThemeSwitcher />
+      <div className="min-w-0 flex-1">
+        <div className="mx-auto max-w-[1700px] pt-14 xl:py-3 xl:pr-4">
+          {top ? <div className="mb-3 hidden px-1 xl:block">{top}</div> : null}
+          <div className="min-h-[calc(100vh-3.5rem)] bg-white p-4 dark:bg-slate-900 xl:min-h-[calc(100vh-3.25rem)] xl:rounded-2xl xl:border xl:border-gray-100/60 xl:p-6 xl:shadow-[0_1px_3px_0_rgb(0_0_0/0.04)] xl:dark:border-slate-800/40 xl:dark:shadow-none">
+            {children}
           </div>
         </div>
-      </div>
-
-      <div className="bg-white px-4 py-3 dark:bg-[#121212] lg:px-10 lg:py-8">
-        <div className="max-w-screen-xl">{children}</div>
       </div>
     </div>
   );

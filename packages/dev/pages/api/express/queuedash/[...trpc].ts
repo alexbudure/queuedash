@@ -5,7 +5,7 @@ import { queues } from "../../../../utils/fake-data";
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   const { trpc } = req.query;
   const endpoint = Array.isArray(trpc) ? trpc.join("/") : trpc || "";

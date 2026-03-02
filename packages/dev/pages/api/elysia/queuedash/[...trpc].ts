@@ -10,9 +10,7 @@ async function getElysiaApp() {
 
   try {
     const { Elysia } = await import("elysia");
-    const { fetchRequestHandler } = await import(
-      "@trpc/server/adapters/fetch"
-    );
+    const { fetchRequestHandler } = await import("@trpc/server/adapters/fetch");
     const { appRouter } = await import("@queuedash/api");
     const { queues } = await import("../../../../utils/fake-data");
 
@@ -25,7 +23,7 @@ async function getElysiaApp() {
           req: request,
           createContext: () => ({ queues }),
         });
-      }
+      },
     );
 
     return elysiaApp;
@@ -37,7 +35,7 @@ async function getElysiaApp() {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   try {
     const app = await getElysiaApp();

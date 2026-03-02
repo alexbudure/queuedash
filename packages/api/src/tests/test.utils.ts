@@ -51,7 +51,7 @@ export const initMultipleQueues = async (count: number = 2) => {
         ...instance.firstQueue,
         displayName: `${QUEUE_DISPLAY_NAME} ${i + 1}`,
       };
-    })
+    }),
   );
 
   return {
@@ -62,8 +62,8 @@ export const initMultipleQueues = async (count: number = 2) => {
 
 // Helper to expect TRPC error
 export const expectTRPCError = async (
-  fn: () => Promise<any>,
-  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR"
+  fn: () => Promise<unknown>,
+  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
 ) => {
   const { TRPCError } = await import("@trpc/server");
   try {
@@ -126,6 +126,11 @@ export const initRedisInstance = async () => {
         queue: new BullMQ.Queue(getFakeQueueName()),
         displayName: QUEUE_DISPLAY_NAME,
         type: "bullmq" as const,
+      } as {
+        queue: BullMQ.Queue;
+        displayName: string;
+        type: "bullmq";
+        worker?: BullMQ.Worker;
       };
 
       // Create and store Worker reference to keep it alive for metrics collection
@@ -153,7 +158,7 @@ export const initRedisInstance = async () => {
 
       // Store worker reference to prevent garbage collection
       // This ensures metrics continue to be recorded
-      (flightBookingsQueue as any).worker = worker;
+      flightBookingsQueue.worker = worker;
 
       await flightBookingsQueue.queue.addBulk(
         [...new Array(NUM_OF_JOBS)].map((_, index) => {
