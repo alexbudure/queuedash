@@ -179,9 +179,10 @@ export const queueRouter = router({
       z.object({
         queueName: z.string(),
         data: z.object({}).passthrough(),
+        opts: z.object({}).passthrough().optional(),
       }),
     )
-    .mutation(async ({ input: { queueName, data }, ctx }) => {
+    .mutation(async ({ input: { queueName, data, opts }, ctx }) => {
       const internalCtx = transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
@@ -189,7 +190,7 @@ export const queueRouter = router({
       });
 
       try {
-        await queueInCtx.adapter.addJob(data);
+        await queueInCtx.adapter.addJob(data, opts);
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",

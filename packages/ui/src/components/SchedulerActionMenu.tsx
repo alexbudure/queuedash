@@ -1,7 +1,7 @@
-import { ActionMenu } from "./ActionMenu";
+import { Button } from "./Button";
 import type { Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import { TrashIcon } from "@radix-ui/react-icons";
+import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
 
 type SchedulerActionMenuProps = {
@@ -14,29 +14,27 @@ export const SchedulerActionMenu = ({
   queueName,
   onRemove,
 }: SchedulerActionMenuProps) => {
-  const { mutate: remove, isSuccess: removeSuccess } =
-    trpc.scheduler.remove.useMutation();
+  const removeMutation = trpc.scheduler.remove.useMutation();
 
   useEffect(() => {
-    if (removeSuccess) {
+    if (removeMutation.isSuccess) {
       onRemove?.();
     }
-  }, [removeSuccess, onRemove]);
+  }, [removeMutation.isSuccess, onRemove]);
+
+  const input = {
+    queueName,
+    jobSchedulerId: scheduler.key,
+  };
 
   return (
-    <ActionMenu
-      actions={[
-        {
-          label: "Remove",
-          onSelect: () => {
-            remove({
-              queueName,
-              jobSchedulerId: scheduler.key,
-            });
-          },
-          icon: <TrashIcon />,
-        },
-      ]}
+    <Button
+      size="sm"
+      label="Remove"
+      colorScheme="red"
+      icon={<Trash2 className="size-3.5" />}
+      onClick={() => removeMutation.mutate(input)}
+      isLoading={removeMutation.isPending}
     />
   );
 };

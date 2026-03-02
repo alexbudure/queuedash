@@ -1,11 +1,9 @@
-import { Cross2Icon } from "@radix-ui/react-icons";
 import type { Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Dialog, DialogTrigger, Heading, Modal } from "react-aria-components";
-import { JSONEditor } from "./JSONEditor";
+import { SidePanelDialog } from "./SidePanelDialog";
 
 type JobModalProps = {
   queue: Queue;
@@ -41,22 +39,35 @@ export const AddJobModal = ({
     });
 
   const [value, setValue] = useState("{}");
-  const [templateValue, setTemplateValue] = useState(
+  const [optsValue, setOptsValue] = useState("{}");
+  const [schedulerName, setSchedulerName] = useState("manual-scheduler");
+  const [templateDataValue, setTemplateDataValue] = useState(
     JSON.stringify(
       {
-        name: "",
-        data: {},
-        opts: {},
+        message: "Scheduled from QueueDash",
       },
       null,
       2,
     ),
   );
-  const [optsValue, setOptsValue] = useState(
+  const [templateOptsValue, setTemplateOptsValue] = useState(
     JSON.stringify(
       {
-        pattern: "0 0 * * *",
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        attempts: 1,
+      },
+      null,
+      2,
+    ),
+  );
+  const [patternValue, setPatternValue] = useState("0 * * * *");
+  const [everyValue, setEveryValue] = useState("");
+  const [timezoneValue, setTimezoneValue] = useState(
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+  const [schedulerOptionsValue, setSchedulerOptionsValue] = useState(
+    JSON.stringify(
+      {
+        limit: undefined,
       },
       null,
       2,
@@ -66,91 +77,207 @@ export const AddJobModal = ({
   const isJob = variant === "job";
   const status = isJob ? addJobStatus : addSchedulerStatus;
 
+  const onAddJob = () => {
+    try {
+      const data = JSON.parse(value || "{}");
+      const opts = optsValue.trim() ? JSON.parse(optsValue) : {};
+
+      addJob({
+        queueName: queue.name,
+        data,
+        opts,
+      });
+    } catch {
+      toast.error("Invalid JSON");
+    }
+  };
+
+  const onAddScheduler = () => {
+    try {
+      const parsedData = JSON.parse(templateDataValue || "{}");
+      const parsedTemplateOpts = templateOptsValue.trim()
+        ? JSON.parse(templateOptsValue)
+        : {};
+      const parsedSchedulerOpts = schedulerOptionsValue.trim()
+        ? JSON.parse(schedulerOptionsValue)
+        : {};
+
+      const trimmedPattern = patternValue.trim();
+      const parsedEvery = everyValue.trim()
+        ? Number(everyValue.trim())
+        : undefined;
+      if (!trimmedPattern && !parsedEvery) {
+        toast.error("Provide either a cron pattern or interval");
+        return;
+      }
+
+      if (
+        parsedEvery !== undefined &&
+        (!Number.isFinite(parsedEvery) || parsedEvery <= 0)
+      ) {
+        toast.error("Interval must be a positive number");
+        return;
+      }
+
+      addJobScheduler({
+        queueName: queue.name,
+        template: {
+          name: schedulerName.trim() || undefined,
+          data: parsedData,
+          opts: parsedTemplateOpts,
+        },
+        opts: {
+          ...parsedSchedulerOpts,
+          pattern: trimmedPattern || undefined,
+          every: parsedEvery,
+          tz: timezoneValue.trim() || undefined,
+        },
+      });
+    } catch {
+      toast.error("Invalid JSON");
+    }
+  };
+
   return (
-    <DialogTrigger
-      isOpen={true}
+    <SidePanelDialog
+      title={`Add ${isJob ? "job" : "scheduler"}`}
+      subtitle={queue.displayName}
+      open={true}
       onOpenChange={(isOpen) => {
         if (!isOpen) {
           onDismiss();
         }
       }}
+      panelClassName="max-w-[720px]"
     >
-      <Modal isDismissable className="fixed inset-0 bg-black/20 dark:bg-black/40">
-        <Dialog className="fixed left-1/2 top-1/2 max-h-[85vh] w-full max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-scroll rounded-lg bg-white p-4 shadow-xl dark:bg-slate-900">
-          {({ close }) => (
+      <div className="flex h-full flex-col">
+        <div className="space-y-5 p-6">
+          {isJob ? (
             <>
-              <button
-                className="absolute right-2 top-2 flex size-7 items-center justify-center rounded-full text-slate-500 transition duration-150 ease-in-out hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-                aria-label="Close"
-                onClick={() => {
-                  close();
-                  onDismiss();
-                }}
-              >
-                <Cross2Icon />
-              </button>
-
-              <div className="flex items-center space-x-4">
-                <Heading className="mb-1 text-xl font-semibold text-slate-900 dark:text-slate-100">
-                  Add {isJob ? "job" : "scheduler"} to{" "}
-                  {queue.displayName.toLocaleLowerCase()}
-                </Heading>
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Data (JSON)
+                </label>
+                <textarea
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  rows={10}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                />
               </div>
 
-              {isJob ? (
-                <JSONEditor value={value} onChange={setValue} />
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
-                      Template
-                    </label>
-                    <JSONEditor
-                      value={templateValue}
-                      onChange={setTemplateValue}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">
-                      Options
-                    </label>
-                    <JSONEditor value={optsValue} onChange={setOptsValue} />
-                  </div>
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Options (JSON)
+                </label>
+                <textarea
+                  value={optsValue}
+                  onChange={(e) => setOptsValue(e.target.value)}
+                  rows={8}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Scheduler name
+                </label>
+                <input
+                  value={schedulerName}
+                  onChange={(e) => setSchedulerName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                  placeholder="manual-scheduler"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                    Cron pattern
+                  </label>
+                  <input
+                    value={patternValue}
+                    onChange={(e) => setPatternValue(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                    placeholder="0 * * * *"
+                  />
                 </div>
-              )}
+
+                <div>
+                  <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                    Interval (ms)
+                  </label>
+                  <input
+                    value={everyValue}
+                    onChange={(e) => setEveryValue(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                    placeholder="60000"
+                  />
+                </div>
+              </div>
 
               <div>
-                <Button
-                  label={isJob ? "Add job" : "Add scheduler"}
-                  variant="filled"
-                  disabled={status === "pending"}
-                  onClick={() => {
-                    try {
-                      if (isJob) {
-                        const data = JSON.parse(value);
-                        addJob({
-                          queueName: queue.name,
-                          data,
-                        });
-                      } else {
-                        const template = JSON.parse(templateValue);
-                        const opts = JSON.parse(optsValue);
-                        addJobScheduler({
-                          queueName: queue.name,
-                          template,
-                          opts,
-                        });
-                      }
-                    } catch {
-                      toast.error("Invalid JSON");
-                    }
-                  }}
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Timezone
+                </label>
+                <input
+                  value={timezoneValue}
+                  onChange={(e) => setTimezoneValue(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Template data (JSON)
+                </label>
+                <textarea
+                  value={templateDataValue}
+                  onChange={(e) => setTemplateDataValue(e.target.value)}
+                  rows={8}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Template opts (JSON)
+                </label>
+                <textarea
+                  value={templateOptsValue}
+                  onChange={(e) => setTemplateOptsValue(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  Scheduler opts (JSON)
+                </label>
+                <textarea
+                  value={schedulerOptionsValue}
+                  onChange={(e) => setSchedulerOptionsValue(e.target.value)}
+                  rows={6}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 font-mono text-xs text-gray-900 outline-none transition-colors focus:border-gray-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:focus:border-slate-500"
                 />
               </div>
             </>
           )}
-        </Dialog>
-      </Modal>
-    </DialogTrigger>
+        </div>
+
+        <div className="mt-auto flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4 dark:border-slate-800">
+          <Button label="Cancel" onClick={onDismiss} />
+          <Button
+            label={isJob ? "Add job" : "Add scheduler"}
+            variant="filled"
+            disabled={status === "pending"}
+            onClick={isJob ? onAddJob : onAddScheduler}
+          />
+        </div>
+      </div>
+    </SidePanelDialog>
   );
 };

@@ -374,7 +374,10 @@ export const jobRouter = router({
       }
 
       try {
-        const allFailedJobs = await getAllJobsForStatus(queueInCtx.adapter, status);
+        const allFailedJobs = await getAllJobsForStatus(
+          queueInCtx.adapter,
+          status,
+        );
         const jobsToRetry = groupId
           ? allFailedJobs.filter((job) => job.groupId === groupId)
           : allFailedJobs;
@@ -386,7 +389,9 @@ export const jobRouter = router({
           }),
         );
 
-        const succeeded = results.filter((r) => r.status === "fulfilled").length;
+        const succeeded = results.filter(
+          (r) => r.status === "fulfilled",
+        ).length;
         const failed = results.filter((r) => r.status === "rejected").length;
 
         return { total: jobsToRetry.length, succeeded, failed };
@@ -436,7 +441,9 @@ export const jobRouter = router({
           }),
         );
 
-        const succeeded = results.filter((r) => r.status === "fulfilled").length;
+        const succeeded = results.filter(
+          (r) => r.status === "fulfilled",
+        ).length;
         const failed = results.filter((r) => r.status === "rejected").length;
 
         return { total: jobIds.length, succeeded, failed };
@@ -505,22 +512,44 @@ export const jobRouter = router({
         groupId: z.string().optional(),
       }),
     )
-    .query(async ({ input: { queueName, status, limit, cursor, groupId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
-      const queueInCtx = findQueueInCtxOrFail({
-        queues: internalCtx.queues,
-        queueName,
-      });
+    .query(
+      async ({ input: { queueName, status, limit, cursor, groupId }, ctx }) => {
+        const internalCtx = transformContext(ctx);
+        const queueInCtx = findQueueInCtxOrFail({
+          queues: internalCtx.queues,
+          queueName,
+        });
 
-      try {
-        if (groupId) {
-          const allJobsInStatus = await getAllJobsForStatus(queueInCtx.adapter, status);
-          const filteredJobs = allJobsInStatus.filter(
-            (job) => job.groupId === groupId,
+        try {
+          if (groupId) {
+            const allJobsInStatus = await getAllJobsForStatus(
+              queueInCtx.adapter,
+              status,
+            );
+            const filteredJobs = allJobsInStatus.filter(
+              (job) => job.groupId === groupId,
+            );
+
+            const jobs = filteredJobs.slice(cursor, cursor + limit);
+            const totalCount = filteredJobs.length;
+            const hasNextPage = cursor + limit < totalCount;
+
+            return {
+              totalCount,
+              numOfPages: Math.ceil(totalCount / limit),
+              nextCursor: hasNextPage ? cursor + limit : undefined,
+              jobs,
+            };
+          }
+
+          const jobs = await queueInCtx.adapter.getJobs(
+            status,
+            cursor,
+            cursor + limit - 1,
           );
+          const counts = await queueInCtx.adapter.getJobCounts();
+          const totalCount = counts[status] || 0;
 
-          const jobs = filteredJobs.slice(cursor, cursor + limit);
-          const totalCount = filteredJobs.length;
           const hasNextPage = cursor + limit < totalCount;
 
           return {
@@ -529,29 +558,12 @@ export const jobRouter = router({
             nextCursor: hasNextPage ? cursor + limit : undefined,
             jobs,
           };
+        } catch (e) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: e instanceof Error ? e.message : undefined,
+          });
         }
-
-        const jobs = await queueInCtx.adapter.getJobs(
-          status,
-          cursor,
-          cursor + limit - 1,
-        );
-        const counts = await queueInCtx.adapter.getJobCounts();
-        const totalCount = counts[status] || 0;
-
-        const hasNextPage = cursor + limit < totalCount;
-
-        return {
-          totalCount,
-          numOfPages: Math.ceil(totalCount / limit),
-          nextCursor: hasNextPage ? cursor + limit : undefined,
-          jobs,
-        };
-      } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
-        });
-      }
-    }),
+      },
+    ),
 });

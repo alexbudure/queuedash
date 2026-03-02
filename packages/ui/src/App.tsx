@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { trpc } from "./utils/trpc";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { QueuePage } from "./pages/QueuePage";
-import type { UserPreferences } from "./components/ThemeSwitcher";
+import {
+  applyThemePreference,
+  getStoredUserPreferences,
+} from "./components/ThemeSwitcher";
 import { HomePage } from "./pages/HomePage";
 import { Toaster } from "sonner";
 
@@ -33,29 +36,31 @@ export const App = ({ apiUrl, basename, headers }: QueueDashPagesProps) => {
   );
 
   useEffect(() => {
-    const userPreferences: UserPreferences | null = JSON.parse(
-      localStorage.getItem("user-preferences") || "null",
-    );
+    applyThemePreference(getStoredUserPreferences()?.theme ?? "system");
 
-    if (userPreferences) {
-      if (
-        userPreferences.theme === "dark" ||
-        (userPreferences.theme === "system" &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches)
-      ) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemThemeChange = () => {
+      const preferences = getStoredUserPreferences();
+      if (!preferences || preferences.theme === "system") {
+        applyThemePreference("system");
       }
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
     } else {
-      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      mediaQuery.addListener(handleSystemThemeChange);
     }
 
     setReady(true);
+
+    return () => {
+      if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.removeEventListener("change", handleSystemThemeChange);
+      } else {
+        mediaQuery.removeListener(handleSystemThemeChange);
+      }
+    };
   }, []);
 
   if (!ready) {

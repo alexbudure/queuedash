@@ -16,7 +16,7 @@ function getHonoApp() {
       endpoint: "/api/hono/queuedash",
       router: appRouter,
       createContext: () => ({ queues }),
-    })
+    }),
   );
 
   return honoApp;
@@ -24,7 +24,7 @@ function getHonoApp() {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   const app = getHonoApp();
 

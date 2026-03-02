@@ -3,7 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node -r dotenv/config main.mjs"
+    "start": "node -r dotenv/config main.mjs",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint main.mjs",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint main.mjs --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "main": "main.mjs",
   "files": [

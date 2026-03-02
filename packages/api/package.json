@@ -10,7 +10,10 @@
     "test:bullmq": "QUEUE_TYPE=bullmq vitest run",
     "test:bee": "QUEUE_TYPE=bee vitest run",
     "test:groupmq": "QUEUE_TYPE=groupmq vitest run",
-    "lint": "eslint ./ --fix"
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ./",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint ./ --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",

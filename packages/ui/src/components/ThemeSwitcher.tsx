@@ -1,5 +1,5 @@
-import { DesktopIcon, MoonIcon, SunIcon } from "@radix-ui/react-icons";
-import { useState } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
 import { ToggleButtonGroup, ToggleButton } from "react-aria-components";
 
 export function useLocalStorage<T extends Record<string, unknown>>(
@@ -56,6 +56,46 @@ export type UserPreferences = {
   theme: "light" | "dark" | "system";
 };
 
+const THEME_MEDIA_QUERY = "(prefers-color-scheme: dark)";
+
+export const getStoredUserPreferences = (): UserPreferences | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem("user-preferences");
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      (parsed.theme === "light" ||
+        parsed.theme === "dark" ||
+        parsed.theme === "system")
+    ) {
+      return parsed as UserPreferences;
+    }
+  } catch (error) {
+    console.log(error);
+  }
+
+  return null;
+};
+
+export const applyThemePreference = (theme: UserPreferences["theme"]) => {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+
+  const shouldUseDark =
+    theme === "dark" ||
+    (theme === "system" && window.matchMedia(THEME_MEDIA_QUERY).matches);
+
+  document.documentElement.classList.toggle("dark", shouldUseDark);
+};
+
 export const ThemeSwitcher = () => {
   const [preferences, setPreferences] = useLocalStorage<UserPreferences>(
     "user-preferences",
@@ -64,45 +104,65 @@ export const ThemeSwitcher = () => {
     },
   );
 
+  useEffect(() => {
+    if (preferences.theme !== "system" || typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(THEME_MEDIA_QUERY);
+    const handleMediaChange = () => applyThemePreference("system");
+
+    handleMediaChange();
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleMediaChange);
+      return () => mediaQuery.removeEventListener("change", handleMediaChange);
+    }
+
+    mediaQuery.addListener(handleMediaChange);
+    return () => mediaQuery.removeListener(handleMediaChange);
+  }, [preferences.theme]);
+
   return (
     <ToggleButtonGroup
-      className="flex h-7 space-x-0.5 rounded-md bg-slate-100 p-0.5 dark:bg-slate-700"
+      className="flex gap-0.5 rounded-lg bg-gray-100/80 p-1 dark:bg-slate-800/60"
       defaultSelectedKeys={["system"]}
       aria-label="Theme"
       selectedKeys={[preferences.theme]}
       onSelectionChange={(value) => {
-        if (value.has("system")) {
-          setPreferences({ theme: "system" });
-        } else if (value.has("light")) {
-          document.documentElement.classList.remove("dark");
-          setPreferences({ theme: "light" });
-        } else if (value.has("dark")) {
-          document.documentElement.classList.add("dark");
-          setPreferences({ theme: "dark" });
-        }
+        const nextTheme = value.has("system")
+          ? "system"
+          : value.has("light")
+            ? "light"
+            : value.has("dark")
+              ? "dark"
+              : preferences.theme;
+
+        applyThemePreference(nextTheme);
+        setPreferences({ theme: nextTheme });
       }}
     >
       {[
         {
           value: "system",
-          icon: () => <DesktopIcon />,
+          icon: () => <Monitor className="size-3" />,
           ariaLabel: "System theme",
         },
         {
           value: "light",
-          icon: () => <SunIcon />,
+          icon: () => <Sun className="size-3" />,
           ariaLabel: "Light theme",
         },
         {
           value: "dark",
-          icon: () => <MoonIcon />,
+          icon: () => <Moon className="size-3" />,
           ariaLabel: "Dark theme",
         },
       ].map((item) => {
         return (
           <ToggleButton
             key={item.value}
-            className="flex aspect-square h-full items-center justify-center rounded-md text-slate-900 transition duration-150 ease-in-out hover:bg-slate-200 active:bg-slate-300 data-[selected=true]:bg-slate-200 data-[selected=true]:shadow-sm dark:text-slate-50 dark:hover:bg-slate-500 dark:data-[selected=true]:bg-slate-500"
+            className="flex size-6 items-center justify-center rounded-md text-gray-400 transition-all duration-150 hover:text-gray-600 data-[selected=true]:bg-white data-[selected=true]:text-gray-900 data-[selected=true]:shadow-sm dark:text-slate-500 dark:hover:text-slate-400 dark:data-[selected=true]:bg-slate-700 dark:data-[selected=true]:text-slate-200 dark:data-[selected=true]:shadow-none"
             id={item.value}
             aria-label={item.ariaLabel}
           >

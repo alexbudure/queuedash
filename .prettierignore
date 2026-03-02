@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+.turbo
+.pnpm-store
+coverage
+*.tsbuildinfo
+pnpm-lock.yaml
+bun.lockb

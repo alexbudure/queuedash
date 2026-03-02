@@ -1,12 +1,7 @@
 import { ActionMenu } from "./ActionMenu";
 import type { Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import {
-  PauseIcon,
-  PlayIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@radix-ui/react-icons";
+import { Pause, Play, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { AddJobModal } from "./AddJobModal";
 
@@ -37,7 +32,8 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
                 pause(input);
               }
             },
-            icon: queue.paused ? <PlayIcon /> : <PauseIcon />,
+            icon: queue.paused ? <Play size={15} /> : <Pause size={15} />,
+            tone: "warning" as const,
           },
         ]
       : []),
@@ -47,7 +43,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
       onSelect: () => {
         setShowAddJobModal(true);
       },
-      icon: <PlusIcon />,
+      icon: <Plus size={15} />,
     },
     // Add scheduler - only for queues that support it
     ...(queue.supports.schedulers
@@ -57,7 +53,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             onSelect: () => {
               setShowAddSchedulerModal(true);
             },
-            icon: <PlusIcon />,
+            icon: <Plus size={15} />,
           },
         ]
       : []),
@@ -69,7 +65,8 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             onSelect: () => {
               empty(input);
             },
-            icon: <TrashIcon />,
+            icon: <Trash2 size={15} />,
+            tone: "destructive" as const,
           },
         ]
       : []),

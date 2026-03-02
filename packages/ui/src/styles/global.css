@@ -1,15 +1,82 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=Roboto+Mono:wght@100..700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white;
+  }
+}
+
 .data-json-renderer * {
-    font-family: monospace;
+  font-family: monospace;
 }
 
 .data-json-renderer > ul {
-    padding: 4px 16px 12px 16px !important;
-    overflow-y: scroll;
-    border-radius: 8px;
-    margin: 0 !important;
-    border: 1px solid #e2e8f0 !important;
+  padding: 8px 16px 12px 16px !important;
+  border-radius: 8px;
+  margin: 0 !important;
+}
+
+.side-panel-overlay {
+  background: rgb(0 0 0 / 8%);
+  backdrop-filter: blur(2px);
+}
+
+.dark .side-panel-overlay {
+  background: rgb(0 0 0 / 42%);
+}
+
+.side-panel-overlay[data-entering] {
+  animation: overlayShow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.side-panel-overlay[data-exiting] {
+  animation: overlayHide 140ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.side-panel[data-entering] {
+  animation: sidePanelIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.side-panel[data-exiting] {
+  animation: sidePanelOut 180ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+@keyframes overlayShow {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlayHide {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sidePanelIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidePanelOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }

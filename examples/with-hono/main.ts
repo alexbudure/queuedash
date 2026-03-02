@@ -18,7 +18,7 @@ app.route(
         },
       ],
     },
-  })
+  }),
 );
 
 const port = 3000;

@@ -7,7 +7,10 @@
   ],
   "scripts": {
     "build": "tsc && vite build",
-    "lint": "eslint ./ --fix"
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint ./",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint ./ --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "react": "^19.2.0",

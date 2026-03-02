@@ -1,5 +1,5 @@
 import { createTRPCReact } from "@trpc/react-query";
-import type { AppRouter } from "@queuedash/api";
+import type { AppRouter } from "@queuedash/api/dist/src/routers/_app";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 
 export type RouterOutput = inferRouterOutputs<AppRouter>;

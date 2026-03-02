@@ -25,7 +25,7 @@ async function getFastifyInstance() {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
 ) {
   const fastify = await getFastifyInstance();
 

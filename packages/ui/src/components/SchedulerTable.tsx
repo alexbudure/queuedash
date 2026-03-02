@@ -5,7 +5,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { TrashIcon } from "@radix-ui/react-icons";
+import { Trash2 } from "lucide-react";
 import type { Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { TableRow } from "./TableRow";
@@ -66,8 +66,8 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
   }),
   columnHelper.accessor("name", {
     cell: (props) => (
-      <div className="flex w-full items-center space-x-2">
-        <span className="max-w-fit grow basis-full truncate text-slate-900 dark:text-slate-200">
+      <div className="flex min-w-0 items-center py-1">
+        <span className="truncate font-mono text-sm text-gray-900 dark:text-white">
           {props.cell.row.original.name}
         </span>
       </div>
@@ -90,7 +90,7 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
 
       return (
         <p
-          className="w-full min-w-0 truncate text-slate-900 dark:text-slate-200"
+          className="min-w-0 truncate py-1 text-sm text-gray-500 dark:text-slate-400"
           title={patternLabel}
         >
           {patternLabel}
@@ -103,25 +103,28 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
     cell: (props) => {
       if (!props.cell.row.original.next) {
         return (
-          <p className="text-slate-900 dark:text-slate-200">No next run</p>
+          <p className="py-1 text-sm text-gray-500 dark:text-slate-400">
+            No next run
+          </p>
         );
       }
       return (
         <Tooltip
-          message={format(
+          content={format(
             new Date(props.cell.row.original.next),
             `dd MMM yyyy HH:mm:ss zzz`,
           )}
+          triggerClassName="w-full justify-start"
         >
-          <div className="flex w-full min-w-0 items-center space-x-1.5">
-            <p className="truncate text-slate-900 dark:text-slate-200">
+          <span className="flex w-full min-w-0 items-center space-x-1.5 py-1">
+            <span className="truncate text-sm text-gray-900 dark:text-white">
               In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
-              <span className="text-sm text-slate-700 dark:text-slate-400">
+              <span className="text-xs text-gray-400 dark:text-slate-500">
                 ({props.cell.row.original.iterationCount} run
                 {props.cell.row.original.iterationCount === 1 ? "" : "s"} total)
               </span>
-            </p>
-          </div>
+            </span>
+          </span>
         </Tooltip>
       );
     },
@@ -197,22 +200,20 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
           onDismiss={() => setSelectedScheduler(null)}
         />
       ) : null}
-      <div className="rounded-md border border-slate-200 shadow-sm dark:border-slate-700">
+      <div className="overflow-hidden rounded-xl border border-gray-100/60 dark:border-slate-800/60">
         {isLoading ? (
           <JobTableSkeleton />
         ) : (
           <div>
-            {table.getHeaderGroups().map((headerGroup, headerIndex) => (
+            {table.getHeaderGroups().map((headerGroup) => (
               <div
-                className="sticky top-0 grid grid-cols-[auto,350px,minmax(0,1fr),minmax(0,1fr)] rounded-t-md border-b border-slate-200 bg-slate-100/50 p-2 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/50"
+                className="sticky top-0 z-10 grid grid-cols-[36px_minmax(0,30%)_1fr_1fr] border-b border-gray-100/60 bg-gray-50/80 px-2 py-1.5 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80"
                 key={headerGroup.id}
               >
                 {headerGroup.headers.map((header) => (
                   <div
                     key={header.id}
-                    className={`flex h-full min-w-0 items-center text-sm font-semibold text-slate-700 dark:text-slate-300  ${
-                      headerIndex !== 0 ? "pr-10" : "pr-3"
-                    }`}
+                    className="flex h-full items-center px-1.5 text-xs font-medium text-gray-400 dark:text-slate-500"
                   >
                     {header.isPlaceholder
                       ? null
@@ -230,14 +231,13 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
                 key={row.id}
                 isSelected={row.getIsSelected()}
                 onClick={(e) => handleRowClick(e, rowIndex)}
+                onKeyboardActivate={() => setSelectedScheduler(row.original)}
                 layoutVariant="scheduler"
               >
-                {row.getVisibleCells().map((cell, cellIndex) => (
+                {row.getVisibleCells().map((cell) => (
                   <div
                     key={cell.id}
-                    className={`flex h-full min-w-0 items-center ${
-                      cellIndex !== 0 ? "pr-10" : "pr-3"
-                    }`}
+                    className="flex h-full items-center px-1.5"
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </div>
@@ -250,15 +250,15 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
 
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-lg border-slate-100 bg-white/90 px-3 py-2 text-sm shadow-lg backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
-            <p className="text-slate-900 dark:text-slate-100">
+          <div className="pointer-events-auto flex items-center space-x-3 rounded-full border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+            <p className="text-gray-900 dark:text-slate-100">
               {table.getSelectedRowModel().rows.length} selected
             </p>
 
             <Button
               label="Delete"
               colorScheme="red"
-              icon={<TrashIcon />}
+              icon={<Trash2 className="size-3.5" />}
               size="sm"
               onClick={() => {
                 bulkRemove({

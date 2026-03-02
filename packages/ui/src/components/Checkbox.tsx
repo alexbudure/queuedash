@@ -1,34 +1,55 @@
-import * as RadixCheckbox from "@radix-ui/react-checkbox";
-import { CheckIcon, DividerHorizontalIcon } from "@radix-ui/react-icons";
+import { Check, Minus } from "lucide-react";
 import { clsx } from "clsx";
+import {
+  Checkbox as AriaCheckbox,
+  type CheckboxProps as AriaCheckboxProps,
+} from "react-aria-components";
+
+type CheckedState = boolean | "indeterminate";
+
+type CheckboxProps = Omit<
+  AriaCheckboxProps,
+  "className" | "isSelected" | "isIndeterminate" | "onChange"
+> & {
+  className?: string;
+  checked?: CheckedState;
+  onCheckedChange?: (checked: CheckedState) => void;
+};
 
 export const Checkbox = ({
   className,
+  checked,
+  onCheckedChange,
   ...props
-}: RadixCheckbox.CheckboxProps) => {
+}: CheckboxProps) => {
   return (
-    <RadixCheckbox.Root
-      className={clsx(
-        `flex size-4 cursor-pointer rounded-sm border shadow-sm`,
-        className,
-        {
-          "border-slate-300 hover:border-slate-500 hover:bg-slate-100 dark:border-slate-600 dark:hover:border-slate-400 dark:hover:bg-slate-800":
-            !props.checked,
-          "border-brand-500 bg-brand-500 text-brand-50 hover:border-brand-600 hover:bg-brand-600":
-            props.checked === true,
-          "border-slate-500 text-slate-500 hover:border-slate-700 hover:bg-slate-100 dark:border-slate-400 dark:text-slate-400 dark:hover:border-slate-300 dark:hover:bg-slate-800":
-            props.checked === "indeterminate",
-        }
-      )}
+    <AriaCheckbox
+      className={({ isSelected, isIndeterminate }) =>
+        clsx(
+          "flex size-4 cursor-pointer items-center justify-center rounded border",
+          className,
+          {
+            "border-gray-300 hover:border-gray-400 dark:border-slate-600 dark:hover:border-slate-500":
+              !isSelected && !isIndeterminate,
+            "border-gray-900 bg-gray-900 text-white hover:border-gray-800 hover:bg-gray-800 dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900 dark:hover:border-slate-300 dark:hover:bg-slate-300":
+              isSelected,
+            "border-gray-400 text-gray-500 hover:border-gray-500 dark:border-slate-500 dark:text-slate-400 dark:hover:border-slate-400":
+              isIndeterminate,
+          },
+        )
+      }
+      isSelected={checked === true}
+      isIndeterminate={checked === "indeterminate"}
+      onChange={(isSelected) => onCheckedChange?.(isSelected)}
       onClick={(e) => e.stopPropagation()}
       {...props}
     >
-      <RadixCheckbox.Indicator className="flex size-full items-center justify-center">
-        {props.checked === "indeterminate" && (
-          <DividerHorizontalIcon height={12} width={12} />
-        )}
-        {props.checked === true && <CheckIcon height={12} width={12} />}
-      </RadixCheckbox.Indicator>
-    </RadixCheckbox.Root>
+      {({ isSelected, isIndeterminate }) => (
+        <>
+          {isIndeterminate ? <Minus size={10} /> : null}
+          {isSelected ? <Check size={10} /> : null}
+        </>
+      )}
+    </AriaCheckbox>
   );
 };

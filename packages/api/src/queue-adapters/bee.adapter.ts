@@ -75,6 +75,8 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   }
 
   async clean(status: BeeCleanableStatus, graceMs: number): Promise<void> {
+    void status;
+    void graceMs;
     throw new Error("Bee-Queue does not support cleaning jobs");
   }
 
@@ -157,19 +159,45 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     // Bee-Queue job has status and progress properties
     const jobWithMeta = job as BeeQueue.Job<Record<string, unknown>> & {
       status?: string;
-      progress?: { created?: number; started?: number; succeeded?: number; failed?: number };
+      progress?: unknown;
     };
 
-    // Extract timestamps from job if available
-    const createdAt = jobWithMeta.progress?.created
-      ? new Date(jobWithMeta.progress.created)
-      : new Date();
-    const processedAt = jobWithMeta.progress?.started
-      ? new Date(jobWithMeta.progress.started)
-      : null;
-    // Use nullish coalescing to properly handle timestamps (succeeded takes priority over failed)
-    const finishedTimestamp = jobWithMeta.progress?.succeeded ?? jobWithMeta.progress?.failed;
-    const finishedAt = finishedTimestamp != null ? new Date(finishedTimestamp) : null;
+    const progress =
+      jobWithMeta.progress && typeof jobWithMeta.progress === "object"
+        ? (jobWithMeta.progress as {
+            created?: number;
+            started?: number;
+            succeeded?: number;
+            failed?: number;
+          })
+        : undefined;
+
+    const jobOptions = job.options as {
+      timestamp?: number | string;
+      stacktraces?: string[];
+    };
+    const createdTimestamp =
+      typeof jobOptions.timestamp === "number"
+        ? jobOptions.timestamp
+        : typeof jobOptions.timestamp === "string"
+          ? Number(jobOptions.timestamp)
+          : undefined;
+    const stacktrace = Array.isArray(jobOptions.stacktraces)
+      ? jobOptions.stacktraces
+      : [];
+
+    // Bee-Queue always stores the enqueue timestamp in job options.
+    const createdAt =
+      progress?.created != null
+        ? new Date(progress.created)
+        : createdTimestamp != null && Number.isFinite(createdTimestamp)
+          ? new Date(createdTimestamp)
+          : new Date();
+    const processedAt =
+      progress?.started != null ? new Date(progress.started) : null;
+    const finishedTimestamp = progress?.succeeded ?? progress?.failed;
+    const finishedAt =
+      finishedTimestamp != null ? new Date(finishedTimestamp) : null;
 
     return {
       id: job.id as string,
@@ -179,8 +207,11 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
       createdAt,
       processedAt,
       finishedAt,
-      failedReason: undefined,
-      stacktrace: [],
+      failedReason:
+        jobWithMeta.status === "failed"
+          ? stacktrace[0] || "Job failed"
+          : undefined,
+      stacktrace,
       retriedAt: null,
       returnValue: undefined, // Bee-Queue doesn't support return values
       progress: undefined, // Bee-Queue doesn't expose progress in the same way

@@ -1,4 +1,4 @@
-import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons";
+import { ArrowUp, ArrowDown } from "lucide-react";
 
 type MetricsCardProps = {
   label: string;
@@ -35,12 +35,10 @@ export const MetricsCard = ({
           {typeof value === "number" ? value.toLocaleString() : value}
         </p>
         {trend && (
-          <div className={`flex items-center space-x-0.5 font-mono text-xs font-medium ${trendColor}`}>
-            {trend.isPositive ? (
-              <ArrowUpIcon width={11} height={11} />
-            ) : (
-              <ArrowDownIcon width={11} height={11} />
-            )}
+          <div
+            className={`flex items-center space-x-0.5 font-mono text-xs font-medium ${trendColor}`}
+          >
+            {trend.isPositive ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
             <span>{Math.abs(trend.value)}%</span>
           </div>
         )}

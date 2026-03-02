@@ -24,7 +24,7 @@ export function fastifyQueueDashPlugin(
     baseUrl: string;
     uiHooks?: FastifyQueueDashHooksOptions;
   },
-  done: () => void
+  done: () => void,
 ): void {
   fastify.get(`${baseUrl}/*`, { ...uiHooks }, (_, res) => {
     res.type("text/html").send(createQueuedashHtml(baseUrl));

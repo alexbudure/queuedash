@@ -199,11 +199,7 @@ export class BullMQAdapter extends QueueAdapter<
     await this.queue.removeJobScheduler(key);
   }
 
-  async getMetrics(
-    type: "completed" | "failed",
-    start: number,
-    end: number,
-  ) {
+  async getMetrics(type: "completed" | "failed", start: number, end: number) {
     const metrics = await this.queue.getMetrics(type, start, end);
 
     // BullMQ's getMetrics returns count as the number of data points,

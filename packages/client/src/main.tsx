@@ -17,5 +17,5 @@ createRoot(document.getElementById("root")!).render(
       apiUrl={window.__INITIAL_STATE__.apiUrl}
       basename={window.__INITIAL_STATE__.basename}
     />
-  </StrictMode>
+  </StrictMode>,
 );
