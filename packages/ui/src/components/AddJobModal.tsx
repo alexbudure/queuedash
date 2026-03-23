@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { normalizeJSONEditorValue } from "../utils/jsonEditor";
 import type { JSONEditorValidationState } from "../utils/jsonEditor";
+import { normalizeJSONEditorValue } from "../utils/jsonEditor";
 import type { Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
@@ -81,7 +81,7 @@ export const AddJobModal = ({
         toast.success("New job has been added");
         onDismiss();
       },
-      onError(error: Error) {
+      onError(error) {
         toast.error(error.message);
       },
     });
@@ -92,7 +92,7 @@ export const AddJobModal = ({
         toast.success("New job scheduler has been added");
         onDismiss();
       },
-      onError(error: Error) {
+      onError(error) {
         toast.error(error.message);
       },
     });

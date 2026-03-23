@@ -77,7 +77,7 @@ const SidebarContent = ({
       </div>
       <div className="space-y-0.5">
         {isLoading ? (
-          new Array(10).fill().map((_, i) => {
+          new Array(10).fill(0).map((_, i) => {
             return <Skeleton className="h-8 w-full rounded-md" key={i} />;
           })
         ) : isError ? (

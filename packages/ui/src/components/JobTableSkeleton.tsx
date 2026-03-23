@@ -18,7 +18,7 @@ export const JobTableSkeleton = () => {
         <div />
       </div>
       {/* Rows */}
-      {new Array(JOBS_PER_PAGE).fill().map((_, i) => (
+      {new Array(JOBS_PER_PAGE).fill(0).map((_, i) => (
         <div
           key={i}
           className={clsx(
