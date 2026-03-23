@@ -5,7 +5,7 @@ type SparklineProps = {
   data: number[];
   color: string;
   height?: number;
-  width?: number | string;
+  width?: number | `${number}%`;
 };
 
 export const Sparkline = ({

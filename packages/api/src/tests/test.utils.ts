@@ -104,7 +104,7 @@ export const initRedisInstance = async () => {
       });
 
       await flightBookingsQueue.queue.addBulk(
-        new Array(NUM_OF_JOBS).fill().map((_, index) => {
+        Array.from({ length: NUM_OF_JOBS }, (_, index) => {
           return {
             data: {
               index: index + 1,
@@ -162,7 +162,7 @@ export const initRedisInstance = async () => {
       flightBookingsQueue.worker = worker;
 
       await flightBookingsQueue.queue.addBulk(
-        new Array(NUM_OF_JOBS).fill().map((_, index) => {
+        Array.from({ length: NUM_OF_JOBS }, (_, index) => {
           return {
             name: "test",
             data: {
@@ -195,7 +195,7 @@ export const initRedisInstance = async () => {
 
       await flowProducer.close();
 
-      const schedulers = new Array(NUM_OF_SCHEDULERS).fill().map(() => {
+      const schedulers = Array.from({ length: NUM_OF_SCHEDULERS }, () => {
         return {
           name: faker.person.fullName(),
           template: {
@@ -244,7 +244,7 @@ export const initRedisInstance = async () => {
       });
 
       await flightBookingsQueue.queue.saveAll(
-        new Array(NUM_OF_JOBS).fill().map((_, index) => {
+        Array.from({ length: NUM_OF_JOBS }, (_, index) => {
           return flightBookingsQueue.queue.createJob({
             index: index + 1,
           });
