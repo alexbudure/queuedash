@@ -1,10 +1,11 @@
-import { Search, X, Trash2 } from "lucide-react";
 import { clsx } from "clsx";
-import { trpc } from "../utils/trpc";
-import { Skeleton } from "./Skeleton";
+import { Search, X, Trash2 } from "lucide-react";
+
 import { REFETCH_INTERVAL } from "../utils/config";
+import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
+import { Skeleton } from "./Skeleton";
 
 type GroupsSectionProps = {
   queueName: string;

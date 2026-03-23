@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
+
 import type { Job } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { JobActionMenu } from "./JobActionMenu";
@@ -372,7 +373,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
           <div className="rounded-lg bg-red-50/80 p-3 dark:bg-red-950/20">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-red-500 dark:text-red-400" />
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="mb-1.5 text-xs font-medium text-red-800 dark:text-red-300">
                   Failed Reason
                 </p>
@@ -588,13 +589,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
   );
 };
 
-const DetailItem = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) => (
+const DetailItem = ({ label, value }: { label: string; value: ReactNode }) => (
   <div>
     <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">{label}</p>
     <p className="text-sm text-gray-900 dark:text-white">{value}</p>

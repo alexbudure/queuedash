@@ -1,6 +1,4 @@
-import { Tab, TabList, Tabs, type Key } from "react-aria-components";
 import { clsx } from "clsx";
-import type { RouterOutput, Status } from "../utils/trpc";
 import {
   Calendar,
   CheckCircle,
@@ -13,6 +11,9 @@ import {
   CirclePause,
   type LucideIcon,
 } from "lucide-react";
+import { Tab, TabList, Tabs, type Key } from "react-aria-components";
+
+import type { RouterOutput, Status } from "../utils/trpc";
 import { Skeleton } from "./Skeleton";
 
 const { format: numberFormat } = new Intl.NumberFormat("en-US");

@@ -1,9 +1,9 @@
+import { faker } from "@faker-js/faker";
+import BeeQueue from "bee-queue";
 import Bull from "bull";
 import type { JobsOptions as BullMQJobOptions, RepeatOptions } from "bullmq";
 import { Queue as BullMQQueue } from "bullmq";
 import { Queue as GroupMQQueue } from "groupmq";
-import BeeQueue from "bee-queue";
-import { faker } from "@faker-js/faker";
 import Redis from "ioredis";
 
 type FakeQueue =
@@ -134,7 +134,7 @@ export const queues: FakeQueue[] = [
     queue: new BullMQQueue("payment-processing"),
     type: "bullmq" as const,
     displayName: "Payment processing",
-    jobs: [...new Array(180)].map((_, i) => {
+    jobs: new Array(180).fill().map((_, i) => {
       const isRefund = i % 12 === 0;
       const isPayout = i % 25 === 0;
       const type = isPayout ? "payout" : isRefund ? "refund" : "charge";
@@ -203,7 +203,7 @@ export const queues: FakeQueue[] = [
         },
       },
     ],
-    flows: [...new Array(4)].map(() => {
+    flows: new Array(4).fill().map(() => {
       const orderId = `ord_${faker.string.alphanumeric(12)}`;
       const customer = faker.person.fullName();
       return {
@@ -233,7 +233,7 @@ export const queues: FakeQueue[] = [
     queue: new BullMQQueue("email-delivery"),
     type: "bullmq" as const,
     displayName: "Email delivery",
-    jobs: [...new Array(140)].map((_, i) => {
+    jobs: new Array(140).fill().map((_, i) => {
       const template = pick(EMAIL_TEMPLATES);
       const subjects: Record<string, string> = {
         welcome: "Welcome to our platform!",
@@ -287,13 +287,13 @@ export const queues: FakeQueue[] = [
     queue: new Bull("order-fulfillment"),
     type: "bull" as const,
     displayName: "Order fulfillment",
-    jobs: [...new Array(95)].map((_, i) => {
+    jobs: new Array(95).fill().map((_, i) => {
       const orderId = `ORD-${faker.string.alphanumeric(8).toUpperCase()}`;
       const itemCount = faker.number.int({ min: 1, max: 5 });
       return {
         data: {
           orderId,
-          items: [...new Array(itemCount)].map(() => ({
+          items: new Array(itemCount).fill().map(() => ({
             sku: `SKU-${faker.string.alphanumeric(6).toUpperCase()}`,
             name: faker.commerce.productName(),
             qty: faker.number.int({ min: 1, max: 4 }),
@@ -335,7 +335,7 @@ export const queues: FakeQueue[] = [
     queue: new BullMQQueue("image-processing"),
     type: "bullmq" as const,
     displayName: "Image processing",
-    jobs: [...new Array(75)].map(() => {
+    jobs: new Array(75).fill().map(() => {
       const operation = pick(IMAGE_OPS);
       const ext = pick(["jpg", "png", "webp", "heic"]);
       return {
@@ -383,7 +383,7 @@ export const queues: FakeQueue[] = [
     }),
     type: "groupmq" as const,
     displayName: "Webhook delivery",
-    jobs: [...new Array(110)].map(() => {
+    jobs: new Array(110).fill().map(() => {
       const endpoints = [
         "https://api.acme.com/webhooks",
         "https://hooks.stripe.com/events",
@@ -421,7 +421,7 @@ export const queues: FakeQueue[] = [
     queue: new Bull("report-generation"),
     type: "bull" as const,
     displayName: "Report generation",
-    jobs: [...new Array(28)].map((_, i) => {
+    jobs: new Array(28).fill().map((_, i) => {
       const reportType = pick(REPORT_TYPES);
       const format = pick(["pdf", "csv", "xlsx"]);
       return {
@@ -460,7 +460,7 @@ export const queues: FakeQueue[] = [
     queue: new BullMQQueue("search-indexing"),
     type: "bullmq" as const,
     displayName: "Search indexing",
-    jobs: [...new Array(220)].map(() => {
+    jobs: new Array(220).fill().map(() => {
       const docType = pick(DOC_TYPES);
       const action = pick(INDEX_ACTIONS);
       return {
@@ -505,7 +505,7 @@ export const queues: FakeQueue[] = [
     queue: new BeeQueue("session-cleanup"),
     type: "bee" as const,
     displayName: "Session cleanup",
-    jobs: [...new Array(45)].map(() => {
+    jobs: new Array(45).fill().map(() => {
       return {
         data: {
           userId: `usr_${faker.string.alphanumeric(10)}`,

@@ -1,7 +1,8 @@
-import { appRouter } from "../routers/_app";
-import { expect, test } from "vitest";
-import { initRedisInstance, NUM_OF_SCHEDULERS } from "./test.utils";
 import { TRPCError } from "@trpc/server";
+import { expect, test } from "vitest";
+
+import { appRouter } from "../routers/_app";
+import { initRedisInstance, NUM_OF_SCHEDULERS } from "./test.utils";
 
 test("list schedulers", async () => {
   const { ctx, firstQueue } = await initRedisInstance();

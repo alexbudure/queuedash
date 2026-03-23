@@ -1,5 +1,6 @@
 import type Bull from "bull";
 import { parse } from "redis-info";
+
 import {
   QueueAdapter,
   type AdaptedJob,

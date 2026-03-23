@@ -1,8 +1,9 @@
-import { Button } from "./Button";
-import type { Scheduler } from "../utils/trpc";
-import { trpc } from "../utils/trpc";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
+
+import type { Scheduler } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
+import { Button } from "./Button";
 
 type SchedulerActionMenuProps = {
   scheduler: Scheduler;

@@ -1,8 +1,9 @@
-import { ActionMenu } from "./ActionMenu";
-import type { Job, Queue } from "../utils/trpc";
-import { trpc } from "../utils/trpc";
 import { Check, Copy, Rocket, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
+
+import type { Job, Queue } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
+import { ActionMenu } from "./ActionMenu";
 import { Button } from "./Button";
 
 type JobActionMenuProps = {

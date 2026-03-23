@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
-import Bull from "bull";
 import { createHonoAdapter } from "@queuedash/api";
+import Bull from "bull";
+import { Hono } from "hono";
 
 const app = new Hono();
 

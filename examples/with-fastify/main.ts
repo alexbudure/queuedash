@@ -1,6 +1,6 @@
-import fastify from "fastify";
-import Bull from "bull";
 import { fastifyQueueDashPlugin } from "@queuedash/api";
+import Bull from "bull";
+import fastify from "fastify";
 
 const server = fastify();
 

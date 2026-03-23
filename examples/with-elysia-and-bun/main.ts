@@ -1,6 +1,6 @@
+import { queuedash } from "@queuedash/api";
 import Bull from "bull";
 import { Elysia } from "elysia";
-import { queuedash } from "@queuedash/api";
 
 const app = new Elysia().use(
   queuedash({

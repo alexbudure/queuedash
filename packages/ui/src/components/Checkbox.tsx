@@ -1,5 +1,5 @@
-import { Check, Minus } from "lucide-react";
 import { clsx } from "clsx";
+import { Check, Minus } from "lucide-react";
 import {
   Checkbox as AriaCheckbox,
   type CheckboxProps as AriaCheckboxProps,

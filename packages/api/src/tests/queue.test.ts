@@ -1,5 +1,7 @@
-import { appRouter } from "../routers/_app";
+import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
+
+import { appRouter } from "../routers/_app";
 import {
   initRedisInstance,
   sleep,
@@ -7,7 +9,6 @@ import {
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
 } from "./test.utils";
-import { TRPCError } from "@trpc/server";
 
 test("list queues", async () => {
   const { ctx } = await initRedisInstance();

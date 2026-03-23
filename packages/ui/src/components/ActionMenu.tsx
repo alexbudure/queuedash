@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 import {
@@ -7,7 +8,6 @@ import {
   MenuTrigger,
   Popover,
 } from "react-aria-components";
-import { clsx } from "clsx";
 
 type Action = {
   label: string;

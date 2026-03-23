@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortImports": {},
+  "sortPackageJson": false,
+  "sortTailwindcss": {
+    "config": "packages/ui/tailwind.config.js",
+    "functions": ["clsx"]
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "**/dist",
+    "**/.next",
+    "**/.turbo",
+    ".pnpm-store",
+    "**/coverage",
+    "**/*.tsbuildinfo",
+    "pnpm-lock.yaml",
+    "bun.lockb"
+  ]
+}

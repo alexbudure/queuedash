@@ -1,6 +1,6 @@
+import { clsx } from "clsx";
 import { RotateCw } from "lucide-react";
 import type { ReactElement } from "react";
-import { clsx } from "clsx";
 
 type ButtonProps = {
   as?: "button" | "span";

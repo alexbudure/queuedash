@@ -1,8 +1,9 @@
 import { initTRPC } from "@trpc/server";
+import type BeeQueue from "bee-queue";
 import type Bull from "bull";
 import type BullMQ from "bullmq";
-import type BeeQueue from "bee-queue";
 import type { Queue as GroupMQQueue } from "groupmq";
+
 import { createAdapter } from "./queue-adapters/adapter-factory";
 import type { QueueAdapter } from "./queue-adapters/base.adapter";
 

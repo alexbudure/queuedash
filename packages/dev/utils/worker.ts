@@ -1,8 +1,9 @@
-import { queues } from "./fake-data";
+import BeeQueue from "bee-queue";
 import Bull from "bull";
 import { Worker, MetricsTime } from "bullmq";
 import { Worker as GroupMQWorker } from "groupmq";
-import BeeQueue from "bee-queue";
+
+import { queues } from "./fake-data";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

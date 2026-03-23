@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "start": "node -r dotenv/config main.mjs",
-    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint main.mjs",
-    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint main.mjs --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "lint": "oxlint --config ../../.oxlintrc.json --disable-nested-config .",
+    "lint:fix": "oxlint --config ../../.oxlintrc.json --disable-nested-config --fix .",
+    "format": "oxfmt --config ../../.oxfmtrc.json .",
+    "format:check": "oxfmt --config ../../.oxfmtrc.json --check ."
   },
   "main": "main.mjs",
   "files": [
@@ -16,19 +16,16 @@
   "dependencies": {
     "@queuedash/api": "workspace:*",
     "@queuedash/ui": "workspace:*",
-    "@trpc/server": "^11.8.1",
+    "@trpc/server": "^11.14.1",
     "bee-queue": "^1.7.1",
     "bull": "^4.16.5",
-    "bullmq": "^5.61.0",
-    "ioredis": "^5.8.1",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "zod": "^3.24.2"
+    "bullmq": "^5.71.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "ioredis": "^5.10.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^24.8.1",
-    "eslint": "^9.24.0",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.6.2"
+    "@types/node": "^24.8.1"
   }
 }

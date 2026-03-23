@@ -1,21 +1,22 @@
-import { useRef, useState } from "react";
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import cronstrue from "cronstrue";
+import { format, formatDistanceToNow } from "date-fns";
 import { Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+
 import type { Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
-import { TableRow } from "./TableRow";
-import { JobTableSkeleton } from "./JobTableSkeleton";
-import { Checkbox } from "./Checkbox";
 import { Button } from "./Button";
-import cronstrue from "cronstrue";
-import { Tooltip } from "./Tooltip";
-import { format, formatDistanceToNow } from "date-fns";
+import { Checkbox } from "./Checkbox";
+import { JobTableSkeleton } from "./JobTableSkeleton";
 import { SchedulerModal } from "./SchedulerModal";
+import { TableRow } from "./TableRow";
+import { Tooltip } from "./Tooltip";
 
 const columnHelper = createColumnHelper<Scheduler>();
 

@@ -1,11 +1,12 @@
+import * as trpcFastify from "@trpc/server/adapters/fastify";
 import type {
   FastifyInstance,
   onRequestHookHandler,
   preHandlerHookHandler,
 } from "fastify";
-import type { Context } from "../trpc";
+
 import { appRouter } from "../routers/_app";
-import * as trpcFastify from "@trpc/server/adapters/fastify";
+import type { Context } from "../trpc";
 import { createQueuedashHtml } from "./utils";
 
 export type FastifyQueueDashHooksOptions = Partial<{

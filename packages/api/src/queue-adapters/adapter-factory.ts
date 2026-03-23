@@ -1,12 +1,13 @@
+import type BeeQueue from "bee-queue";
 import type Bull from "bull";
 import type { Queue as BullMQQueue } from "bullmq";
-import type BeeQueue from "bee-queue";
 import type { Queue as GroupMQQueue } from "groupmq";
+
+import type { QueueAdapter } from "./base.adapter";
+import { BeeAdapter } from "./bee.adapter";
 import { BullAdapter } from "./bull.adapter";
 import { BullMQAdapter } from "./bullmq.adapter";
-import { BeeAdapter } from "./bee.adapter";
 import { GroupMQAdapter } from "./groupmq.adapter";
-import type { QueueAdapter } from "./base.adapter";
 
 type QueueConfig = {
   queue: Bull.Queue | BullMQQueue | BeeQueue | GroupMQQueue;

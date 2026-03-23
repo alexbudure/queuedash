@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -17,16 +16,18 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useInView } from "react-intersection-observer";
+import { toast } from "sonner";
+
 import type { Job, RouterOutput, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
-import { toast } from "sonner";
-import { useInView } from "react-intersection-observer";
-import { TableRow } from "./TableRow";
-import { JobTableSkeleton } from "./JobTableSkeleton";
+import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
 import { JobModal } from "./JobModal";
-import { Button } from "./Button";
+import { JobTableSkeleton } from "./JobTableSkeleton";
+import { TableRow } from "./TableRow";
 import { Tooltip } from "./Tooltip";
 
 const formatDuration = (ms: number | null | undefined): string => {
@@ -95,6 +96,12 @@ const formatRelativeTime = (date: Date): string => {
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
 };
+
+const lifecycleDateLabelClassName =
+  "inline-block w-[7.5rem] whitespace-nowrap text-xs tabular-nums text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300";
+
+const lifecycleTimeLabelClassName =
+  "inline-block w-[4.75rem] whitespace-nowrap text-xs tabular-nums text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300";
 
 const columnHelper = createColumnHelper<Job & { status: Status }>();
 
@@ -212,7 +219,7 @@ const columns = [
               ) : (
                 <PlusCircle className="size-3 shrink-0 text-gray-400 dark:text-slate-500" />
               )}
-              <span className="whitespace-nowrap text-xs text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300">
+              <span className={lifecycleDateLabelClassName}>
                 {formatDate(job.retriedAt || job.createdAt)}
               </span>
             </span>
@@ -254,7 +261,7 @@ const columns = [
                 <Tooltip
                   content={<>Processed at {formatDateFull(job.processedAt)}</>}
                 >
-                  <span className="w-14 whitespace-nowrap text-xs text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300">
+                  <span className={lifecycleTimeLabelClassName}>
                     {formatDateShort(job.processedAt)}
                   </span>
                 </Tooltip>
@@ -312,7 +319,7 @@ const columns = [
                 <Tooltip
                   content={<>Processed at {formatDateFull(job.processedAt)}</>}
                 >
-                  <span className="w-14 whitespace-nowrap text-xs text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300">
+                  <span className={lifecycleTimeLabelClassName}>
                     {formatDateShort(job.processedAt)}
                   </span>
                 </Tooltip>
@@ -359,7 +366,7 @@ const columns = [
                     </>
                   }
                 >
-                  <span className="w-14 whitespace-nowrap text-xs text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300">
+                  <span className={lifecycleTimeLabelClassName}>
                     {formatDateShort(job.finishedAt)}
                   </span>
                 </Tooltip>
@@ -406,7 +413,7 @@ const columns = [
                     </>
                   }
                 >
-                  <span className="w-14 whitespace-nowrap text-xs text-gray-500 transition-colors group-hover/tooltip:text-gray-700 dark:text-slate-400 dark:group-hover/tooltip:text-slate-300">
+                  <span className={lifecycleTimeLabelClassName}>
                     {formatDateShort(job.finishedAt)}
                   </span>
                 </Tooltip>

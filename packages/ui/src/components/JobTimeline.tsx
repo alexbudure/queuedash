@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { CheckCircle, Clock, Rocket } from "lucide-react";
+
 import type { Job } from "../utils/trpc";
 
 type JobTimelineProps = {

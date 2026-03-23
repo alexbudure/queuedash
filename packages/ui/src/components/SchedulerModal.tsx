@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { AlertTriangle, Calendar, Clock, Info } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
+
 import type { Scheduler } from "../utils/trpc";
 import { SchedulerActionMenu } from "./SchedulerActionMenu";
 import { SidePanelDialog } from "./SidePanelDialog";
@@ -225,8 +226,7 @@ export const SchedulerModal = ({
             <Calendar className="size-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
             <div className="min-w-0 flex-1 text-xs">
               <span className="font-medium text-blue-800 dark:text-blue-300">
-                Next run{" "}
-                {formatDistanceToNow(nextRunDate, { addSuffix: true })}
+                Next run {formatDistanceToNow(nextRunDate, { addSuffix: true })}
               </span>
               <span className="ml-1.5 text-blue-600/70 dark:text-blue-400/60">
                 · {formatDate(scheduler.next)}
@@ -268,7 +268,10 @@ export const SchedulerModal = ({
               }
               mono
             />
-            <DetailItem label="End Date" value={formatDate(scheduler.endDate)} />
+            <DetailItem
+              label="End Date"
+              value={formatDate(scheduler.endDate)}
+            />
           </div>
         </div>
 

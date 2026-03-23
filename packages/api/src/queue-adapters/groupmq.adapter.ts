@@ -1,5 +1,6 @@
 import type { Queue as GroupMQQueue, Job as GroupMQJob } from "groupmq";
 import { parse } from "redis-info";
+
 import {
   QueueAdapter,
   type AdaptedJob,

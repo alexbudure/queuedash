@@ -1,5 +1,6 @@
 import type BeeQueue from "bee-queue";
 import { createClient } from "redis";
+
 import {
   QueueAdapter,
   type AdaptedJob,

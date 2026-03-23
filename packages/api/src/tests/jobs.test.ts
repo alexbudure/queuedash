@@ -1,5 +1,8 @@
-import { appRouter } from "../routers/_app";
+import { faker } from "@faker-js/faker";
+import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
+
+import { appRouter } from "../routers/_app";
 import {
   initRedisInstance,
   NUM_OF_COMPLETED_JOBS,
@@ -8,8 +11,6 @@ import {
   sleep,
   type,
 } from "./test.utils";
-import { TRPCError } from "@trpc/server";
-import { faker } from "@faker-js/faker";
 
 test("list completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();

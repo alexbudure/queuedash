@@ -1,8 +1,9 @@
-import { useState } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
+
+import { REFETCH_INTERVAL } from "../utils/config";
 import { trpc } from "../utils/trpc";
 import { Sparkline } from "./Sparkline";
-import { REFETCH_INTERVAL } from "../utils/config";
 
 type MetricsSectionProps = {
   queueName: string;

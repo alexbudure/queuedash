@@ -1,3 +1,5 @@
+"use client";
+
 import { QueueDashApp } from "@queuedash/ui";
 import { useState, useEffect } from "react";
 import {
@@ -17,7 +19,7 @@ const ADAPTERS = [
 
 const STORAGE_KEY = "queuedash-adapter";
 
-const Pages = () => {
+export default function QueueDashPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string>("trpc");
   const [mounted, setMounted] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -192,6 +194,4 @@ const Pages = () => {
       </div>
     </div>
   );
-};
-
-export default Pages;
+}

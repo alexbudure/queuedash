@@ -1,6 +1,6 @@
-import express from "express";
-import Bull from "bull";
 import { createQueueDashExpressMiddleware } from "@queuedash/api";
+import Bull from "bull";
+import express from "express";
 
 const app = express();
 

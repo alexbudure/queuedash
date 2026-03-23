@@ -1,5 +1,5 @@
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "@queuedash/api";
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import Bull from "bull";
 
 const handler = (req: Request) =>

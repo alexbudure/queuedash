@@ -1,17 +1,18 @@
+import { clsx } from "clsx";
+import { Github, Layers, Menu } from "lucide-react";
 import {
   type FC,
   type PropsWithChildren,
   type ReactNode,
   useState,
 } from "react";
-import { clsx } from "clsx";
-import { trpc } from "../utils/trpc";
 import { NavLink } from "react-router";
-import { Skeleton } from "./Skeleton";
-import { Github, Layers, Menu } from "lucide-react";
-import { ThemeSwitcher } from "./ThemeSwitcher";
+
+import { trpc } from "../utils/trpc";
 import { ErrorCard } from "./ErrorCard";
 import { SidePanelDialog } from "./SidePanelDialog";
+import { Skeleton } from "./Skeleton";
+import { ThemeSwitcher } from "./ThemeSwitcher";
 
 type QueueNavLinkProps = {
   to: string;
@@ -76,7 +77,7 @@ const SidebarContent = ({
       </div>
       <div className="space-y-0.5">
         {isLoading ? (
-          [...new Array(10)].map((_, i) => {
+          new Array(10).fill().map((_, i) => {
             return <Skeleton className="h-8 w-full rounded-md" key={i} />;
           })
         ) : isError ? (

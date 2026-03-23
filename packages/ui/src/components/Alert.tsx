@@ -1,5 +1,4 @@
 import { cloneElement, type PropsWithChildren, type ReactElement } from "react";
-import { Button } from "./Button";
 import {
   Button as AriaButton,
   Dialog,
@@ -7,6 +6,8 @@ import {
   Heading,
   Modal,
 } from "react-aria-components";
+
+import { Button } from "./Button";
 
 type AlertProps = {
   title: string;
@@ -24,7 +25,7 @@ export const Alert = ({
       <AriaButton>{children}</AriaButton>
       <Modal
         isDismissable
-        className="fixed inset-0 bg-black/20 dark:bg-black/40"
+        className="fixed inset-0 z-[90] bg-black/20 dark:bg-black/40"
       >
         <Dialog
           role="alertdialog"

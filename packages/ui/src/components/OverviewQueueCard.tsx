@@ -1,9 +1,10 @@
-import { Link } from "react-router";
-import { trpc } from "../utils/trpc";
-import { NUM_OF_RETRIES, REFETCH_INTERVAL } from "../utils/config";
-import { Sparkline } from "./Sparkline";
-import { Skeleton } from "./Skeleton";
 import { CheckCircle, CircleX, Zap, Clock } from "lucide-react";
+import { Link } from "react-router";
+
+import { NUM_OF_RETRIES, REFETCH_INTERVAL } from "../utils/config";
+import { trpc } from "../utils/trpc";
+import { Skeleton } from "./Skeleton";
+import { Sparkline } from "./Sparkline";
 
 const { format: numberFormat } = new Intl.NumberFormat("en-US");
 

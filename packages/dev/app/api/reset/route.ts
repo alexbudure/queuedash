@@ -1,12 +1,9 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import { FlowProducer } from "bullmq";
+import { NextResponse } from "next/server";
 
-import { queues } from "../../utils/fake-data";
+import { queues } from "../../../utils/fake-data";
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse,
-) {
+export async function GET() {
   for (const item of queues) {
     if (item.type === "bull") {
       const client = await item.queue.client;
@@ -76,5 +73,5 @@ export default async function handler(
       }
     }
   }
-  res.status(200).json({ ok: "ok" });
+  return NextResponse.json({ ok: "ok" });
 }

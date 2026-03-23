@@ -1,11 +1,12 @@
-import { z } from "zod";
+import { readFileSync } from "node:fs";
+
+import { createQueueDashExpressMiddleware } from "@queuedash/api";
+import BeeQueue from "bee-queue";
 import Bull from "bull";
 import { Queue as BullMQQueue } from "bullmq";
-import BeeQueue from "bee-queue";
-import { Cluster } from "ioredis";
 import express from "express";
-import { createQueueDashExpressMiddleware } from "@queuedash/api";
-import { readFileSync } from "node:fs";
+import { Cluster } from "ioredis";
+import { z } from "zod";
 
 const queueConfigSchema = z.object({
   queues: z.array(

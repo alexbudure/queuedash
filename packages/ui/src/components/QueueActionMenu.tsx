@@ -1,8 +1,9 @@
-import { ActionMenu } from "./ActionMenu";
-import type { Queue } from "../utils/trpc";
-import { trpc } from "../utils/trpc";
 import { Pause, Play, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+
+import type { Queue } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
+import { ActionMenu } from "./ActionMenu";
 import { AddJobModal } from "./AddJobModal";
 
 type QueueActionMenuProps = {

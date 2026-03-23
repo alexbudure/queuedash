@@ -1,5 +1,6 @@
-import { JOBS_PER_PAGE } from "../utils/config";
 import { clsx } from "clsx";
+
+import { JOBS_PER_PAGE } from "../utils/config";
 import { Skeleton } from "./Skeleton";
 
 export const JobTableSkeleton = () => {
@@ -17,7 +18,7 @@ export const JobTableSkeleton = () => {
         <div />
       </div>
       {/* Rows */}
-      {[...new Array(JOBS_PER_PAGE)].map((_, i) => (
+      {new Array(JOBS_PER_PAGE).fill().map((_, i) => (
         <div
           key={i}
           className={clsx(

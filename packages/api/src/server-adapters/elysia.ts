@@ -1,5 +1,6 @@
-import { Elysia } from "elysia";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { Elysia } from "elysia";
+
 import type { Context } from "../routers/_app";
 import { appRouter } from "../routers/_app";
 import { createQueuedashHtml } from "./utils";

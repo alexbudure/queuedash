@@ -1,15 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { useEffect, useState } from "react";
-import { trpc } from "./utils/trpc";
 import { BrowserRouter, Route, Routes } from "react-router";
-import { QueuePage } from "./pages/QueuePage";
+import { Toaster } from "sonner";
+
 import {
   applyThemePreference,
   getStoredUserPreferences,
 } from "./components/ThemeSwitcher";
 import { HomePage } from "./pages/HomePage";
-import { Toaster } from "sonner";
+import { QueuePage } from "./pages/QueuePage";
+import { trpc } from "./utils/trpc";
 
 type QueueDashPagesProps = {
   // URL to the API

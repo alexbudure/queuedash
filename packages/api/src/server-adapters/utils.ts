@@ -1,7 +1,8 @@
 import { version } from "../../package.json";
 
-export const createQueuedashHtml = (baseUrl: string) =>
-  /* HTML */ `<!DOCTYPE html>
+export const createQueuedashHtml = (
+  baseUrl: string,
+) => /* HTML */ `<!DOCTYPE html>
     <html lang="en">
       <head>
         <meta charset="UTF-8" />

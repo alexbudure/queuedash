@@ -1,22 +1,23 @@
-import type { Key } from "react-aria-components";
-import type { Status } from "../utils/trpc";
-import { trpc } from "../utils/trpc";
-import { Layout } from "../components/Layout";
-import { JobTable } from "../components/JobTable";
 import { useCallback, useEffect, useState } from "react";
+import type { Key } from "react-aria-components";
+import { useParams, useSearchParams } from "react-router";
+
+import { ErrorCard } from "../components/ErrorCard";
+import { GroupsSection } from "../components/GroupsSection";
+import { JobTable } from "../components/JobTable";
+import { Layout } from "../components/Layout";
+import { MetricsSection } from "../components/MetricsSection";
+import { QueueActionMenu } from "../components/QueueActionMenu";
+import { QueueStatusTabs } from "../components/QueueStatusTabs";
+import { SchedulerTable } from "../components/SchedulerTable";
+import { Skeleton } from "../components/Skeleton";
 import {
   JOBS_PER_PAGE,
   NUM_OF_RETRIES,
   REFETCH_INTERVAL,
 } from "../utils/config";
-import { Skeleton } from "../components/Skeleton";
-import { ErrorCard } from "../components/ErrorCard";
-import { QueueStatusTabs } from "../components/QueueStatusTabs";
-import { QueueActionMenu } from "../components/QueueActionMenu";
-import { useParams, useSearchParams } from "react-router";
-import { SchedulerTable } from "../components/SchedulerTable";
-import { MetricsSection } from "../components/MetricsSection";
-import { GroupsSection } from "../components/GroupsSection";
+import type { Status } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 const VALID_STATUSES: Status[] = [

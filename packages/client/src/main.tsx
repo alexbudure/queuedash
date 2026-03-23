@@ -1,6 +1,6 @@
-import { createRoot } from "react-dom/client";
-import { StrictMode } from "react";
 import { QueueDashApp } from "@queuedash/ui";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 
 interface CustomWindow extends Window {
   __INITIAL_STATE__: {

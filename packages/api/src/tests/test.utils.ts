@@ -1,10 +1,11 @@
-import Bull from "bull";
 import { faker } from "@faker-js/faker";
-import type { Context } from "../trpc";
-import BullMQ, { MetricsTime } from "bullmq";
 import BeeQueue from "bee-queue";
+import Bull from "bull";
+import BullMQ, { MetricsTime } from "bullmq";
 import { Queue as GroupMQQueue, Worker as GroupMQWorker } from "groupmq";
 import Redis from "ioredis";
+
+import type { Context } from "../trpc";
 
 export const NUM_OF_JOBS = 20;
 export const NUM_OF_SCHEDULERS = 3;
@@ -103,7 +104,7 @@ export const initRedisInstance = async () => {
       });
 
       await flightBookingsQueue.queue.addBulk(
-        [...new Array(NUM_OF_JOBS)].map((_, index) => {
+        new Array(NUM_OF_JOBS).fill().map((_, index) => {
           return {
             data: {
               index: index + 1,
@@ -161,7 +162,7 @@ export const initRedisInstance = async () => {
       flightBookingsQueue.worker = worker;
 
       await flightBookingsQueue.queue.addBulk(
-        [...new Array(NUM_OF_JOBS)].map((_, index) => {
+        new Array(NUM_OF_JOBS).fill().map((_, index) => {
           return {
             name: "test",
             data: {
@@ -194,7 +195,7 @@ export const initRedisInstance = async () => {
 
       await flowProducer.close();
 
-      const schedulers = [...new Array(NUM_OF_SCHEDULERS)].map(() => {
+      const schedulers = new Array(NUM_OF_SCHEDULERS).fill().map(() => {
         return {
           name: faker.person.fullName(),
           template: {
@@ -243,7 +244,7 @@ export const initRedisInstance = async () => {
       });
 
       await flightBookingsQueue.queue.saveAll(
-        [...new Array(NUM_OF_JOBS)].map((_, index) => {
+        new Array(NUM_OF_JOBS).fill().map((_, index) => {
           return flightBookingsQueue.queue.createJob({
             index: index + 1,
           });

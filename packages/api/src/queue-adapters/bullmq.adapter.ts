@@ -1,5 +1,6 @@
 import type { Queue as BullMQQueue, Job as BullMQJob } from "bullmq";
 import { parse } from "redis-info";
+
 import {
   QueueAdapter,
   type AdaptedJob,

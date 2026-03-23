@@ -1,0 +1,53 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "oxc",
+    "unicorn",
+    "import",
+    "react",
+    "jsx-a11y",
+    "nextjs",
+    "vitest",
+    "node"
+  ],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "**/dist",
+    "**/.next",
+    "**/.turbo",
+    ".pnpm-store",
+    "**/coverage",
+    "**/*.tsbuildinfo",
+    "pnpm-lock.yaml",
+    "bun.lockb"
+  ],
+  "settings": {
+    "next": {
+      "rootDir": ["packages/dev", "examples/with-next"]
+    },
+    "react": {
+      "version": "19.2.0"
+    }
+  },
+  "overrides": [
+    {
+      "files": [
+        "packages/api/src/tests/**/*.ts",
+        "packages/api/vitest.config.ts",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
+      "env": {
+        "vitest": true
+      }
+    }
+  ]
+}

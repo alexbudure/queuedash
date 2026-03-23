@@ -1,405 +1,355 @@
-import MonacoEditor from "@monaco-editor/react";
-import { useRef } from "react";
+import MonacoEditor, { type Monaco } from "@monaco-editor/react";
+import { clsx } from "clsx";
 import type { editor } from "monaco-editor";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+
+import {
+  normalizeJSONEditorValue,
+  type JSONEditorRootType,
+  type JSONEditorValidationState,
+} from "../utils/jsonEditor";
 
 type JSONEditorProps = {
   value: string;
   onChange: (value: string) => void;
+  label: string;
+  required?: boolean;
+  rootType?: JSONEditorRootType;
+  helperText?: string;
+  height?: string;
+  className?: string;
+  onValidationChange?: (state: JSONEditorValidationState) => void;
+  onNormalizedValue?: (value: string) => void;
 };
-export const JSONEditor = ({ value, onChange }: JSONEditorProps) => {
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
-  const formatCode = () => {
-    editorRef.current?.getAction("editor.action.formatDocument")?.run();
+const LIGHT_THEME = "queuedash-json-light";
+const DARK_THEME = "queuedash-json-dark";
+const MONACO_MARKER_ERROR_SEVERITY = 8;
+
+const defineEditorThemes = (monaco: Monaco) => {
+  monaco.editor.defineTheme(LIGHT_THEME, {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "string.key.json", foreground: "374151" },
+      { token: "string.value.json", foreground: "0f766e" },
+      { token: "number", foreground: "2563eb" },
+      { token: "keyword", foreground: "b45309" },
+    ],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#111827",
+      "editorLineNumber.foreground": "#9ca3af",
+      "editorLineNumber.activeForeground": "#4b5563",
+      "editorCursor.foreground": "#111827",
+      "editor.selectionBackground": "#dbeafe",
+      "editor.lineHighlightBackground": "#f8fafc",
+      "editorIndentGuide.background": "#e5e7eb",
+      "editorIndentGuide.activeBackground": "#cbd5e1",
+      "editorWidget.background": "#ffffff",
+      "editorError.foreground": "#dc2626",
+      "editorWarning.foreground": "#d97706",
+    },
+  });
+
+  monaco.editor.defineTheme(DARK_THEME, {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "string.key.json", foreground: "cbd5e1" },
+      { token: "string.value.json", foreground: "5eead4" },
+      { token: "number", foreground: "93c5fd" },
+      { token: "keyword", foreground: "fbbf24" },
+    ],
+    colors: {
+      "editor.background": "#0f172a",
+      "editor.foreground": "#e2e8f0",
+      "editorLineNumber.foreground": "#64748b",
+      "editorLineNumber.activeForeground": "#cbd5e1",
+      "editorCursor.foreground": "#f8fafc",
+      "editor.selectionBackground": "#1d4ed8",
+      "editor.lineHighlightBackground": "#111827",
+      "editorIndentGuide.background": "#1e293b",
+      "editorIndentGuide.activeBackground": "#334155",
+      "editorWidget.background": "#0f172a",
+      "editorError.foreground": "#f87171",
+      "editorWarning.foreground": "#fbbf24",
+    },
+  });
+};
+
+const getSyntaxErrorMessage = (markers: editor.IMarker[]) => {
+  const errorMarker = markers.find(
+    (marker) => marker.severity === MONACO_MARKER_ERROR_SEVERITY,
+  );
+
+  return errorMarker?.message || null;
+};
+
+export const JSONEditor = ({
+  value,
+  onChange,
+  label,
+  required = false,
+  rootType = "any",
+  helperText,
+  height = "240px",
+  className,
+  onValidationChange,
+  onNormalizedValue,
+}: JSONEditorProps) => {
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
+  const normalizeValueRef = useRef<() => void>(() => undefined);
+  const [syntaxError, setSyntaxError] = useState<string | null>(null);
+  const [isEditorReady, setIsEditorReady] = useState(false);
+  const editorInputId = useId();
+  const labelId = useId();
+  const helperTextId = useId();
+  const errorMessageId = useId();
+
+  const latestValueRef = useRef(value);
+  latestValueRef.current = value;
+
+  const latestConfigRef = useRef({
+    label,
+    required,
+    rootType,
+  });
+  latestConfigRef.current = {
+    label,
+    required,
+    rootType,
   };
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    const charCode = String.fromCharCode(event.which).toLowerCase();
-    if ((event.ctrlKey || event.metaKey) && charCode === "s") {
-      event.preventDefault();
-      formatCode();
+
+  const normalizedValidationState = useMemo(() => {
+    return normalizeJSONEditorValue({
+      value,
+      label,
+      required,
+      rootType,
+    });
+  }, [label, required, rootType, value]);
+
+  const validationState = useMemo(() => {
+    if (!value.trim() || normalizedValidationState.isValid || !syntaxError) {
+      return normalizedValidationState;
+    }
+
+    return {
+      isValid: false,
+      errorMessage: syntaxError,
+    } satisfies JSONEditorValidationState;
+  }, [normalizedValidationState, syntaxError, value]);
+
+  normalizeValueRef.current = () => {
+    const normalizedState = normalizeJSONEditorValue({
+      value: latestValueRef.current,
+      label: latestConfigRef.current.label,
+      required: latestConfigRef.current.required,
+      rootType: latestConfigRef.current.rootType,
+    });
+
+    if (
+      !normalizedState.isValid ||
+      normalizedState.normalizedValue === undefined
+    ) {
+      return;
+    }
+
+    if (normalizedState.normalizedValue !== latestValueRef.current) {
+      onChange(normalizedState.normalizedValue);
+      onNormalizedValue?.(normalizedState.normalizedValue);
     }
   };
+
+  useEffect(() => {
+    onValidationChange?.(validationState);
+  }, [onValidationChange, validationState]);
+
+  useEffect(() => {
+    if (!isEditorReady) {
+      return;
+    }
+
+    const editorTextarea = editorRef.current
+      ?.getDomNode()
+      ?.querySelector("textarea");
+
+    if (!editorTextarea) {
+      return;
+    }
+
+    editorTextarea.setAttribute("id", editorInputId);
+    editorTextarea.setAttribute("aria-labelledby", labelId);
+
+    const describedBy = validationState.errorMessage
+      ? errorMessageId
+      : helperText
+        ? helperTextId
+        : null;
+
+    if (describedBy) {
+      editorTextarea.setAttribute("aria-describedby", describedBy);
+      return;
+    }
+
+    editorTextarea.removeAttribute("aria-describedby");
+  }, [
+    editorInputId,
+    errorMessageId,
+    helperText,
+    helperTextId,
+    isEditorReady,
+    labelId,
+    validationState.errorMessage,
+  ]);
+
+  useEffect(() => {
+    if (
+      !isEditorReady ||
+      !monacoRef.current ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+
+    const applyTheme = () => {
+      monacoRef.current?.editor.setTheme(
+        document.documentElement.classList.contains("dark")
+          ? DARK_THEME
+          : LIGHT_THEME,
+      );
+    };
+
+    applyTheme();
+
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+
+    return () => observer.disconnect();
+  }, [isEditorReady]);
+
   return (
-    <div
-      onKeyDown={handleKeyDown}
-      onBlur={formatCode}
-      className="mb-6 border border-slate-200"
-    >
-      <MonacoEditor
-        height="300px"
-        language="json"
-        className="rounded-md"
-        options={{
-          minimap: {
-            enabled: false,
-          },
-          formatOnPaste: true,
-          formatOnType: true,
-          padding: {
-            top: 8,
-            bottom: 8,
-          },
-          tabSize: 2,
-        }}
-        defaultValue={value}
-        onChange={(val) => {
-          if (val) {
-            onChange(val);
-          }
-        }}
-        onMount={(editor, monaco) => {
-          editorRef.current = editor;
-          monaco.editor.defineTheme("solarized-light", {
-            base: "vs",
-            inherit: true,
-            rules: [
-              {
-                background: "ffffff",
-                token: "",
-              },
-              {
-                foreground: "6a737d",
-                token: "comment",
-              },
-              {
-                foreground: "6a737d",
-                token: "punctuation.definition.comment",
-              },
-              {
-                foreground: "6a737d",
-                token: "string.comment",
-              },
-              {
-                foreground: "005cc5",
-                token: "constant",
-              },
-              {
-                foreground: "005cc5",
-                token: "entity.name.constant",
-              },
-              {
-                foreground: "005cc5",
-                token: "variable.other.constant",
-              },
-              {
-                foreground: "005cc5",
-                token: "variable.language",
-              },
-              {
-                foreground: "6f42c1",
-                token: "entity",
-              },
-              {
-                foreground: "6f42c1",
-                token: "entity.name",
-              },
-              {
-                foreground: "24292e",
-                token: "variable.parameter.function",
-              },
-              {
-                foreground: "22863a",
-                token: "entity.name.tag",
-              },
-              {
-                foreground: "d73a49",
-                token: "keyword",
-              },
-              {
-                foreground: "d73a49",
-                token: "storage",
-              },
-              {
-                foreground: "d73a49",
-                token: "storage.type",
-              },
-              {
-                foreground: "24292e",
-                token: "storage.modifier.package",
-              },
-              {
-                foreground: "24292e",
-                token: "storage.modifier.import",
-              },
-              {
-                foreground: "24292e",
-                token: "storage.type.java",
-              },
-              {
-                foreground: "032f62",
-                token: "string",
-              },
-              {
-                foreground: "032f62",
-                token: "punctuation.definition.string",
-              },
-              {
-                foreground: "032f62",
-                token: "string punctuation.section.embedded source",
-              },
-              {
-                foreground: "005cc5",
-                token: "support",
-              },
-              {
-                foreground: "005cc5",
-                token: "meta.property-name",
-              },
-              {
-                foreground: "e36209",
-                token: "variable",
-              },
-              {
-                foreground: "24292e",
-                token: "variable.other",
-              },
-              {
-                foreground: "b31d28",
-                fontStyle: "bold italic underline",
-                token: "invalid.broken",
-              },
-              {
-                foreground: "b31d28",
-                fontStyle: "bold italic underline",
-                token: "invalid.deprecated",
-              },
-              {
-                foreground: "fafbfc",
-                background: "b31d28",
-                fontStyle: "italic underline",
-                token: "invalid.illegal",
-              },
-              {
-                foreground: "fafbfc",
-                background: "d73a49",
-                fontStyle: "italic underline",
-                token: "carriage-return",
-              },
-              {
-                foreground: "b31d28",
-                fontStyle: "bold italic underline",
-                token: "invalid.unimplemented",
-              },
-              {
-                foreground: "b31d28",
-                token: "message.error",
-              },
-              {
-                foreground: "24292e",
-                token: "string source",
-              },
-              {
-                foreground: "005cc5",
-                token: "string variable",
-              },
-              {
-                foreground: "032f62",
-                token: "source.regexp",
-              },
-              {
-                foreground: "032f62",
-                token: "string.regexp",
-              },
-              {
-                foreground: "032f62",
-                token: "string.regexp.character-class",
-              },
-              {
-                foreground: "032f62",
-                token: "string.regexp constant.character.escape",
-              },
-              {
-                foreground: "032f62",
-                token: "string.regexp source.ruby.embedded",
-              },
-              {
-                foreground: "032f62",
-                token: "string.regexp string.regexp.arbitrary-repitition",
-              },
-              {
-                foreground: "22863a",
-                fontStyle: "bold",
-                token: "string.regexp constant.character.escape",
-              },
-              {
-                foreground: "005cc5",
-                token: "support.constant",
-              },
-              {
-                foreground: "005cc5",
-                token: "support.variable",
-              },
-              {
-                foreground: "005cc5",
-                token: "meta.module-reference",
-              },
-              {
-                foreground: "735c0f",
-                token: "markup.list",
-              },
-              {
-                foreground: "005cc5",
-                fontStyle: "bold",
-                token: "markup.heading",
-              },
-              {
-                foreground: "005cc5",
-                fontStyle: "bold",
-                token: "markup.heading entity.name",
-              },
-              {
-                foreground: "22863a",
-                token: "markup.quote",
-              },
-              {
-                foreground: "24292e",
-                fontStyle: "italic",
-                token: "markup.italic",
-              },
-              {
-                foreground: "24292e",
-                fontStyle: "bold",
-                token: "markup.bold",
-              },
-              {
-                foreground: "005cc5",
-                token: "markup.raw",
-              },
-              {
-                foreground: "b31d28",
-                background: "ffeef0",
-                token: "markup.deleted",
-              },
-              {
-                foreground: "b31d28",
-                background: "ffeef0",
-                token: "meta.diff.header.from-file",
-              },
-              {
-                foreground: "b31d28",
-                background: "ffeef0",
-                token: "punctuation.definition.deleted",
-              },
-              {
-                foreground: "22863a",
-                background: "f0fff4",
-                token: "markup.inserted",
-              },
-              {
-                foreground: "22863a",
-                background: "f0fff4",
-                token: "meta.diff.header.to-file",
-              },
-              {
-                foreground: "22863a",
-                background: "f0fff4",
-                token: "punctuation.definition.inserted",
-              },
-              {
-                foreground: "e36209",
-                background: "ffebda",
-                token: "markup.changed",
-              },
-              {
-                foreground: "e36209",
-                background: "ffebda",
-                token: "punctuation.definition.changed",
-              },
-              {
-                foreground: "f6f8fa",
-                background: "005cc5",
-                token: "markup.ignored",
-              },
-              {
-                foreground: "f6f8fa",
-                background: "005cc5",
-                token: "markup.untracked",
-              },
-              {
-                foreground: "6f42c1",
-                fontStyle: "bold",
-                token: "meta.diff.range",
-              },
-              {
-                foreground: "005cc5",
-                token: "meta.diff.header",
-              },
-              {
-                foreground: "005cc5",
-                fontStyle: "bold",
-                token: "meta.separator",
-              },
-              {
-                foreground: "005cc5",
-                token: "meta.output",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.tag",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.curly",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.round",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.square",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.angle",
-              },
-              {
-                foreground: "586069",
-                token: "brackethighlighter.quote",
-              },
-              {
-                foreground: "b31d28",
-                token: "brackethighlighter.unmatched",
-              },
-              {
-                foreground: "b31d28",
-                token: "sublimelinter.mark.error",
-              },
-              {
-                foreground: "e36209",
-                token: "sublimelinter.mark.warning",
-              },
-              {
-                foreground: "959da5",
-                token: "sublimelinter.gutter-mark",
-              },
-              {
-                foreground: "032f62",
-                fontStyle: "underline",
-                token: "constant.other.reference.link",
-              },
-              {
-                foreground: "032f62",
-                fontStyle: "underline",
-                token: "string.other.link",
-              },
-            ],
-            colors: {
-              "editor.foreground": "#24292e",
-              "editor.background": "#ffffff",
-              "editor.selectionBackground": "#c8c8fa",
-              "editor.inactiveSelectionBackground": "#fafbfc",
-              "editor.lineHighlightBackground": "#fafbfc",
-              "editorCursor.foreground": "#24292e",
-              "editorWhitespace.foreground": "#959da5",
-              "editorIndentGuide.background": "#959da5",
-              "editorIndentGuide.activeBackground": "#24292e",
-              "editor.selectionHighlightBorder": "#fafbfc",
+    <div className={clsx("space-y-1.5", className)}>
+      <div
+        className={clsx(
+          "overflow-hidden rounded-xl border shadow-sm",
+          validationState.errorMessage
+            ? "border-red-300 dark:border-red-500/60"
+            : "border-gray-200 dark:border-slate-700",
+        )}
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/80 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/30">
+          <label
+            className="cursor-text text-xs text-gray-500 dark:text-slate-400"
+            htmlFor={editorInputId}
+            id={labelId}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              editorRef.current?.focus();
+            }}
+          >
+            {label}
+            {required ? (
+              <span className="ml-1 text-red-500 dark:text-red-400">*</span>
+            ) : null}
+          </label>
+
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:bg-slate-800 dark:text-slate-500">
+            JSON
+          </span>
+        </div>
+
+        <div className="bg-white/80 dark:bg-slate-900/80">
+        <MonacoEditor
+          height={height}
+          language="json"
+          value={value}
+          options={{
+            ariaLabel: required
+              ? `${label}. Required JSON editor.`
+              : `${label}. JSON editor.`,
+            minimap: {
+              enabled: false,
             },
-          });
-          monaco.editor.setTheme("solarized-light");
-        }}
-      />
+            formatOnPaste: true,
+            formatOnType: true,
+            scrollBeyondLastLine: false,
+            scrollbar: {
+              alwaysConsumeMouseWheel: false,
+            },
+            wordWrap: "on",
+            tabSize: 2,
+            lineNumbersMinChars: 3,
+            glyphMargin: false,
+            folding: false,
+            overviewRulerBorder: false,
+            hideCursorInOverviewRuler: true,
+            bracketPairColorization: {
+              enabled: true,
+            },
+            guides: {
+              indentation: false,
+            },
+            padding: {
+              top: 12,
+              bottom: 12,
+            },
+          }}
+          onChange={(nextValue) => {
+            onChange(nextValue || "");
+          }}
+          onValidate={(markers) => {
+            setSyntaxError(getSyntaxErrorMessage(markers));
+          }}
+          onMount={(editorInstance, monaco) => {
+            editorRef.current = editorInstance;
+            monacoRef.current = monaco;
+            defineEditorThemes(monaco);
+            setIsEditorReady(true);
+
+            editorInstance.onDidBlurEditorText(() => {
+              normalizeValueRef.current();
+            });
+
+            editorInstance.addCommand(
+              monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+              () => {
+                normalizeValueRef.current();
+              },
+            );
+
+            monaco.editor.setTheme(
+              document.documentElement.classList.contains("dark")
+                ? DARK_THEME
+                : LIGHT_THEME,
+            );
+          }}
+        />
+        </div>
+      </div>
+
+      <div className="min-h-5">
+        {validationState.errorMessage ? (
+          <p
+            className="text-xs text-red-600 dark:text-red-400"
+            id={errorMessageId}
+          >
+            {validationState.errorMessage}
+          </p>
+        ) : helperText ? (
+          <p
+            className="text-xs text-gray-500 dark:text-slate-400"
+            id={helperTextId}
+          >
+            {helperText}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 };
