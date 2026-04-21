@@ -1,5 +1,16 @@
 # @queuedash/ui
 
+## 3.18.0
+
+### Minor Changes
+
+- [#102](https://github.com/alexbudure/queuedash/pull/102) [`a6cbd23`](https://github.com/alexbudure/queuedash/commit/a6cbd2370babe9f62bf8696e7155f910a419a352) Thanks [@krzkowalczyk](https://github.com/krzkowalczyk)! - Add `prefix` support for Docker JSON queue configuration.
+
+### Patch Changes
+
+- Updated dependencies [[`a6cbd23`](https://github.com/alexbudure/queuedash/commit/a6cbd2370babe9f62bf8696e7155f910a419a352)]:
+  - @queuedash/api@3.18.0
+
 ## 3.17.0
 
 ### Minor Changes

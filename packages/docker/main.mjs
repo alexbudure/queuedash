@@ -19,6 +19,7 @@ const queueConfigSchema = z.object({
         clusterNodes: z
           .array(z.object({ host: z.string(), port: z.number() }))
           .optional(),
+        prefix: z.string().optional(),
       })
       .refine(
         (data) => data.connectionUrl || data.clusterNodes,
@@ -58,6 +59,9 @@ const getQueuesFromConfig = () => {
 
       const queue = new BullMQQueue(queueConfig.name, {
         connection: new Cluster(queueConfig.clusterNodes),
+        ...(queueConfig.prefix !== undefined && {
+          prefix: queueConfig.prefix,
+        }),
       });
       return {
         queue,
@@ -81,6 +85,9 @@ const getQueuesFromConfig = () => {
           url: queueConfig.connectionUrl,
           ...(usesTls && { tls: {} }),
         },
+        ...(queueConfig.prefix !== undefined && {
+          prefix: queueConfig.prefix,
+        }),
       });
       return {
         queue,
@@ -89,6 +96,9 @@ const getQueuesFromConfig = () => {
       };
     } else if (queueConfig.type === "bull") {
       const queue = new Bull(queueConfig.name, queueConfig.connectionUrl, {
+        ...(queueConfig.prefix !== undefined && {
+          prefix: queueConfig.prefix,
+        }),
         redis: {
           ...(usesTls && { tls: {} }),
         },
@@ -100,6 +110,9 @@ const getQueuesFromConfig = () => {
       };
     } else {
       const queue = new BeeQueue(queueConfig.name, {
+        ...(queueConfig.prefix !== undefined && {
+          prefix: queueConfig.prefix,
+        }),
         redis: queueConfig.connectionUrl,
         ...(usesTls && { tls: {} }),
       });
