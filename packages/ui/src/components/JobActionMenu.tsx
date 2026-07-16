@@ -1,5 +1,5 @@
 import { Check, Copy, Rocket, RotateCw, Trash2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { type ReactElement, useEffect, useMemo } from "react";
 
 import type { Job, Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
@@ -12,6 +12,16 @@ type JobActionMenuProps = {
   queue?: Queue;
   onRemove?: () => void;
 };
+
+type JobAction = {
+  key: "retry" | "promote" | "discard" | "clone" | "remove";
+  label: string;
+  onSelect: () => void;
+  icon: ReactElement;
+  isLoading: boolean;
+  tone?: "destructive";
+};
+
 export const JobActionMenu = ({
   job,
   queueName,
@@ -43,10 +53,13 @@ export const JobActionMenu = ({
     onRemove,
   ]);
 
-  const input = {
-    queueName,
-    jobId: job.id,
-  };
+  const input = useMemo(
+    () => ({
+      queueName,
+      jobId: job.id,
+    }),
+    [job.id, queueName],
+  );
 
   const supportsRetry = queue?.supports.retry !== false;
   const supportsPromote = queue?.supports.promote !== false;
@@ -55,43 +68,53 @@ export const JobActionMenu = ({
   const showDiscard = !job.finishedAt;
   const showClone = true;
 
-  const dropdownActions = useMemo(() => {
-    const actions = [];
+  const actions = useMemo<JobAction[]>(() => {
+    const nextActions: JobAction[] = [];
     if (showRetry) {
-      actions.push({
+      nextActions.push({
+        key: "retry",
         label: "Retry",
         onSelect: () => retryMutation.mutate(input),
         icon: <RotateCw className="size-4" />,
+        isLoading: retryMutation.isPending,
       });
     }
     if (showPromote) {
-      actions.push({
+      nextActions.push({
+        key: "promote",
         label: "Promote",
         onSelect: () => promoteMutation.mutate(input),
         icon: <Rocket className="size-4" />,
+        isLoading: promoteMutation.isPending,
       });
     }
     if (showDiscard) {
-      actions.push({
+      nextActions.push({
+        key: "discard",
         label: "Discard",
         onSelect: () => discardMutation.mutate(input),
         icon: <Check className="size-4" />,
+        isLoading: discardMutation.isPending,
       });
     }
     if (showClone) {
-      actions.push({
+      nextActions.push({
+        key: "clone",
         label: "Clone",
         onSelect: () => rerunMutation.mutate(input),
         icon: <Copy className="size-4" />,
+        isLoading: rerunMutation.isPending,
       });
     }
-    actions.push({
+    nextActions.push({
+      key: "remove",
       label: "Remove",
       onSelect: () => removeMutation.mutate(input),
       icon: <Trash2 className="size-4" />,
+      isLoading: removeMutation.isPending,
       tone: "destructive" as const,
     });
-    return actions;
+    return nextActions;
   }, [
     showRetry,
     showPromote,
@@ -105,63 +128,40 @@ export const JobActionMenu = ({
     removeMutation,
   ]);
 
+  const primaryAction =
+    actions.find((action) => action.key === "retry") ??
+    actions.find((action) => action.key === "promote");
+  const overflowActions = actions.filter((action) => action !== primaryAction);
+  const isAnyActionLoading = actions.some((action) => action.isLoading);
+
   return (
     <>
-      {/* Desktop: all actions inline */}
+      {/* Desktop: keep the immediate queue action visible and tuck the rest away. */}
       <div className="hidden items-center gap-2 sm:flex">
-        {showRetry ? (
+        {primaryAction ? (
           <Button
             size="sm"
-            label="Retry"
-            icon={<RotateCw className="size-3.5" />}
-            onClick={() => retryMutation.mutate(input)}
-            isLoading={retryMutation.isPending}
+            label={primaryAction.label}
+            icon={primaryAction.icon}
+            onClick={primaryAction.onSelect}
+            isLoading={primaryAction.isLoading}
           />
         ) : null}
 
-        {showPromote ? (
-          <Button
-            size="sm"
-            label="Promote"
-            icon={<Rocket className="size-3.5" />}
-            onClick={() => promoteMutation.mutate(input)}
-            isLoading={promoteMutation.isPending}
-          />
-        ) : null}
-
-        {showDiscard ? (
-          <Button
-            size="sm"
-            label="Discard"
-            icon={<Check className="size-3.5" />}
-            onClick={() => discardMutation.mutate(input)}
-            isLoading={discardMutation.isPending}
-          />
-        ) : null}
-
-        {showClone ? (
-          <Button
-            size="sm"
-            label="Clone"
-            icon={<Copy className="size-3.5" />}
-            onClick={() => rerunMutation.mutate(input)}
-            isLoading={rerunMutation.isPending}
-          />
-        ) : null}
-
-        <Button
-          size="sm"
-          label="Remove"
-          colorScheme="red"
-          icon={<Trash2 className="size-3.5" />}
-          onClick={() => removeMutation.mutate(input)}
-          isLoading={removeMutation.isPending}
+        <ActionMenu
+          actions={overflowActions}
+          isDisabled={isAnyActionLoading}
+          ariaLabel="More job actions"
         />
       </div>
 
       {/* Mobile: everything in dropdown */}
       <div className="sm:hidden">
-        <ActionMenu actions={dropdownActions} />
+        <ActionMenu
+          actions={actions}
+          isDisabled={isAnyActionLoading}
+          ariaLabel="Job actions"
+        />
       </div>
     </>
   );
