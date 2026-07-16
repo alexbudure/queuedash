@@ -163,12 +163,38 @@ export default trpcNext.createNextApiHandler({
 });
 ```
 
+### Optional authentication
+
+The Express, Fastify, Hono, and Elysia adapters support optional HTTP Basic authentication. When configured, it protects both the dashboard UI and its tRPC API. Existing integrations remain public when `auth` is omitted.
+
+```typescript
+createQueueDashExpressMiddleware({
+  auth: {
+    username: process.env.QUEUEDASH_AUTH_USERNAME!,
+    password: process.env.QUEUEDASH_AUTH_PASSWORD!,
+  },
+  ctx: {
+    queues: [
+      {
+        queue: reportQueue,
+        displayName: "Reports",
+        type: "bull",
+      },
+    ],
+  },
+});
+```
+
+Use HTTPS whenever Basic authentication is enabled. For application-specific sessions, roles, or OAuth, keep using your framework's authentication middleware around the QueueDash routes. Direct `@queuedash/ui` integrations can pass request credentials through the `headers` prop.
+
 ### Docker
 
 The fastest way to get started is using the official Docker image:
 
 ```bash
 docker run -p 3000:3000 \
+  -e QUEUEDASH_AUTH_USERNAME='admin' \
+  -e QUEUEDASH_AUTH_PASSWORD='change-me' \
   -e QUEUES_CONFIG_JSON='{"queues":[{"name":"my-queue","displayName":"My Queue","type":"bullmq","connectionUrl":"redis://localhost:6379"}]}' \
   ghcr.io/alexbudure/queuedash:latest
 ```
@@ -179,6 +205,8 @@ Then visit http://localhost:3000
 
 - `QUEUES_CONFIG_JSON` - Optional if `QUEUES_CONFIG_FILE_PATH` is set. JSON string containing queue configuration.
 - `QUEUES_CONFIG_FILE_PATH` - Optional if `QUEUES_CONFIG_JSON` is set. Path to a JSON file containing queue configuration.
+- `QUEUEDASH_AUTH_USERNAME` - Optional. Username for HTTP Basic authentication. Must be set with `QUEUEDASH_AUTH_PASSWORD`.
+- `QUEUEDASH_AUTH_PASSWORD` - Optional. Password for HTTP Basic authentication. Must be set with `QUEUEDASH_AUTH_USERNAME`.
 
 Example configuration:
 
@@ -225,9 +253,14 @@ See the [./examples](./examples) folder for more.
 
 ```typescript
 type QueueDashMiddlewareOptions = {
-  app: express.Application | FastifyInstance; // Express or Fastify app
-  baseUrl: string; // Base path for the API and UI
   ctx: QueueDashContext; // Context for the UI
+  auth?: QueueDashAuthOptions; // Optional HTTP Basic authentication
+  baseUrl?: string; // Required by Fastify, Hono, and Elysia
+};
+
+type QueueDashAuthOptions = {
+  username: string;
+  password: string;
 };
 
 type QueueDashContext = {
@@ -247,6 +280,9 @@ type QueueDashQueue = {
 type QueueDashAppProps = {
   apiUrl: string; // URL to the API endpoint
   basename: string; // Base path for the app
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>); // Optional tRPC request headers
 };
 ```
 

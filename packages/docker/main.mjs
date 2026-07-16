@@ -125,11 +125,29 @@ const getQueuesFromConfig = () => {
   });
 };
 
+const getAuthFromEnvironment = () => {
+  const username = process.env.QUEUEDASH_AUTH_USERNAME;
+  const password = process.env.QUEUEDASH_AUTH_PASSWORD;
+
+  if (username === undefined && password === undefined) {
+    return undefined;
+  }
+
+  if (!username || !password) {
+    throw new Error(
+      "QUEUEDASH_AUTH_USERNAME and QUEUEDASH_AUTH_PASSWORD must both be set to non-empty values",
+    );
+  }
+
+  return { username, password };
+};
+
 const app = express();
 
 app.use(
   "/",
   createQueueDashExpressMiddleware({
+    auth: getAuthFromEnvironment(),
     ctx: {
       queues: getQueuesFromConfig(),
     },

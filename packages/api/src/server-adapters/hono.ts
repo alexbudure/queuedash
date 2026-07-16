@@ -3,16 +3,30 @@ import { Hono } from "hono";
 
 import { appRouter } from "../routers/_app";
 import type { Context } from "../routers/_app";
+import {
+  createQueueDashUnauthorizedResponse,
+  isQueueDashAuthorized,
+  type QueueDashAuthOptions,
+} from "./auth";
 import { createQueuedashHtml } from "./utils";
 
 export const createHonoAdapter = ({
   baseUrl,
   ctx,
+  auth,
 }: {
   baseUrl: string;
   ctx: Context;
-}) =>
-  new Hono()
+  auth?: QueueDashAuthOptions;
+}) => {
+  return new Hono()
+    .use("*", async (c, next) => {
+      if (!isQueueDashAuthorized(c.req.header("Authorization"), auth)) {
+        return createQueueDashUnauthorizedResponse();
+      }
+
+      await next();
+    })
     .use(
       "/trpc/*",
       trpcServer({
@@ -24,3 +38,4 @@ export const createHonoAdapter = ({
     .get("*", (c) => {
       return c.html(createQueuedashHtml(baseUrl));
     });
+};
