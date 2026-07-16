@@ -1,5 +1,11 @@
 # @queuedash/client
 
+## 3.20.0
+
+### Minor Changes
+
+- [#106](https://github.com/alexbudure/queuedash/pull/106) [`ea55ae4`](https://github.com/alexbudure/queuedash/commit/ea55ae4c2bf5f7f6452467bb7cc8358119f51496) Thanks [@alexbudure](https://github.com/alexbudure)! - Add optional HTTP Basic authentication to the Express, Fastify, Hono, and Elysia adapters.
+
 ## 3.19.0
 
 ### Minor Changes
