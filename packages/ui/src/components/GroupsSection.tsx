@@ -1,28 +1,31 @@
 import { clsx } from "clsx";
 import { Search, X, Trash2 } from "lucide-react";
 
-import { REFETCH_INTERVAL } from "../utils/config";
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
+import { useQueuedash } from "./QueuedashProvider";
 import { Skeleton } from "./Skeleton";
 
 type GroupsSectionProps = {
+  canRemoveJobs: boolean;
   queueName: string;
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
 };
 
 export const GroupsSection = ({
+  canRemoveJobs,
   queueName,
   selectedGroupId,
   onSelectGroup,
 }: GroupsSectionProps) => {
+  const { preferences } = useQueuedash();
   const { data: groups, isLoading } = trpc.queue.groups.useQuery(
     { queueName },
     {
       enabled: !!queueName,
-      refetchInterval: REFETCH_INTERVAL,
+      refetchInterval: preferences.refreshIntervalMs,
     },
   );
 
@@ -73,7 +76,7 @@ export const GroupsSection = ({
             ) : null}
           </div>
           <div className="flex items-center gap-1.5">
-            {selectedGroupId ? (
+            {selectedGroupId && canRemoveJobs ? (
               <Alert
                 title="Delete all jobs in this group?"
                 description={`This action cannot be undone. This will permanently remove all jobs from group "${selectedGroupId}".`}

@@ -8,6 +8,7 @@ import {
 } from "react-aria-components";
 
 import { Button } from "./Button";
+import { useQueuedash } from "./QueuedashProvider";
 
 type AlertProps = {
   title: string;
@@ -20,10 +21,13 @@ export const Alert = ({
   action,
   children,
 }: PropsWithChildren<AlertProps>) => {
+  const { portalContainer } = useQueuedash();
+
   return (
     <DialogTrigger>
       <AriaButton>{children}</AriaButton>
       <Modal
+        UNSTABLE_portalContainer={portalContainer ?? undefined}
         isDismissable
         className="fixed inset-0 z-[90] bg-black/20 dark:bg-black/40"
       >

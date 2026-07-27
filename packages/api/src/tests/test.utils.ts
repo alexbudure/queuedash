@@ -64,7 +64,7 @@ export const initMultipleQueues = async (count: number = 2) => {
 // Helper to expect TRPC error
 export const expectTRPCError = async (
   fn: () => Promise<unknown>,
-  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
+  code?: "BAD_REQUEST" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
 ) => {
   const { TRPCError } = await import("@trpc/server");
   try {

@@ -5,7 +5,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import cronstrue from "cronstrue";
-import { format, formatDistanceToNow } from "date-fns";
 import { Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -14,8 +13,10 @@ import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
 import { JobTableSkeleton } from "./JobTableSkeleton";
+import { useQueuedash } from "./QueuedashProvider";
 import { SchedulerModal } from "./SchedulerModal";
 import { TableRow } from "./TableRow";
+import { formatAbsoluteTimestamp, Timestamp } from "./Timestamp";
 import { Tooltip } from "./Tooltip";
 
 const columnHelper = createColumnHelper<Scheduler>();
@@ -111,15 +112,15 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
       }
       return (
         <Tooltip
-          content={format(
-            new Date(props.cell.row.original.next),
-            `dd MMM yyyy HH:mm:ss zzz`,
+          content={formatAbsoluteTimestamp(
+            props.cell.row.original.next,
+            "full",
           )}
           triggerClassName="w-full justify-start"
         >
           <span className="flex w-full min-w-0 items-center space-x-1.5 py-1">
             <span className="truncate text-sm text-gray-900 dark:text-white">
-              In {formatDistanceToNow(new Date(props.cell.row.original.next))}{" "}
+              <Timestamp value={props.cell.row.original.next} variant="full" />{" "}
               <span className="text-xs text-gray-400 dark:text-slate-500">
                 ({props.cell.row.original.iterationCount} run
                 {props.cell.row.original.iterationCount === 1 ? "" : "s"} total)
@@ -134,9 +135,14 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
 ];
 
 type SchedulerTableProps = {
+  canRemove: boolean;
   queueName: string;
 };
-export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
+export const SchedulerTable = ({
+  canRemove,
+  queueName,
+}: SchedulerTableProps) => {
+  const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
   const lastClickedIndexRef = useRef<number | null>(null);
   const { data, isLoading } = trpc.scheduler.list.useQuery({
@@ -196,6 +202,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
     <div>
       {selectedScheduler ? (
         <SchedulerModal
+          canRemove={canRemove}
           scheduler={selectedScheduler}
           queueName={queueName}
           onDismiss={() => setSelectedScheduler(null)}
@@ -203,12 +210,14 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
       ) : null}
       <div className="overflow-hidden rounded-xl border border-gray-100/60 dark:border-slate-800/60">
         {isLoading ? (
-          <JobTableSkeleton />
+          <JobTableSkeleton rows={Math.min(preferences.jobsPerPage, 10)} />
         ) : (
           <div>
             {table.getHeaderGroups().map((headerGroup) => (
               <div
-                className="sticky top-0 z-10 grid grid-cols-[36px_minmax(0,30%)_1fr_1fr] border-b border-gray-100/60 bg-gray-50/80 px-2 py-1.5 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80"
+                className={`sticky top-0 z-10 grid grid-cols-[36px_minmax(0,30%)_1fr_1fr] border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
+                  preferences.density === "compact" ? "py-1" : "py-2"
+                }`}
                 key={headerGroup.id}
               >
                 {headerGroup.headers.map((header) => (
@@ -249,7 +258,7 @@ export const SchedulerTable = ({ queueName }: SchedulerTableProps) => {
         )}
       </div>
 
-      {table.getSelectedRowModel().rows.length > 0 ? (
+      {canRemove && table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
           <div className="pointer-events-auto flex items-center space-x-3 rounded-full border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-900 dark:text-slate-100">

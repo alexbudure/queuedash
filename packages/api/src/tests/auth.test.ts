@@ -8,26 +8,44 @@ import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  isQueueDashAuthorized,
+  createQueuedashSessionCookie,
+  createQueuedashSessionToken,
+  getQueuedashAuthMode,
+  isQueuedashBasicAuthorized,
+  isQueuedashSessionAuthorized,
   QUEUEDASH_AUTH_CHALLENGE,
-  type QueueDashAuthOptions,
+  QUEUEDASH_SESSION_COOKIE,
+  type QueuedashAuthOptions,
 } from "../server-adapters/auth";
 import { queuedash } from "../server-adapters/elysia";
-import { createQueueDashExpressMiddleware } from "../server-adapters/express";
-import { fastifyQueueDashPlugin } from "../server-adapters/fastify";
+import { createQueuedashExpressMiddleware } from "../server-adapters/express";
+import { fastifyQueuedashPlugin } from "../server-adapters/fastify";
 import { createHonoAdapter } from "../server-adapters/hono";
 import type { Context } from "../trpc";
 
 const auth = {
   username: "queuedash-admin",
   password: "correct horse:battery staple",
-} satisfies QueueDashAuthOptions;
+} satisfies QueuedashAuthOptions;
+const basicAuth = { ...auth, mode: "basic" as const };
 const authorization = `Basic ${Buffer.from(
   `${auth.username}:${auth.password}`,
 ).toString("base64")}`;
 const ctx = { queues: [] } satisfies Context;
 
-const expectAuthChallenge = (response: Response) => {
+const getCookie = (response: Response): string => {
+  const setCookie = response.headers.get("set-cookie");
+  expect(setCookie).toContain(`${QUEUEDASH_SESSION_COOKIE}=`);
+  return setCookie!.split(";")[0];
+};
+
+const expectSessionUnauthorized = (response: Response) => {
+  expect(response.status).toBe(401);
+  expect(response.headers.get("www-authenticate")).toBeNull();
+  expect(response.headers.get("cache-control")).toBe("no-store");
+};
+
+const expectBasicChallenge = (response: Response) => {
   expect(response.status).toBe(401);
   expect(response.headers.get("www-authenticate")).toBe(
     QUEUEDASH_AUTH_CHALLENGE,
@@ -35,36 +53,113 @@ const expectAuthChallenge = (response: Response) => {
   expect(response.headers.get("cache-control")).toBe("no-store");
 };
 
-describe("HTTP Basic auth", () => {
-  it("is disabled when no auth options are provided", () => {
-    expect(isQueueDashAuthorized(undefined, undefined)).toBe(true);
+describe("authentication helpers", () => {
+  it("defaults configured authentication to the login session", () => {
+    expect(getQueuedashAuthMode(undefined)).toBeUndefined();
+    expect(getQueuedashAuthMode(auth)).toBe("session");
+    expect(getQueuedashAuthMode(basicAuth)).toBe("basic");
+    expect(() =>
+      getQueuedashAuthMode({ ...auth, mode: "invalid" as never }),
+    ).toThrow('Queuedash auth mode must be either "session" or "basic"');
   });
 
-  it("accepts only the configured credentials", () => {
-    expect(isQueueDashAuthorized(authorization, auth)).toBe(true);
-    expect(isQueueDashAuthorized(undefined, auth)).toBe(false);
-    expect(isQueueDashAuthorized("Bearer token", auth)).toBe(false);
+  it("accepts only the configured Basic credentials", () => {
+    expect(isQueuedashBasicAuthorized(undefined, undefined)).toBe(true);
+    expect(isQueuedashBasicAuthorized(authorization, auth)).toBe(true);
+    expect(isQueuedashBasicAuthorized(undefined, auth)).toBe(false);
+    expect(isQueuedashBasicAuthorized("Bearer token", auth)).toBe(false);
     expect(
-      isQueueDashAuthorized(`Basic ${Buffer.from(":").toString("base64")}`, {
-        username: "",
-        password: "",
-      }),
-    ).toBe(false);
-    expect(
-      isQueueDashAuthorized(
+      isQueuedashBasicAuthorized(
         `Basic ${Buffer.from(`${auth.username}:wrong`).toString("base64")}`,
         auth,
       ),
     ).toBe(false);
   });
+
+  it("signs, expires, and scopes session cookies", () => {
+    const now = Date.now();
+    const shortAuth = {
+      ...auth,
+      session: { ttlSeconds: 60, secure: true },
+    };
+    const token = createQueuedashSessionToken(shortAuth, now);
+
+    expect(
+      isQueuedashSessionAuthorized(
+        `${QUEUEDASH_SESSION_COOKIE}=${token}`,
+        shortAuth,
+        now + 59_000,
+      ),
+    ).toBe(true);
+    expect(
+      isQueuedashSessionAuthorized(
+        `${QUEUEDASH_SESSION_COOKIE}=${token}`,
+        shortAuth,
+        now + 60_001,
+      ),
+    ).toBe(false);
+    expect(
+      isQueuedashSessionAuthorized(
+        `${QUEUEDASH_SESSION_COOKIE}=${token}x`,
+        shortAuth,
+        now,
+      ),
+    ).toBe(false);
+
+    const cookie = createQueuedashSessionCookie({
+      auth: shortAuth,
+      baseUrl: "/admin/queuedash/",
+      requestIsSecure: false,
+    });
+    expect(cookie).toContain("Path=/admin/queuedash");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
+    expect(cookie).toContain("Secure");
+  });
+
+  it("supports a shared signing secret across application instances", () => {
+    const firstInstance = {
+      ...auth,
+      session: { secret: "a-long-random-deployment-secret" },
+    };
+    const secondInstance = {
+      ...auth,
+      session: { secret: "a-long-random-deployment-secret" },
+    };
+    const token = createQueuedashSessionToken(firstInstance);
+
+    expect(
+      isQueuedashSessionAuthorized(
+        `${QUEUEDASH_SESSION_COOKIE}=${token}`,
+        secondInstance,
+      ),
+    ).toBe(true);
+    expect(
+      isQueuedashSessionAuthorized(`${QUEUEDASH_SESSION_COOKIE}=${token}`, {
+        ...auth,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("Express adapter auth", () => {
-  const createRequest = (path: string, authorizationHeader?: string) =>
+  const createRequest = ({
+    authorizationHeader,
+    cookie,
+    method = "GET",
+    path,
+  }: {
+    authorizationHeader?: string;
+    cookie?: string;
+    method?: string;
+    path: string;
+  }) =>
     ({
       baseUrl: "/queuedash",
-      headers: { authorization: authorizationHeader },
+      headers: { authorization: authorizationHeader, cookie },
+      method,
       path,
+      secure: false,
     }) as Request;
 
   const createResponse = () => {
@@ -85,73 +180,127 @@ describe("Express adapter auth", () => {
     };
   };
 
-  it("protects the UI and tRPC endpoint", async () => {
-    const handler = createQueueDashExpressMiddleware({ auth, ctx });
+  it("serves the branded login shell and protects only data routes", async () => {
+    const handler = createQueuedashExpressMiddleware({ auth, ctx });
+    const ui = createResponse();
 
-    for (const path of ["/", "/trpc/queue.list"]) {
-      const { response, spies } = createResponse();
-      await handler(createRequest(path), response, vi.fn() as NextFunction);
-
-      expect(spies.set).toHaveBeenCalledWith({
-        "Cache-Control": "no-store",
-        "WWW-Authenticate": QUEUEDASH_AUTH_CHALLENGE,
-      });
-      expect(spies.status).toHaveBeenCalledWith(401);
-    }
-
-    const { response, spies } = createResponse();
     await handler(
-      createRequest("/", authorization),
-      response,
+      createRequest({ path: "/" }),
+      ui.response,
       vi.fn() as NextFunction,
     );
-    expect(spies.type).toHaveBeenCalledWith("text/html");
+    expect(ui.spies.type).toHaveBeenCalledWith("text/html");
+    expect(ui.spies.send.mock.calls[0][0]).toContain(
+      '"baseUrl":"/queuedash/auth"',
+    );
+
+    const api = createResponse();
+    await handler(
+      createRequest({ path: "/trpc/queue.list" }),
+      api.response,
+      vi.fn() as NextFunction,
+    );
+    expect(api.spies.status).toHaveBeenCalledWith(401);
+    expect(api.spies.set).toHaveBeenCalledWith({
+      "Cache-Control": "no-store",
+    });
   });
 
-  it("keeps the adapter public by default", async () => {
-    const handler = createQueueDashExpressMiddleware({ ctx });
-    const { response, spies } = createResponse();
+  it("creates, checks, and clears a login session", async () => {
+    const handler = createQueuedashExpressMiddleware({ auth, ctx });
+    const login = createResponse();
+    await handler(
+      createRequest({
+        authorizationHeader: authorization,
+        method: "POST",
+        path: "/auth/login",
+      }),
+      login.response,
+      vi.fn() as NextFunction,
+    );
+    expect(login.spies.status).toHaveBeenCalledWith(204);
 
-    await handler(createRequest("/"), response, vi.fn() as NextFunction);
+    const setHeaders = login.spies.set.mock.calls[0][0] as Record<
+      string,
+      string
+    >;
+    const cookie = setHeaders["Set-Cookie"].split(";")[0];
+    const session = createResponse();
+    await handler(
+      createRequest({ cookie, path: "/auth/session" }),
+      session.response,
+      vi.fn() as NextFunction,
+    );
+    expect(session.spies.status).toHaveBeenCalledWith(204);
 
-    expect(spies.type).toHaveBeenCalledWith("text/html");
-    expect(spies.status).not.toHaveBeenCalledWith(401);
+    const logout = createResponse();
+    await handler(
+      createRequest({ cookie, method: "POST", path: "/auth/logout" }),
+      logout.response,
+      vi.fn() as NextFunction,
+    );
+    expect(logout.spies.set.mock.calls[0][0]["Set-Cookie"]).toContain(
+      "Max-Age=0",
+    );
+  });
+
+  it("retains browser challenge mode as an explicit option", async () => {
+    const handler = createQueuedashExpressMiddleware({
+      auth: basicAuth,
+      ctx,
+    });
+    const result = createResponse();
+
+    await handler(
+      createRequest({ path: "/" }),
+      result.response,
+      vi.fn() as NextFunction,
+    );
+    expect(result.spies.set).toHaveBeenCalledWith({
+      "Cache-Control": "no-store",
+      "WWW-Authenticate": QUEUEDASH_AUTH_CHALLENGE,
+    });
   });
 });
 
 describe("Fastify adapter auth", () => {
-  it("protects the UI and tRPC endpoint", async () => {
+  it("supports login sessions without blocking the app shell", async () => {
     const app = fastify();
-    app.register(fastifyQueueDashPlugin, {
+    app.register(fastifyQueuedashPlugin, {
       auth,
       baseUrl: "/queuedash",
       ctx,
     });
 
     try {
-      const uiResponse = await app.inject({ method: "GET", url: "/queuedash" });
-      expect(uiResponse.statusCode).toBe(401);
-      expect(uiResponse.headers["www-authenticate"]).toBe(
-        QUEUEDASH_AUTH_CHALLENGE,
-      );
-      expect(uiResponse.headers["cache-control"]).toBe("no-store");
+      const ui = await app.inject({ method: "GET", url: "/queuedash" });
+      expect(ui.statusCode).toBe(200);
+      expect(ui.body).toContain('"baseUrl":"/queuedash/auth"');
 
-      const apiResponse = await app.inject({
+      const api = await app.inject({
         method: "GET",
         url: "/queuedash/trpc/queue.list",
       });
-      expect(apiResponse.statusCode).toBe(401);
-      expect(apiResponse.headers["www-authenticate"]).toBe(
-        QUEUEDASH_AUTH_CHALLENGE,
-      );
-      expect(apiResponse.headers["cache-control"]).toBe("no-store");
+      expect(api.statusCode).toBe(401);
+      expect(api.headers["www-authenticate"]).toBeUndefined();
 
-      const authenticatedResponse = await app.inject({
-        method: "GET",
-        url: "/queuedash",
+      const login = await app.inject({
+        method: "POST",
+        url: "/queuedash/auth/login",
         headers: { authorization },
       });
-      expect(authenticatedResponse.statusCode).toBe(200);
+      expect(login.statusCode).toBe(204);
+      const setCookie = login.headers["set-cookie"]!;
+      const cookie = (
+        Array.isArray(setCookie) ? setCookie[0] : setCookie
+      ).split(";")[0];
+
+      const session = await app.inject({
+        method: "GET",
+        url: "/queuedash/auth/session",
+        headers: { cookie },
+      });
+      expect(session.statusCode).toBe(204);
     } finally {
       await app.close();
     }
@@ -159,40 +308,69 @@ describe("Fastify adapter auth", () => {
 });
 
 describe("Hono adapter auth", () => {
-  it("protects the UI and tRPC endpoint", async () => {
+  it("supports login sessions without blocking the app shell", async () => {
     const app = new Hono().route(
       "/queuedash",
       createHonoAdapter({ auth, baseUrl: "/queuedash", ctx }),
     );
 
-    expectAuthChallenge(await app.request("/queuedash"));
-    expectAuthChallenge(await app.request("/queuedash/trpc/queue.list"));
+    const ui = await app.request("/queuedash");
+    expect(ui.status).toBe(200);
+    expect(await ui.text()).toContain('"baseUrl":"/queuedash/auth"');
+    expectSessionUnauthorized(await app.request("/queuedash/trpc/queue.list"));
+
+    const login = await app.request("/queuedash/auth/login", {
+      method: "POST",
+      headers: { authorization },
+    });
+    expect(login.status).toBe(204);
+    const cookie = getCookie(login);
     expect(
-      (await app.request("/queuedash", { headers: { authorization } })).status,
-    ).toBe(200);
+      (
+        await app.request("/queuedash/auth/session", {
+          headers: { cookie },
+        })
+      ).status,
+    ).toBe(204);
   });
 });
 
 describe("Elysia adapter auth", () => {
-  it("protects the UI and tRPC endpoint", async () => {
+  it("supports login sessions without blocking the app shell", async () => {
     const app = queuedash({ auth, baseUrl: "/queuedash", ctx });
+    const ui = await app.handle(new Request("http://localhost/queuedash"));
+    expect(ui.status).toBe(200);
+    expect(await ui.text()).toContain('"baseUrl":"/queuedash/auth"');
 
-    expectAuthChallenge(
-      await app.handle(new Request("http://localhost/queuedash")),
-    );
-    expectAuthChallenge(
+    expectSessionUnauthorized(
       await app.handle(
         new Request("http://localhost/queuedash/trpc/queue.list"),
       ),
     );
+
+    const login = await app.handle(
+      new Request("http://localhost/queuedash/auth/login", {
+        method: "POST",
+        headers: { authorization },
+      }),
+    );
+    expect(login.status).toBe(204);
+    const cookie = getCookie(login);
     expect(
       (
         await app.handle(
-          new Request("http://localhost/queuedash", {
-            headers: { authorization },
+          new Request("http://localhost/queuedash/auth/session", {
+            headers: { cookie },
           }),
         )
       ).status,
-    ).toBe(200);
+    ).toBe(204);
+  });
+
+  it("retains the browser challenge when basic mode is selected", async () => {
+    const app = queuedash({ auth: basicAuth, baseUrl: "/queuedash", ctx });
+    expectBasicChallenge(
+      await app.handle(new Request("http://localhost/queuedash")),
+    );
   });
 });

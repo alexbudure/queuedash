@@ -8,6 +8,7 @@ import {
   type FeatureSupport,
   type GroupInfo,
   type SchedulerInfo,
+  type WorkerInfo,
 } from "./base.adapter";
 
 type BullMQStatus =
@@ -57,6 +58,7 @@ export class BullMQAdapter extends QueueAdapter<
       "prioritized",
     ],
     groups: false,
+    workers: true,
   };
 
   constructor(
@@ -171,6 +173,23 @@ export class BullMQAdapter extends QueueAdapter<
   async getJobLogs(jobId: string): Promise<string[] | null> {
     const { logs } = await this.queue.getJobLogs(jobId);
     return logs;
+  }
+
+  async getWorkers(): Promise<WorkerInfo[]> {
+    const workers = (await this.queue.getWorkers()) as Record<string, string>[];
+    return workers.map((worker, index) => {
+      const rawName = worker.rawname;
+      const configuredName = rawName?.includes(":w:")
+        ? rawName.slice(rawName.indexOf(":w:") + 3)
+        : undefined;
+
+      return {
+        id: worker.id || `worker-${index + 1}`,
+        name: configuredName || undefined,
+        ageSeconds: toNumber(worker.age),
+        idleSeconds: toNumber(worker.idle),
+      };
+    });
   }
 
   async getSchedulers(): Promise<SchedulerInfo[]> {
@@ -303,3 +322,8 @@ export class BullMQAdapter extends QueueAdapter<
     );
   }
 }
+
+const toNumber = (value: string | undefined): number | undefined => {
+  const number = value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+};

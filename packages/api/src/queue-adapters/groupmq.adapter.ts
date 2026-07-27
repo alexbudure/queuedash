@@ -50,6 +50,7 @@ export class GroupMQAdapter extends QueueAdapter<
       "prioritized",
     ],
     groups: true,
+    workers: false,
   };
 
   constructor(
@@ -123,9 +124,16 @@ export class GroupMQAdapter extends QueueAdapter<
   }
 
   async getJob(jobId: string): Promise<AdaptedJob | null> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) return null;
-    return this.adaptJob(job);
+    try {
+      const job = await this.queue.getJob(jobId);
+      if (!job) return null;
+      return this.adaptJob(job);
+    } catch (error) {
+      if (error instanceof Error && /not found/i.test(error.message)) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async addJob(

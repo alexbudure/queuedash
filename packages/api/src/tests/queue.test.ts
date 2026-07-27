@@ -3,12 +3,110 @@ import { expect, test } from "vitest";
 
 import { appRouter } from "../routers/_app";
 import {
+  expectTRPCError,
   initRedisInstance,
   sleep,
   type,
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
 } from "./test.utils";
+
+test("read-only and hidden queue policies are enforced server-side", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+  const readOnlyCaller = appRouter.createCaller({
+    ...ctx,
+    access: {
+      rules: [{ queues: [queueName], mode: "read-only" }],
+    },
+  });
+
+  const queue = await readOnlyCaller.queue.byName({ queueName });
+  expect(queue.access.mode).toBe("read-only");
+  expect(queue.access.actions["job.add"]).toBe(false);
+  await expectTRPCError(
+    () =>
+      readOnlyCaller.queue.addJob({
+        queueName,
+        data: { shouldNotBeAdded: true },
+      }),
+    "FORBIDDEN",
+  );
+
+  const hiddenCaller = appRouter.createCaller({
+    ...ctx,
+    access: {
+      rules: [{ queues: [queueName], mode: "hidden" }],
+    },
+  });
+  expect(await hiddenCaller.queue.list()).toEqual([]);
+  await expectTRPCError(
+    () => hiddenCaller.queue.byName({ queueName }),
+    "NOT_FOUND",
+  );
+});
+
+test("settings returns browser-safe server policy metadata", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+  const caller = appRouter.createCaller({
+    ...ctx,
+    access: {
+      default: "read-only",
+      rules: [
+        { queues: ["internal-secret-*"], mode: "hidden" },
+        { queues: [queueName], mode: "full" },
+        { queues: [queueName], deny: ["job.remove"] },
+      ],
+    },
+    privacy: {
+      redact: true,
+      expose: { logs: false },
+    },
+    search: { maxScanned: 125 },
+  });
+
+  const settings = await caller.settings.get();
+  expect(settings.access.default).toBe("read-only");
+  expect(settings.access.rules).toEqual([
+    {
+      queues: [queueName],
+      mode: "full",
+      deny: ["job.remove"],
+    },
+  ]);
+  expect(JSON.stringify(settings.access.rules)).not.toContain(
+    "internal-secret",
+  );
+  expect(settings.privacy.redactionEnabled).toBe(true);
+  expect(settings.privacy.expose.logs).toBe(false);
+  expect(settings.search.maxScanned).toBe(125);
+  expect(settings.version).toMatch(/^\d+\.\d+\.\d+/u);
+});
+
+test("worker inspection is capability-gated and normalized", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queue = await caller.queue.byName({
+    queueName: firstQueue.queue.name,
+  });
+  const workers = await caller.queue.workers({
+    queueName: firstQueue.queue.name,
+  });
+
+  if (type === "bull" || type === "bullmq") {
+    expect(queue.supports.workers).toBe(true);
+    expect(workers.length).toBeGreaterThan(0);
+    expect(workers[0]).toMatchObject({
+      id: expect.any(String),
+    });
+    expect(workers[0]).not.toHaveProperty("addr");
+    expect(workers[0]).not.toHaveProperty("rawname");
+  } else {
+    expect(queue.supports.workers).toBe(false);
+    expect(workers).toEqual([]);
+  }
+});
 
 test("list queues", async () => {
   const { ctx } = await initRedisInstance();

@@ -61,12 +61,16 @@ export const JobActionMenu = ({
     [job.id, queueName],
   );
 
-  const supportsRetry = queue?.supports.retry !== false;
-  const supportsPromote = queue?.supports.promote !== false;
+  const supportsRetry =
+    queue?.supports.retry !== false && queue?.access.actions["job.retry"];
+  const supportsPromote =
+    queue?.supports.promote !== false && queue?.access.actions["job.promote"];
   const showRetry = !!job.failedReason && supportsRetry;
   const showPromote = !job.finishedAt && supportsPromote;
-  const showDiscard = !job.finishedAt;
-  const showClone = true;
+  const showDiscard =
+    !job.finishedAt && queue?.access.actions["job.discard"] === true;
+  const showClone = queue?.access.actions["job.rerun"] === true;
+  const showRemove = queue?.access.actions["job.remove"] === true;
 
   const actions = useMemo<JobAction[]>(() => {
     const nextActions: JobAction[] = [];
@@ -106,20 +110,23 @@ export const JobActionMenu = ({
         isLoading: rerunMutation.isPending,
       });
     }
-    nextActions.push({
-      key: "remove",
-      label: "Remove",
-      onSelect: () => removeMutation.mutate(input),
-      icon: <Trash2 className="size-4" />,
-      isLoading: removeMutation.isPending,
-      tone: "destructive" as const,
-    });
+    if (showRemove) {
+      nextActions.push({
+        key: "remove",
+        label: "Remove",
+        onSelect: () => removeMutation.mutate(input),
+        icon: <Trash2 className="size-4" />,
+        isLoading: removeMutation.isPending,
+        tone: "destructive" as const,
+      });
+    }
     return nextActions;
   }, [
     showRetry,
     showPromote,
     showDiscard,
     showClone,
+    showRemove,
     input,
     retryMutation,
     promoteMutation,

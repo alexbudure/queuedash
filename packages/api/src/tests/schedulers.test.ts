@@ -2,7 +2,39 @@ import { TRPCError } from "@trpc/server";
 import { expect, test } from "vitest";
 
 import { appRouter } from "../routers/_app";
-import { initRedisInstance, NUM_OF_SCHEDULERS } from "./test.utils";
+import {
+  expectTRPCError,
+  initRedisInstance,
+  NUM_OF_SCHEDULERS,
+} from "./test.utils";
+
+test("read-only queues can list schedulers but cannot add them", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller({
+    ...ctx,
+    access: {
+      rules: [{ queues: [firstQueue.queue.name], mode: "read-only" }],
+    },
+  });
+
+  if (firstQueue.type === "bullmq") {
+    const schedulers = await caller.scheduler.list({
+      queueName: firstQueue.queue.name,
+    });
+    expect(schedulers.length).toBe(NUM_OF_SCHEDULERS);
+  }
+
+  await expectTRPCError(
+    () =>
+      caller.scheduler.add({
+        queueName: firstQueue.queue.name,
+        jobName: "blocked-scheduler",
+        data: {},
+        pattern: "0 0 * * *",
+      }),
+    "FORBIDDEN",
+  );
+});
 
 test("list schedulers", async () => {
   const { ctx, firstQueue } = await initRedisInstance();

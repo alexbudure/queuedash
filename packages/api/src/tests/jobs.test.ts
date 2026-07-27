@@ -54,6 +54,67 @@ test("job has returnValue when worker returns data", async () => {
   }
 });
 
+test("search is bounded and only matches server-presented data", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const hiddenValue = `hidden-${faker.string.uuid()}`;
+  const caller = appRouter.createCaller({
+    ...ctx,
+    privacy: {
+      redact: {
+        keys: ["index", "sensitiveField"],
+      },
+    },
+  });
+  await caller.queue.addJob({
+    queueName: firstQueue.queue.name,
+    data: {
+      index: 1,
+      sensitiveField: hiddenValue,
+    },
+  });
+  await sleep(50);
+  const visibleJobs = await caller.job.list({
+    limit: 1,
+    cursor: 0,
+    status: "completed",
+    queueName: firstQueue.queue.name,
+  });
+  const job = visibleJobs.jobs[0];
+
+  expect(job?.data.index).toBe("[REDACTED]");
+
+  const exact = await caller.job.search({
+    queueName: firstQueue.queue.name,
+    query: job.id,
+    maxScanned: 25,
+    limit: 5,
+  });
+  expect(exact.results[0]?.job.id).toBe(job.id);
+  expect(exact.results[0]?.job.data.index).toBe("[REDACTED]");
+  expect(exact.scanned).toBeLessThanOrEqual(25);
+
+  const hidden = await caller.job.search({
+    queueName: firstQueue.queue.name,
+    query: hiddenValue,
+    maxScanned: 50,
+    limit: 5,
+  });
+  expect(hidden.results).toHaveLength(0);
+  expect(hidden.scanned).toBeLessThanOrEqual(50);
+
+  const cappedCaller = appRouter.createCaller({
+    ...ctx,
+    search: { maxScanned: 25 },
+  });
+  const capped = await cappedCaller.job.search({
+    queueName: firstQueue.queue.name,
+    query: "does-not-exist",
+    maxScanned: 500,
+    limit: 5,
+  });
+  expect(capped.scanned).toBeLessThanOrEqual(25);
+});
+
 test("retry job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);

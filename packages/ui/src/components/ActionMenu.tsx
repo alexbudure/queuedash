@@ -9,6 +9,8 @@ import {
   Popover,
 } from "react-aria-components";
 
+import { useQueuedash } from "./QueuedashProvider";
+
 type Action = {
   label: string;
   onSelect: () => void;
@@ -25,6 +27,7 @@ export const ActionMenu = ({
   isDisabled = false,
   ariaLabel = "Actions",
 }: ActionMenuProps) => {
+  const { portalContainer } = useQueuedash();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -43,6 +46,7 @@ export const ActionMenu = ({
       </AriaButton>
 
       <Popover
+        UNSTABLE_portalContainer={portalContainer ?? undefined}
         placement="bottom end"
         offset={4}
         className="entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-150 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-150 min-w-[160px] rounded-lg border border-gray-100 bg-white p-1 shadow-lg outline-none dark:border-slate-800 dark:bg-slate-900"

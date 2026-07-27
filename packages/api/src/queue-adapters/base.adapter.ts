@@ -51,6 +51,7 @@ export type FeatureSupport<SupportedStatus extends string = string> = {
   metrics: boolean; // Whether queue supports time-based metrics (completed/failed counts)
   statuses: SupportedStatus[]; // Which statuses this queue actually supports
   groups: boolean; // Whether queue supports job groups (GroupMQ, BullMQ Pro)
+  workers: boolean; // Whether active queue workers can be inspected
 };
 
 export type SchedulerInfo = {
@@ -83,6 +84,13 @@ export type GroupInfo = {
   id: string;
   count: number;
   status: "active" | "paused" | "rate-limited";
+};
+
+export type WorkerInfo = {
+  id: string;
+  name?: string;
+  ageSeconds?: number;
+  idleSeconds?: number;
 };
 
 export abstract class QueueAdapter<
@@ -156,6 +164,11 @@ export abstract class QueueAdapter<
   // Group operations (optional - only for queues that support it)
   async getGroups(): Promise<GroupInfo[]> {
     return []; // Default: no groups
+  }
+
+  // Worker inspection (optional - normalized to avoid returning raw Redis data)
+  async getWorkers(): Promise<WorkerInfo[]> {
+    return [];
   }
 
   // Helper methods

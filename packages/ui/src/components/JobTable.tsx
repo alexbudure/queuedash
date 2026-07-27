@@ -27,7 +27,9 @@ import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
 import { JobModal } from "./JobModal";
 import { JobTableSkeleton } from "./JobTableSkeleton";
+import { useQueuedash } from "./QueuedashProvider";
 import { TableRow } from "./TableRow";
+import { Timestamp } from "./Timestamp";
 import { Tooltip } from "./Tooltip";
 
 const formatDuration = (ms: number | null | undefined): string => {
@@ -50,51 +52,6 @@ const HorizontalDividerDots = () => {
       <div className="size-0.5 rounded-full bg-gray-300 dark:bg-slate-600" />
     </div>
   );
-};
-
-const formatDate = (date: string | Date | null | undefined): string => {
-  if (!date) return "-";
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleString("en-US", {
-    month: "numeric",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-  });
-};
-
-const formatDateShort = (date: string | Date | null | undefined): string => {
-  if (!date) return "-";
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleString("en-US", {
-    hour: "numeric",
-    minute: "numeric",
-  });
-};
-
-const formatDateFull = (date: string | Date | null | undefined): string => {
-  if (!date) return "-";
-  const d = date instanceof Date ? date : new Date(date);
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "numeric",
-  });
-};
-
-const formatRelativeTime = (date: Date): string => {
-  const now = Date.now();
-  const diff = now - date.getTime();
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  if (seconds < 60) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${days}d ago`;
 };
 
 const lifecycleDateLabelClassName =
@@ -202,14 +159,16 @@ const columns = [
               job.retriedAt ? (
                 <div className="space-y-0.5">
                   <div>
-                    Retried {formatRelativeTime(new Date(job.retriedAt))}
+                    Retried <Timestamp value={job.retriedAt} />
                   </div>
                   <div className="text-[10px] text-slate-300">
-                    Originally added {formatRelativeTime(added)}
+                    Originally added <Timestamp value={added} />
                   </div>
                 </div>
               ) : (
-                <>Added to queue {formatRelativeTime(added)}</>
+                <>
+                  Added to queue <Timestamp value={added} />
+                </>
               )
             }
           >
@@ -220,7 +179,7 @@ const columns = [
                 <PlusCircle className="size-3 shrink-0 text-gray-400 dark:text-slate-500" />
               )}
               <span className={lifecycleDateLabelClassName}>
-                {formatDate(job.retriedAt || job.createdAt)}
+                <Timestamp value={job.retriedAt || job.createdAt} />
               </span>
             </span>
           </Tooltip>
@@ -259,10 +218,15 @@ const columns = [
                   </span>
                 </Tooltip>
                 <Tooltip
-                  content={<>Processed at {formatDateFull(job.processedAt)}</>}
+                  content={
+                    <>
+                      Processed at{" "}
+                      <Timestamp value={job.processedAt} variant="full" />
+                    </>
+                  }
                 >
                   <span className={lifecycleTimeLabelClassName}>
-                    {formatDateShort(job.processedAt)}
+                    <Timestamp value={job.processedAt} variant="time" />
                   </span>
                 </Tooltip>
               </span>
@@ -317,10 +281,15 @@ const columns = [
                   </span>
                 </Tooltip>
                 <Tooltip
-                  content={<>Processed at {formatDateFull(job.processedAt)}</>}
+                  content={
+                    <>
+                      Processed at{" "}
+                      <Timestamp value={job.processedAt} variant="full" />
+                    </>
+                  }
                 >
                   <span className={lifecycleTimeLabelClassName}>
-                    {formatDateShort(job.processedAt)}
+                    <Timestamp value={job.processedAt} variant="time" />
                   </span>
                 </Tooltip>
               </span>
@@ -362,12 +331,12 @@ const columns = [
                   content={
                     <>
                       {failed ? "Failed" : "Finished"} at{" "}
-                      {formatDateFull(job.finishedAt)}
+                      <Timestamp value={job.finishedAt} variant="full" />
                     </>
                   }
                 >
                   <span className={lifecycleTimeLabelClassName}>
-                    {formatDateShort(job.finishedAt)}
+                    <Timestamp value={job.finishedAt} variant="time" />
                   </span>
                 </Tooltip>
               </span>
@@ -409,12 +378,12 @@ const columns = [
                   content={
                     <>
                       {failed ? "Failed" : "Finished"} at{" "}
-                      {formatDateFull(job.finishedAt)}
+                      <Timestamp value={job.finishedAt} variant="full" />
                     </>
                   }
                 >
                   <span className={lifecycleTimeLabelClassName}>
-                    {formatDateShort(job.finishedAt)}
+                    <Timestamp value={job.finishedAt} variant="time" />
                   </span>
                 </Tooltip>
               ) : (
@@ -480,6 +449,7 @@ export const JobTable = ({
   queue,
   selectedGroupId,
 }: JobTableProps) => {
+  const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
   const { ref } = useInView({
     threshold: 0,
@@ -525,9 +495,15 @@ export const JobTable = ({
     });
 
   const showCleanAll =
-    totalJobs > 0 && status !== "waiting-children" && !!queue?.supports.clean;
+    totalJobs > 0 &&
+    status !== "waiting-children" &&
+    !!queue?.supports.clean &&
+    queue.access.actions["queue.clean"];
   const showRetryAll =
-    totalJobs > 0 && status === "failed" && !!queue?.supports.retry;
+    totalJobs > 0 &&
+    status === "failed" &&
+    !!queue?.supports.retry &&
+    queue.access.actions["job.retry"];
   const hasStatusActions = showCleanAll || showRetryAll;
 
   useEffect(() => {
@@ -545,12 +521,14 @@ export const JobTable = ({
       ) : null}
       <div className="mb-4 overflow-x-auto rounded-xl border border-gray-100/60 dark:border-slate-800/60">
         {isLoading && (queue?.counts[status] ?? 0) > 0 ? (
-          <JobTableSkeleton />
+          <JobTableSkeleton rows={preferences.jobsPerPage} />
         ) : (
           <div className="min-w-max">
             {table.getHeaderGroups().map((headerGroup) => (
               <div
-                className="sticky top-0 z-10 grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] border-b border-gray-100/60 bg-gray-50/80 px-2 py-1.5 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80"
+                className={`sticky top-0 z-10 grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
+                  preferences.density === "compact" ? "py-1" : "py-2"
+                }`}
                 key={headerGroup.id}
               >
                 {headerGroup.headers.map((header) => (
@@ -616,7 +594,8 @@ export const JobTable = ({
             <p className="text-gray-900 dark:text-slate-100">
               {table.getSelectedRowModel().rows.length} selected
             </p>
-            {status === "completed" || status === "failed" ? (
+            {(status === "completed" && queue?.access.actions["job.rerun"]) ||
+            (status === "failed" && queue?.access.actions["job.retry"]) ? (
               <Button
                 label={status === "failed" ? "Retry" : "Rerun"}
                 icon={<RotateCw className="size-3.5" />}
@@ -640,21 +619,23 @@ export const JobTable = ({
               />
             ) : null}
 
-            <Button
-              label="Delete"
-              colorScheme="red"
-              icon={<Trash2 className="size-3.5" />}
-              size="sm"
-              onClick={() => {
-                bulkRemove({
-                  queueName,
-                  jobIds: table
-                    .getSelectedRowModel()
-                    .rows.map((row) => row.original.id),
-                });
-                table.resetRowSelection();
-              }}
-            />
+            {queue?.access.actions["job.remove"] ? (
+              <Button
+                label="Delete"
+                colorScheme="red"
+                icon={<Trash2 className="size-3.5" />}
+                size="sm"
+                onClick={() => {
+                  bulkRemove({
+                    queueName,
+                    jobIds: table
+                      .getSelectedRowModel()
+                      .rows.map((row) => row.original.id),
+                  });
+                  table.resetRowSelection();
+                }}
+              />
+            ) : null}
           </div>
         </div>
       ) : hasStatusActions ? (

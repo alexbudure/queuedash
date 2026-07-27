@@ -23,7 +23,6 @@
 ### Minor Changes
 
 - [#83](https://github.com/alexbudure/queuedash/pull/83) [`7704e26`](https://github.com/alexbudure/queuedash/commit/7704e2671926502de0df71bafd7953c845c65d5c) Thanks [@alexbudure](https://github.com/alexbudure)! - Add first-class group operations and bulk actions.
-
   - Add queue groups endpoint support and GroupMQ group aggregation improvements.
   - Add bulk retry-by-filter and bulk remove-by-group APIs.
   - Update UI group actions to operate on full filtered/grouped sets instead of only visible rows.
@@ -244,7 +243,7 @@
           },
         ],
       },
-    })
+    }),
   );
   ```
 

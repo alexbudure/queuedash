@@ -13,6 +13,8 @@ import {
   TooltipTrigger,
 } from "react-aria-components";
 
+import { useQueuedash } from "./QueuedashProvider";
+
 type TooltipProps = {
   content?: ReactNode;
   message?: ReactNode;
@@ -35,9 +37,8 @@ export const Tooltip = ({
   delay = 350,
   closeDelay = 0,
 }: PropsWithChildren<TooltipProps>) => {
+  const { portalContainer } = useQueuedash();
   const tooltipContent = content ?? message;
-  const portalContainer =
-    typeof document !== "undefined" ? document.body : undefined;
 
   const [isOpen, setIsOpen] = useState(false);
   const openTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -75,7 +76,7 @@ export const Tooltip = ({
           {children}
         </Button>
         <ReactAriaTooltip
-          UNSTABLE_portalContainer={portalContainer}
+          UNSTABLE_portalContainer={portalContainer ?? undefined}
           placement={placement}
           offset={offset}
           style={{ zIndex: 2147483647 }}

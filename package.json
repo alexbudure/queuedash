@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/root",
   "version": "0.0.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "A beautiful, modern queue dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ",
   "repository": {
     "type": "git",
     "url": "https://github.com/alexbudure/queuedash.git"
@@ -27,6 +27,7 @@
     "bee-queue",
     "queue",
     "bullmq",
+    "groupmq",
     "dashboard"
   ],
   "author": "Alex Budure",

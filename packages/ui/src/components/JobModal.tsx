@@ -7,14 +7,16 @@ import {
   RotateCw,
   Trash2,
 } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
 
 import type { Job } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { JobActionMenu } from "./JobActionMenu";
 import { JobTimeline } from "./JobTimeline";
+import { useQueuedash } from "./QueuedashProvider";
 import { SidePanelDialog } from "./SidePanelDialog";
+import { Timestamp } from "./Timestamp";
 
 type JobModalProps = {
   job: Job;
@@ -64,27 +66,6 @@ const jsonTreeDarkTheme = {
   base0F: "#f472b6",
 };
 
-const useDarkMode = () => {
-  const [isDark, setIsDark] = useState(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false,
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return isDark;
-};
-
 const parseUnknownJson = (value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (typeof value === "object") return value;
@@ -109,11 +90,6 @@ const formatDuration = (durationMs: number) => {
   if (durationMs < 1000) return `${durationMs}ms`;
   if (durationMs < 60000) return `${(durationMs / 1000).toFixed(2)}s`;
   return `${(durationMs / 60000).toFixed(2)}m`;
-};
-
-const formatDate = (value: Date | null) => {
-  if (!value) return "-";
-  return value.toLocaleString();
 };
 
 const readNumber = (value: unknown): number | null => {
@@ -172,7 +148,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
   const [showFullError, setShowFullError] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const [showStacktrace, setShowStacktrace] = useState(false);
-  const isDark = useDarkMode();
+  const { isDark } = useQueuedash();
   const jsonTreeTheme = isDark ? jsonTreeDarkTheme : jsonTreeLightTheme;
 
   const queueReq = trpc.queue.byName.useQuery({
@@ -361,7 +337,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
             <RotateCw className="size-3.5 shrink-0 text-orange-500 dark:text-orange-400" />
             <div className="flex-1 text-xs text-orange-800 dark:text-orange-300/90">
               <span className="font-medium">Retried</span>{" "}
-              {new Date(job.retriedAt).toLocaleString()}
+              <Timestamp value={job.retriedAt} variant="full" />
               {parsedOpts && readNumber(parsedOpts.attempts)
                 ? ` · Max ${readNumber(parsedOpts.attempts)} attempts`
                 : null}
@@ -444,20 +420,20 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
 
             <DetailItem
               label="Added At"
-              value={formatDate(job.createdAt ? new Date(job.createdAt) : null)}
+              value={<Timestamp value={job.createdAt} variant="full" />}
             />
 
             {job.processedAt ? (
               <DetailItem
                 label="Processed At"
-                value={new Date(job.processedAt).toLocaleString()}
+                value={<Timestamp value={job.processedAt} variant="full" />}
               />
             ) : null}
 
             {job.finishedAt ? (
               <DetailItem
                 label="Finished At"
-                value={new Date(job.finishedAt).toLocaleString()}
+                value={<Timestamp value={job.finishedAt} variant="full" />}
               />
             ) : null}
 

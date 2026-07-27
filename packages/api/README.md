@@ -1,304 +1,378 @@
-<p align="center">
-  <a href="https://www.queuedash.com" target="_blank" rel="noopener">
-    <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social-v3.png" alt="QueueDash">
-  </a>
-</p>
+# `@queuedash/api`
 
-<p align="center">
-  A stunning, sleek dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ.
-<p>
+Server adapters, queue integrations, discovery, privacy controls, and access
+enforcement for the beautiful Queuedash dashboard.
 
-<p align="center">
-  <a aria-label="NPM version" href="https://www.npmjs.com/package/@queuedash/api">
-    <img alt="" src="https://img.shields.io/npm/v/@queuedash/api.svg?style=for-the-badge&labelColor=000000">
-  </a>
-  <a aria-label="License" href="https://github.com/alexbudure/queuedash/blob/main/LICENSE">
-    <img alt="" src="https://img.shields.io/npm/l/@queuedash/api.svg?style=for-the-badge&labelColor=000000&color=">
-  </a>
-</p>
+[![NPM version](https://img.shields.io/npm/v/@queuedash/api.svg?style=flat-square)](https://www.npmjs.com/package/@queuedash/api)
+[![MIT license](https://img.shields.io/npm/l/@queuedash/api.svg?style=flat-square)](https://github.com/alexbudure/queuedash/blob/main/LICENSE)
 
-## Features
+## Install
 
-- 😍&nbsp; Simple, clean, and compact UI
-- 🧙&nbsp; Add jobs to your queue with ease
-- 🪄&nbsp; Retry, remove, and more convenient actions for your jobs
-- 📊&nbsp; Stats for job counts, job durations, and job wait times
-- ✨&nbsp; Top-level overview page of all queues
-- 🔋&nbsp; Integrates with Next.js, Express.js, and Fastify
-- ⚡️&nbsp; Compatible with Bull, BullMQ, Bee-Queue, and GroupMQ
-- 📅&nbsp; Job scheduler support
-- 📈&nbsp; Metrics for queue performance
+Install `@queuedash/api` alongside your existing queue and web framework:
 
-## Getting Started
+```bash
+npm install @queuedash/api
+```
 
-### Express
+Bull, BullMQ, Bee-Queue, GroupMQ, Express, Fastify, Hono, and Elysia are
+optional peer dependencies. Install only the libraries used by your
+application.
 
-`pnpm install @queuedash/api`
+## Express quick start
 
 ```typescript
-import express from "express";
+import { createQueuedashExpressMiddleware } from "@queuedash/api";
 import Bull from "bull";
-import { createQueueDashExpressMiddleware } from "@queuedash/api";
+import express from "express";
 
 const app = express();
-
-const reportQueue = new Bull("report-queue");
+const reports = new Bull("reports");
 
 app.use(
   "/queuedash",
-  createQueueDashExpressMiddleware({
+  createQueuedashExpressMiddleware({
     ctx: {
       queues: [
         {
-          queue: reportQueue,
+          queue: reports,
           displayName: "Reports",
-          type: "bull" as const,
+          type: "bull",
         },
       ],
     },
   }),
 );
 
-app.listen(3000, () => {
-  console.log("Listening on port 3000");
-  console.log("Visit http://localhost:3000/queuedash");
+app.listen(3000);
+```
+
+The Express mount path becomes the UI base path. The middleware serves its tRPC
+API beneath `/queuedash/trpc`.
+
+## Server integrations
+
+| Runtime               | Export                                      | Example                                                                                  |
+| --------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Express               | `createQueuedashExpressMiddleware({ ctx })` | [Source](https://github.com/alexbudure/queuedash/tree/main/examples/with-express)        |
+| Fastify               | `fastifyQueuedashPlugin`                    | [Source](https://github.com/alexbudure/queuedash/tree/main/examples/with-fastify)        |
+| Hono                  | `createHonoAdapter({ baseUrl, ctx })`       | [Source](https://github.com/alexbudure/queuedash/tree/main/examples/with-hono)           |
+| Elysia / Bun          | `queuedash({ baseUrl, ctx })`               | [Source](https://github.com/alexbudure/queuedash/tree/main/examples/with-elysia-and-bun) |
+| Next.js / custom tRPC | `appRouter`                                 | [Source](https://github.com/alexbudure/queuedash/tree/main/examples/with-next)           |
+
+Fastify is registered as a plugin:
+
+```typescript
+import { fastifyQueuedashPlugin } from "@queuedash/api";
+
+server.register(fastifyQueuedashPlugin, {
+  baseUrl: "/queuedash",
+  ctx,
 });
 ```
 
-### Next.js
+Hono mounts a child application:
 
-`pnpm install @queuedash/api @queuedash/ui`
+```typescript
+import { createHonoAdapter } from "@queuedash/api";
 
-#### App Router
-
-```typescript jsx
-// app/admin/queuedash/[[...slug]]/page.tsx
-"use client";
-
-import { QueueDashApp } from "@queuedash/ui";
-import "@queuedash/ui/dist/styles.css";
-
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/queuedash`;
-  }
-
-  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
-}
-
-export default function QueueDashPages() {
-  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queuedash" />;
-}
-```
-
-```typescript jsx
-// app/api/queuedash/[...trpc]/route.ts
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter } from "@queuedash/api";
-
-const reportQueue = new Bull("report-queue");
-
-function handler(req: Request) {
-  return fetchRequestHandler({
-    endpoint: "/api/queuedash",
-    req,
-    router: appRouter,
-    allowBatching: true,
-    createContext: () => ({
-    queues: [
-      {
-        queue: reportQueue,
-        displayName: "Reports",
-        type: "bull" as const,
-      },
-    ],
-  });
-}
-
-export { handler as GET, handler as POST };
-```
-
-#### Pages Router
-
-```typescript jsx
-// pages/admin/queuedash/[[...slug]].tsx
-import { QueueDashApp } from "@queuedash/ui";
-
-function getBaseUrl() {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}/api/queuedash`;
-  }
-
-  return `http://localhost:${process.env.PORT ?? 3000}/api/queuedash`;
-}
-
-const QueueDashPages = () => {
-  return <QueueDashApp apiUrl={getBaseUrl()} basename="/admin/queuedash" />;
-};
-
-export default QueueDashPages;
-```
-
-```typescript jsx
-// pages/api/queuedash/[trpc].ts
-import * as trpcNext from "@trpc/server/adapters/next";
-import { appRouter } from "@queuedash/api";
-
-const reportQueue = new Bull("report-queue");
-
-export default trpcNext.createNextApiHandler({
-  router: appRouter,
-  batching: {
-    enabled: true,
-  },
-  createContext: () => ({
-    queues: [
-      {
-        queue: reportQueue,
-        displayName: "Reports",
-        type: "bull" as const,
-      },
-    ],
+app.route(
+  "/queuedash",
+  createHonoAdapter({
+    baseUrl: "/queuedash",
+    ctx,
   }),
-});
+);
 ```
 
-### Optional authentication
-
-The Express, Fastify, Hono, and Elysia adapters support optional HTTP Basic authentication. When configured, it protects both the dashboard UI and its tRPC API. Existing integrations remain public when `auth` is omitted.
+Elysia uses the `queuedash` plugin:
 
 ```typescript
-createQueueDashExpressMiddleware({
-  auth: {
-    username: process.env.QUEUEDASH_AUTH_USERNAME!,
-    password: process.env.QUEUEDASH_AUTH_PASSWORD!,
+import { queuedash } from "@queuedash/api";
+
+const app = new Elysia().use(
+  queuedash({
+    baseUrl: "/queuedash",
+    ctx,
+  }),
+);
+```
+
+For Next.js or another tRPC-compatible runtime, mount the exported `appRouter`
+and render [`@queuedash/ui`](https://www.npmjs.com/package/@queuedash/ui)
+separately.
+
+## Authentication
+
+The Express, Fastify, Hono, and Elysia adapters accept the same optional
+`auth` configuration:
+
+```typescript
+import type { QueuedashAuthOptions } from "@queuedash/api";
+
+const auth = {
+  username: process.env.QUEUEDASH_AUTH_USERNAME!,
+  password: process.env.QUEUEDASH_AUTH_PASSWORD!,
+  session: {
+    secret: process.env.QUEUEDASH_AUTH_SESSION_SECRET,
+    ttlSeconds: 12 * 60 * 60,
+    secure: true,
   },
-  ctx: {
-    queues: [
+} satisfies QueuedashAuthOptions;
+
+createQueuedashExpressMiddleware({ auth, ctx });
+```
+
+`mode` defaults to `"session"`. In session mode:
+
+- The dashboard HTML remains available so React can render the configured name
+  and logo on the login screen.
+- `/auth/login` validates a Basic credential header once and returns a signed,
+  `HttpOnly`, `SameSite=Strict` cookie.
+- `/auth/session` checks the current session and `/auth/logout` clears it.
+- Every tRPC request is rejected server-side until its session is valid.
+- Passwords and session tokens are never placed in local or session storage.
+
+Sessions default to 12 hours. `session.ttlSeconds` is bounded between 60 seconds
+and 30 days. Cookies use `Secure` when the adapter sees HTTPS; use
+`session.secure: true` when TLS terminates before the application. Changing the
+configured username or password invalidates all existing sessions.
+
+When `session.secret` is omitted, Queuedash creates a random process-local
+signing secret and sessions end when the process restarts. Configure the same
+strong `session.secret` on every replica when sessions must survive restarts or
+load balancing. The signing secret and credentials are never serialized to the
+browser.
+
+Set `mode: "basic"` for the browser-native HTTP Basic challenge used by
+Queuedash 3.20. Omitting `auth` keeps the integration public.
+
+This is intentionally a single shared credential, not users, roles, SSO, rate
+limiting, or an account system. Use HTTPS and consider an authenticated reverse
+proxy when stronger identity controls are required.
+
+## Context
+
+Every integration receives the same server-owned `Context`:
+
+```typescript
+import type { Context } from "@queuedash/api";
+
+const ctx: Context = {
+  queues,
+  discovery,
+  ui,
+  privacy,
+  access,
+  search,
+};
+```
+
+```typescript
+type Context = {
+  queues?: QueuedashQueue[];
+  discovery?: QueuedashQueueDiscoveryConfig;
+  ui?: QueuedashUiConfig;
+  privacy?: QueuedashPrivacyConfig;
+  access?: QueuedashAccessConfig;
+  search?: QueuedashSearchConfig;
+};
+```
+
+### Static queues
+
+```typescript
+const ctx: Context = {
+  queues: [
+    {
+      queue: reportsQueue,
+      displayName: "Reports",
+      type: "bullmq",
+      jobName: (data) => String(data.reportName ?? "Report"),
+    },
+  ],
+};
+```
+
+`queue` accepts a Bull, BullMQ, Bee-Queue, or GroupMQ queue instance. The
+optional `jobName(data)` callback controls the display name derived from job
+data.
+
+### Redis queue discovery
+
+```typescript
+const ctx: Context = {
+  discovery: {
+    type: "bullmq",
+    connectionUrl: "redis://localhost:6379",
+    prefix: "bull",
+    refreshIntervalMs: 30_000,
+    maxQueues: 100,
+    include: (queueName) => !queueName.startsWith("internal-"),
+    displayName: (queueName) => queueName.replaceAll("-", " "),
+  },
+};
+```
+
+Discovery:
+
+- Supports Bull and BullMQ metadata in a single Redis instance
+- Uses incremental Redis `SCAN`, never `KEYS`
+- Caches the last successful registry
+- Keeps the last known-good registry during a temporary Redis outage
+- Can be combined with static queues
+- Does not support Bee-Queue, GroupMQ, or Redis Cluster
+
+### Branding and dashboard defaults
+
+```typescript
+const ctx: Context = {
+  queues,
+  ui: {
+    instanceId: "operations",
+    branding: {
+      name: "Acme Queues",
+      logoUrl: "/assets/acme-logo.svg",
+      logoAlt: "Acme",
+    },
+    defaults: {
+      theme: "system",
+      refreshIntervalMs: 2_000,
+      jobsPerPage: 30,
+      defaultJobStatus: "remember",
+      density: "comfortable",
+      timestamps: "absolute",
+      showOverviewMetrics: true,
+    },
+  },
+};
+```
+
+`instanceId` scopes browser-local preferences. Server defaults remain visible
+in Settings but can be overridden in the current browser.
+
+### Queue access
+
+```typescript
+const ctx: Context = {
+  queues,
+  access: {
+    default: "full",
+    rules: [
       {
-        queue: reportQueue,
-        displayName: "Reports",
-        type: "bull",
+        queues: ["payments-*"],
+        mode: "read-only",
+      },
+      {
+        queues: ["internal-*"],
+        mode: "hidden",
+      },
+      {
+        queues: ["email"],
+        deny: ["queue.empty", "job.remove"],
       },
     ],
   },
-});
+};
 ```
 
-Use HTTPS whenever Basic authentication is enabled. For application-specific sessions, roles, or OAuth, keep using your framework's authentication middleware around the QueueDash routes. Direct `@queuedash/ui` integrations can pass request credentials through the `headers` prop.
+Available modes are `full`, `read-only`, and `hidden`. Queue patterns support
+`*` wildcards. Later matching rules can change the mode; denied actions
+accumulate.
 
-### Docker
+Supported action identifiers:
 
-The fastest way to get started is using the official Docker image:
+- `queue.pause`
+- `queue.resume`
+- `queue.empty`
+- `queue.clean`
+- `job.add`
+- `job.retry`
+- `job.promote`
+- `job.discard`
+- `job.rerun`
+- `job.remove`
+- `scheduler.add`
+- `scheduler.remove`
 
-```bash
-docker run -p 3000:3000 \
-  -e QUEUEDASH_AUTH_USERNAME='admin' \
-  -e QUEUEDASH_AUTH_PASSWORD='change-me' \
-  -e QUEUES_CONFIG_JSON='{"queues":[{"name":"my-queue","displayName":"My Queue","type":"bullmq","connectionUrl":"redis://localhost:6379"}]}' \
-  ghcr.io/alexbudure/queuedash:latest
-```
+Every mutation checks its effective server policy. Hidden queues are omitted
+from listings, resolve as not found, and are not disclosed through Settings
+metadata.
 
-Then visit http://localhost:3000
-
-#### Environment Variables
-
-- `QUEUES_CONFIG_JSON` - Optional if `QUEUES_CONFIG_FILE_PATH` is set. JSON string containing queue configuration.
-- `QUEUES_CONFIG_FILE_PATH` - Optional if `QUEUES_CONFIG_JSON` is set. Path to a JSON file containing queue configuration.
-- `QUEUEDASH_AUTH_USERNAME` - Optional. Username for HTTP Basic authentication. Must be set with `QUEUEDASH_AUTH_PASSWORD`.
-- `QUEUEDASH_AUTH_PASSWORD` - Optional. Password for HTTP Basic authentication. Must be set with `QUEUEDASH_AUTH_USERNAME`.
-
-Example configuration:
-
-```json
-{
-  "queues": [
-    {
-      "name": "cancellation-follow-ups",
-      "displayName": "Cancellation follow-ups",
-      "type": "bullmq",
-      "connectionUrl": "redis://localhost:6379"
-    },
-    {
-      "name": "clustered-reports",
-      "displayName": "Clustered Reports",
-      "type": "bullmq",
-      "clusterNodes": [
-        { "host": "redis-cluster-0", "port": 6379 },
-        { "host": "redis-cluster-1", "port": 6379 },
-        { "host": "redis-cluster-2", "port": 6379 }
-      ]
-    },
-    {
-      "name": "email-queue",
-      "displayName": "Email Queue",
-      "type": "bull",
-      "connectionUrl": "redis://localhost:6379"
-    }
-  ]
-}
-```
-
-For `bullmq` queues, provide either `connectionUrl` (single-node Redis) or `clusterNodes` (Redis Cluster). `clusterNodes` is not supported for `bull` or `bee`.
-
-Supported queue types: `bull`, `bullmq`, `bee`, `groupmq`
-
-See the [./examples](./examples) folder for more.
-
----
-
-## API Reference
-
-### `createQueueDash<*>Middleware`
+### Privacy and redaction
 
 ```typescript
-type QueueDashMiddlewareOptions = {
-  ctx: QueueDashContext; // Context for the UI
-  auth?: QueueDashAuthOptions; // Optional HTTP Basic authentication
-  baseUrl?: string; // Required by Fastify, Hono, and Elysia
-};
-
-type QueueDashAuthOptions = {
-  username: string;
-  password: string;
-};
-
-type QueueDashContext = {
-  queues: QueueDashQueue[]; // Array of queues to display
-};
-
-type QueueDashQueue = {
-  queue: Bull.Queue | BullMQ.Queue | BeeQueue; // Queue instance
-  displayName: string; // Display name for the queue
-  type: "bull" | "bullmq" | "bee" | "groupmq"; // Queue type
-};
-```
-
-### `<QueueDashApp />`
-
-```typescript jsx
-type QueueDashAppProps = {
-  apiUrl: string; // URL to the API endpoint
-  basename: string; // Base path for the app
-  headers?:
-    | Record<string, string>
-    | (() => Record<string, string> | Promise<Record<string, string>>); // Optional tRPC request headers
+const ctx: Context = {
+  queues,
+  privacy: {
+    redact: {
+      includeDefaultKeys: true,
+      keys: ["customerSecret"],
+      paths: ["data.customer.ssn", "opts.headers.authorization"],
+      replacement: "[REDACTED]",
+    },
+    expose: {
+      jobData: true,
+      jobOptions: true,
+      returnValues: false,
+      stacktraces: false,
+      logs: false,
+      schedulerData: true,
+    },
+  },
 };
 ```
 
-## Need more?
+`redact: true` enables the built-in sensitive-key policy. An object extends or
+replaces that policy. Keys match case-insensitively at any depth; paths are
+dot-separated and support `*` for one segment.
 
-If you need more capabilities, check out [queuedash.com](https://www.queuedash.com):
+Data categories set to `false` are withheld before tRPC serialization. Hidden
+content is unavailable to the browser and job search.
 
-- Alerts and notifications
-- Quick search and filtering
-- Queue trends and analytics
-- Invite team members
+### Search limits
 
-## Acknowledgements
+```typescript
+const ctx: Context = {
+  queues,
+  search: {
+    maxScanned: 1_000,
+  },
+};
+```
 
-QueueDash was inspired by some great open source projects. Here's a few of them:
+Job search is scoped to one queue, searches only server-presented data, and
+accepts a hard server cap from 25 to 5,000 jobs per request.
 
-- [bull-board](https://github.com/vcapretz/bull-board)
-- [bull-monitor](https://github.com/s-r-x/bull-monitor)
-- [bull-arena](https://github.com/bee-queue/arena)
+## Queue capabilities
+
+The API reports adapter capabilities to the UI, which removes unsupported
+controls.
+
+| Queue     | Discovery | Workers | Schedulers | Metrics | Groups            |
+| --------- | --------- | ------- | ---------- | ------- | ----------------- |
+| Bull      | Yes       | Yes     | No         | No      | No                |
+| BullMQ    | Yes       | Yes     | Yes        | Yes     | Runtime-dependent |
+| Bee-Queue | No        | No      | No         | No      | No                |
+| GroupMQ   | No        | No      | No         | No      | Yes               |
+
+Job statuses and mutation support also vary by adapter. Unsupported operations
+fail server-side even if invoked outside the UI.
+
+## Security
+
+Queuedash can mutate production queues. Enable adapter authentication or
+protect both the dashboard and its tRPC endpoint with private networking or an
+authenticated reverse proxy.
+
+The `access` policy controls queue visibility and mutation authority, but it is
+not per-user authorization or role management. Use `privacy` controls to ensure
+sensitive job content is removed before responses reach a browser.
+
+## Compatibility aliases
+
+New integrations should use `Queuedash`. The former
+`createQueueDashExpressMiddleware`, Fastify plugin, hook types, and related
+`QueueDash*` names remain available as deprecated compatibility aliases.
+
+See the [main Queuedash documentation](https://github.com/alexbudure/queuedash)
+for Docker, direct UI embedding, and project-wide guidance.

@@ -1,21 +1,21 @@
+import { LockKeyhole, Star } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { Key } from "react-aria-components";
 import { useParams, useSearchParams } from "react-router";
 
 import { ErrorCard } from "../components/ErrorCard";
 import { GroupsSection } from "../components/GroupsSection";
+import { JobSearch } from "../components/JobSearch";
 import { JobTable } from "../components/JobTable";
 import { Layout } from "../components/Layout";
 import { MetricsSection } from "../components/MetricsSection";
 import { QueueActionMenu } from "../components/QueueActionMenu";
+import { useQueuedash } from "../components/QueuedashProvider";
 import { QueueStatusTabs } from "../components/QueueStatusTabs";
 import { SchedulerTable } from "../components/SchedulerTable";
 import { Skeleton } from "../components/Skeleton";
-import {
-  JOBS_PER_PAGE,
-  NUM_OF_RETRIES,
-  REFETCH_INTERVAL,
-} from "../utils/config";
+import { WorkersSection } from "../components/WorkersSection";
+import { NUM_OF_RETRIES } from "../utils/config";
 import type { Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 
@@ -32,13 +32,23 @@ const VALID_STATUSES: Status[] = [
 ];
 
 export const QueuePage = () => {
+  const { preferences, setLastJobStatus, togglePinnedQueue } = useQueuedash();
   const { id } = useParams();
   const queueName = id as string;
 
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isSchedulersView = searchParams.get("view") === "schedulers";
-  const [status, setStatus] = useState<Status>("completed");
+  const preferredStatus =
+    preferences.defaultJobStatus === "remember"
+      ? preferences.lastJobStatus
+      : preferences.defaultJobStatus;
+  const initialStatus = searchParams.get("status");
+  const [status, setStatus] = useState<Status>(
+    initialStatus && VALID_STATUSES.includes(initialStatus as Status)
+      ? (initialStatus as Status)
+      : preferredStatus,
+  );
 
   const handleTabChange = useCallback(
     (key: Key) => {
@@ -46,10 +56,11 @@ export const QueuePage = () => {
       if (k === "schedulers") {
         setSearchParams({ view: "schedulers" });
       } else {
+        setLastJobStatus(k as Status);
         setSearchParams({ status: k });
       }
     },
-    [setSearchParams],
+    [setLastJobStatus, setSearchParams],
   );
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const {
@@ -62,14 +73,14 @@ export const QueuePage = () => {
   } = trpc.job.list.useInfiniteQuery(
     {
       queueName,
-      limit: JOBS_PER_PAGE,
+      limit: preferences.jobsPerPage,
       status,
       groupId: selectedGroupId ?? undefined,
     },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
       enabled: !!queueName && !isSchedulersView,
-      refetchInterval: REFETCH_INTERVAL,
+      refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
   );
@@ -84,10 +95,10 @@ export const QueuePage = () => {
       return;
     }
 
-    if (!searchStatus && !isSchedulersView && status !== "completed") {
-      setStatus("completed");
+    if (!searchStatus && !isSchedulersView && status !== preferredStatus) {
+      setStatus(preferredStatus);
     }
-  }, [searchParams, isSchedulersView, status]);
+  }, [searchParams, isSchedulersView, preferredStatus, status]);
 
   const queueReq = trpc.queue.byName.useQuery(
     {
@@ -95,7 +106,7 @@ export const QueuePage = () => {
     },
     {
       enabled: !!queueName,
-      refetchInterval: REFETCH_INTERVAL,
+      refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
   );
@@ -114,7 +125,7 @@ export const QueuePage = () => {
     { queueName },
     {
       enabled: !!queueName && !!queueReq.data?.supports.schedulers,
-      refetchInterval: REFETCH_INTERVAL,
+      refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
   );
@@ -189,7 +200,31 @@ export const QueuePage = () => {
               </h1>
               <div className="flex items-center gap-2">
                 {queueReq.data ? (
+                  <button
+                    type="button"
+                    onClick={() => togglePinnedQueue(queueName)}
+                    aria-label={`${preferences.pinnedQueues.includes(queueName) ? "Unpin" : "Pin"} ${queueReq.data.displayName}`}
+                    title={`${preferences.pinnedQueues.includes(queueName) ? "Unpin" : "Pin"} queue`}
+                    className="flex size-7 items-center justify-center rounded-md text-gray-300 transition hover:bg-gray-100 hover:text-amber-500 dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-amber-400"
+                  >
+                    <Star
+                      className="size-3.5"
+                      fill={
+                        preferences.pinnedQueues.includes(queueName)
+                          ? "currentColor"
+                          : "none"
+                      }
+                    />
+                  </button>
+                ) : null}
+                {queueReq.data ? (
                   <QueueActionMenu queue={queueReq.data} />
+                ) : null}
+                {queueReq.data?.access.mode === "read-only" ? (
+                  <span className="flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-px text-[10px] font-medium text-gray-600 dark:bg-slate-800 dark:text-slate-300">
+                    <LockKeyhole className="size-2.5" />
+                    Read-only
+                  </span>
                 ) : null}
                 {queueReq.data?.paused ? (
                   <span className="shrink-0 rounded-full bg-amber-100 px-2 py-px text-[10px] font-medium text-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
@@ -199,6 +234,8 @@ export const QueuePage = () => {
               </div>
             </div>
           </div>
+
+          <JobSearch queueName={queueName} />
 
           {queueReq.isLoading ? (
             <div className="space-y-4 pb-2">
@@ -220,6 +257,11 @@ export const QueuePage = () => {
             </div>
           ) : null}
 
+          <WorkersSection
+            queueName={queueName}
+            enabled={queueReq.data?.supports.workers === true}
+          />
+
           {selectedGroupId && !queueReq.data?.supports.groups ? (
             <div className="flex items-center justify-between rounded-lg bg-purple-50/80 px-3 py-2 dark:bg-purple-950/30">
               <span className="text-xs font-medium text-purple-900 dark:text-purple-100">
@@ -237,6 +279,7 @@ export const QueuePage = () => {
 
           {queueReq.data?.supports.groups ? (
             <GroupsSection
+              canRemoveJobs={queueReq.data.access.actions["job.remove"]}
               queueName={queueName}
               selectedGroupId={selectedGroupId}
               onSelectGroup={setSelectedGroupId}
@@ -252,7 +295,12 @@ export const QueuePage = () => {
               onTabChange={handleTabChange}
             />
             {isSchedulersView ? (
-              <SchedulerTable queueName={queueName} />
+              <SchedulerTable
+                canRemove={
+                  queueReq.data?.access.actions["scheduler.remove"] === true
+                }
+                queueName={queueName}
+              />
             ) : (
               <JobTable
                 onBottomInView={() => {

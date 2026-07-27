@@ -2,6 +2,8 @@ import { TRPCError } from "@trpc/server";
 import type { RedisInfo } from "redis-info";
 import { z } from "zod";
 
+import { assertQueueActionAllowed, resolveQueueAccess } from "../access";
+import { presentErrorMessage } from "../presentation";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
@@ -14,7 +16,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, status }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.clean");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -39,7 +42,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -54,7 +57,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.empty");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -68,7 +72,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -84,7 +88,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.pause");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -105,7 +110,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -115,9 +120,21 @@ export const queueRouter = router({
       };
     }),
   pauseAll: procedure.mutation(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
+    const internalCtx = await transformContext(ctx);
+    const queues = internalCtx.queues.filter(
+      ({ adapter }) =>
+        resolveQueueAccess(adapter.getName(), internalCtx.access).actions[
+          "queue.pause"
+        ],
+    );
+    if (queues.length === 0) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "No queues allow pausing",
+      });
+    }
     await Promise.all(
-      internalCtx.queues.map((q) => {
+      queues.map((q) => {
         if (q.adapter.supports.pause) {
           return q.adapter.pause();
         }
@@ -133,7 +150,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.resume");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -154,7 +172,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -164,9 +182,21 @@ export const queueRouter = router({
       };
     }),
   resumeAll: procedure.mutation(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
+    const internalCtx = await transformContext(ctx);
+    const queues = internalCtx.queues.filter(
+      ({ adapter }) =>
+        resolveQueueAccess(adapter.getName(), internalCtx.access).actions[
+          "queue.resume"
+        ],
+    );
+    if (queues.length === 0) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "No queues allow resuming",
+      });
+    }
     await Promise.all(
-      internalCtx.queues.map((q) => {
+      queues.map((q) => {
         if (q.adapter.supports.resume) {
           return q.adapter.resume();
         }
@@ -184,7 +214,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, data, opts }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -195,7 +226,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -223,7 +254,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, template, opts }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -245,7 +277,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -261,7 +293,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -285,6 +317,7 @@ export const queueRouter = router({
           paused: isPaused,
           type: queueInCtx.adapter.getType(),
           supports: queueInCtx.adapter.supports,
+          access: resolveQueueAccess(queueName, internalCtx.access),
           counts: {
             active: counts.active || 0,
             completed: counts.completed || 0,
@@ -310,16 +343,17 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
   list: procedure.query(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
+    const internalCtx = await transformContext(ctx);
     return internalCtx.queues.map((q) => {
       return {
         displayName: q.adapter.getDisplayName(),
         name: q.adapter.getName(),
+        access: resolveQueueAccess(q.adapter.getName(), internalCtx.access),
       };
     });
   }),
@@ -333,7 +367,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName, type, start, end }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -358,7 +392,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
@@ -369,7 +403,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -384,7 +418,33 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
+        });
+      }
+    }),
+  workers: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+      }),
+    )
+    .query(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.workers) {
+        return [];
+      }
+
+      try {
+        return await queueInCtx.adapter.getWorkers();
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),

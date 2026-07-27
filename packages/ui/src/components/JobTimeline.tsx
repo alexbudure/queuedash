@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import { CheckCircle, Clock, Rocket } from "lucide-react";
 
 import type { Job } from "../utils/trpc";
+import { Timestamp } from "./Timestamp";
 
 type JobTimelineProps = {
   job: Job;
@@ -152,10 +153,7 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
             </span>
             {finishedAt ? (
               <span className="text-xs tabular-nums text-gray-400 dark:text-slate-500">
-                {finishedAt.toLocaleTimeString("en-US", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                <Timestamp value={finishedAt} variant="time" />
               </span>
             ) : null}
           </div>

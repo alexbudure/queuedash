@@ -6,6 +6,7 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type WorkerInfo,
 } from "./base.adapter";
 
 type BullStatus =
@@ -44,6 +45,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     metrics: false,
     statuses: ["completed", "failed", "delayed", "active", "waiting", "paused"],
     groups: false,
+    workers: true,
   };
 
   constructor(
@@ -166,6 +168,15 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     return null; // Bull doesn't support job logs
   }
 
+  async getWorkers(): Promise<WorkerInfo[]> {
+    const workers = await this.queue.getWorkers();
+    return (workers ?? []).map((worker, index) => ({
+      id: worker.id || `worker-${index + 1}`,
+      ageSeconds: toNumber(worker.age),
+      idleSeconds: toNumber(worker.idle),
+    }));
+  }
+
   private adaptJob(job: Bull.Job): AdaptedJob {
     const jobName =
       job.name === "__default__"
@@ -198,3 +209,8 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     };
   }
 }
+
+const toNumber = (value: string | undefined): number | undefined => {
+  const number = value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+};

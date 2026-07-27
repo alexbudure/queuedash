@@ -1,14 +1,16 @@
 import cronstrue from "cronstrue";
-import { formatDistanceToNow } from "date-fns";
 import { AlertTriangle, Calendar, Clock, Info } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
 
 import type { Scheduler } from "../utils/trpc";
+import { useQueuedash } from "./QueuedashProvider";
 import { SchedulerActionMenu } from "./SchedulerActionMenu";
 import { SidePanelDialog } from "./SidePanelDialog";
+import { Timestamp } from "./Timestamp";
 
 type SchedulerModalProps = {
+  canRemove: boolean;
   scheduler: Scheduler;
   queueName: string;
   onDismiss: () => void;
@@ -56,27 +58,6 @@ const jsonTreeDarkTheme = {
   base0F: "#f472b6",
 };
 
-const useDarkMode = () => {
-  const [isDark, setIsDark] = useState(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false,
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return isDark;
-};
-
 const parseUnknownJson = (value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (typeof value === "object") return value;
@@ -117,11 +98,6 @@ const getScheduleLabel = (scheduler: Scheduler) => {
   return "No schedule configured";
 };
 
-const formatDate = (value?: number | null) => {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-};
-
 const formatEvery = (every?: number) => {
   if (!every) return "-";
   const seconds = every / 1000;
@@ -132,12 +108,13 @@ const formatEvery = (every?: number) => {
 };
 
 export const SchedulerModal = ({
+  canRemove,
   scheduler,
   queueName,
   onDismiss,
 }: SchedulerModalProps) => {
   const [showRawDetails, setShowRawDetails] = useState(false);
-  const isDark = useDarkMode();
+  const { isDark } = useQueuedash();
   const jsonTreeTheme = isDark ? jsonTreeDarkTheme : jsonTreeLightTheme;
 
   const scheduleLabel = useMemo(() => getScheduleLabel(scheduler), [scheduler]);
@@ -175,6 +152,7 @@ export const SchedulerModal = ({
       }}
       headerActions={
         <SchedulerActionMenu
+          canRemove={canRemove}
           queueName={queueName}
           scheduler={scheduler}
           onRemove={onDismiss}
@@ -226,10 +204,7 @@ export const SchedulerModal = ({
             <Calendar className="size-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
             <div className="min-w-0 flex-1 text-xs">
               <span className="font-medium text-blue-800 dark:text-blue-300">
-                Next run {formatDistanceToNow(nextRunDate, { addSuffix: true })}
-              </span>
-              <span className="ml-1.5 text-blue-600/70 dark:text-blue-400/60">
-                · {formatDate(scheduler.next)}
+                Next run <Timestamp value={nextRunDate} variant="full" />
               </span>
             </div>
           </div>
@@ -270,7 +245,7 @@ export const SchedulerModal = ({
             />
             <DetailItem
               label="End Date"
-              value={formatDate(scheduler.endDate)}
+              value={<Timestamp value={scheduler.endDate} variant="full" />}
             />
           </div>
         </div>
@@ -343,7 +318,7 @@ const DetailItem = ({
   mono,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   mono?: boolean;
 }) => (
   <div>

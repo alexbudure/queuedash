@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from "react";
 
+import { useQueuedash } from "./QueuedashProvider";
+
 type TableRowProps = {
   isLastRow: boolean;
   isSelected: boolean;
@@ -15,6 +17,8 @@ export const TableRow = ({
   onKeyboardActivate,
   layoutVariant,
 }: PropsWithChildren<TableRowProps>) => {
+  const { preferences } = useQueuedash();
+
   return (
     <div
       onClick={(e) => onClick(e)}
@@ -27,7 +31,9 @@ export const TableRow = ({
       role="button"
       tabIndex={0}
       aria-label="Open row details"
-      className={`group grid w-full cursor-pointer px-2 py-1.5 transition-colors duration-150 ${
+      className={`group grid w-full cursor-pointer px-2 transition-colors duration-150 ${
+        preferences.density === "compact" ? "py-0.5" : "py-2"
+      } ${
         isLastRow ? "border-b border-gray-100/60 dark:border-slate-800/60" : ""
       } ${layoutVariant === "job" ? "grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px]" : "grid-cols-[36px_minmax(0,30%)_1fr_1fr]"} ${
         isSelected

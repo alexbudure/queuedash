@@ -1,9 +1,8 @@
 import { clsx } from "clsx";
 
-import { JOBS_PER_PAGE } from "../utils/config";
 import { Skeleton } from "./Skeleton";
 
-export const JobTableSkeleton = () => {
+export const JobTableSkeleton = ({ rows = 30 }: { rows?: number }) => {
   return (
     <div className="min-w-max">
       {/* Header */}
@@ -18,12 +17,12 @@ export const JobTableSkeleton = () => {
         <div />
       </div>
       {/* Rows */}
-      {new Array(JOBS_PER_PAGE).fill(0).map((_, i) => (
+      {Array.from({ length: rows }, (_, i) => (
         <div
           key={i}
           className={clsx(
             "grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] px-2 py-2.5",
-            JOBS_PER_PAGE !== i + 1
+            rows !== i + 1
               ? "border-b border-gray-100/60 dark:border-slate-800/60"
               : "",
           )}

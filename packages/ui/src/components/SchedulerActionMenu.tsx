@@ -6,11 +6,13 @@ import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
 
 type SchedulerActionMenuProps = {
+  canRemove: boolean;
   scheduler: Scheduler;
   queueName: string;
   onRemove?: () => void;
 };
 export const SchedulerActionMenu = ({
+  canRemove,
   scheduler,
   queueName,
   onRemove,
@@ -27,6 +29,8 @@ export const SchedulerActionMenu = ({
     queueName,
     jobSchedulerId: scheduler.key,
   };
+
+  if (!canRemove) return null;
 
   return (
     <Button

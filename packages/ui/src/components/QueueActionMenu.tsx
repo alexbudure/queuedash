@@ -18,11 +18,14 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
   const input = {
     queueName: queue.name,
   };
+  const allowed = queue.access.actions;
 
   // Build actions array based on what the queue supports
   const actions = [
     // Pause/Resume - only show if supported
-    ...(queue.supports.pause && queue.supports.resume
+    ...(queue.supports.pause &&
+    queue.supports.resume &&
+    (queue.paused ? allowed["queue.resume"] : allowed["queue.pause"])
       ? [
           {
             label: queue.paused ? "Resume" : "Pause",
@@ -39,15 +42,19 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
         ]
       : []),
     // Add job - always available
-    {
-      label: "Add job",
-      onSelect: () => {
-        setShowAddJobModal(true);
-      },
-      icon: <Plus size={15} />,
-    },
+    ...(allowed["job.add"]
+      ? [
+          {
+            label: "Add job",
+            onSelect: () => {
+              setShowAddJobModal(true);
+            },
+            icon: <Plus size={15} />,
+          },
+        ]
+      : []),
     // Add scheduler - only for queues that support it
-    ...(queue.supports.schedulers
+    ...(queue.supports.schedulers && allowed["scheduler.add"]
       ? [
           {
             label: "Add scheduler",
@@ -59,7 +66,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
         ]
       : []),
     // Empty - only if supported
-    ...(queue.supports.empty
+    ...(queue.supports.empty && allowed["queue.empty"]
       ? [
           {
             label: "Empty",
@@ -75,7 +82,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
 
   return (
     <>
-      <ActionMenu actions={actions} />
+      {actions.length > 0 ? <ActionMenu actions={actions} /> : null}
       {showAddJobModal ? (
         <AddJobModal
           queue={queue}

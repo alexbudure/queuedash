@@ -112,7 +112,7 @@ export const AddJobModal = ({
   const [templateDataValue, setTemplateDataValue] = useState(
     JSON.stringify(
       {
-        message: "Scheduled from QueueDash",
+        message: "Scheduled from Queuedash",
       },
       null,
       2,

@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { assertQueueActionAllowed } from "../access";
+import { presentErrorMessage, presentJob, presentLogs } from "../presentation";
 import type { AdaptedJob } from "../queue-adapters/base.adapter";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
@@ -19,6 +21,7 @@ const JOB_STATUSES = [
 type JobListStatus = (typeof JOB_STATUSES)[number];
 
 const JOB_SCAN_BATCH_SIZE = 1000;
+const JOB_SEARCH_BATCH_SIZE = 100;
 
 const getJobsPage = async (
   adapter: {
@@ -65,6 +68,24 @@ const getAllJobsForStatus = async (
   return jobs;
 };
 
+const getSearchText = (job: AdaptedJob): string => {
+  try {
+    return JSON.stringify(
+      {
+        id: job.id,
+        name: job.name,
+        data: job.data,
+        failedReason: job.failedReason,
+        returnValue: job.returnValue,
+      },
+      (_key, value) =>
+        typeof value === "bigint" ? value.toString() : (value as unknown),
+    ).toLocaleLowerCase();
+  } catch {
+    return `${job.id} ${job.name}`.toLocaleLowerCase();
+  }
+};
+
 export const jobRouter = router({
   retry: procedure
     .input(
@@ -74,7 +95,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.retry");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -95,7 +117,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -107,7 +129,7 @@ export const jobRouter = router({
           message: "Job not found",
         });
       }
-      return job;
+      return presentJob(job, internalCtx.privacy);
     }),
   discard: procedure
     .input(
@@ -117,7 +139,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.discard");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -131,7 +154,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -143,7 +166,7 @@ export const jobRouter = router({
           message: "Job not found",
         });
       }
-      return job;
+      return presentJob(job, internalCtx.privacy);
     }),
   rerun: procedure
     .input(
@@ -153,7 +176,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.rerun");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -176,12 +200,12 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
 
-      return job;
+      return presentJob(job, internalCtx.privacy);
     }),
   promote: procedure
     .input(
@@ -191,7 +215,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.promote");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -212,7 +237,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -224,7 +249,7 @@ export const jobRouter = router({
           message: "Job not found",
         });
       }
-      return job;
+      return presentJob(job, internalCtx.privacy);
     }),
   remove: procedure
     .input(
@@ -234,7 +259,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobId, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -257,12 +283,12 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
 
-      return job;
+      return presentJob(job, internalCtx.privacy);
     }),
   bulkRemove: procedure
     .input(
@@ -272,7 +298,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobIds, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -291,7 +318,7 @@ export const jobRouter = router({
             }
             await queueInCtx.adapter.removeJob(jobId);
 
-            return job;
+            return presentJob(job, internalCtx.privacy);
           }),
         );
         return jobs;
@@ -301,7 +328,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -314,7 +341,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { jobIds, queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.retry");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -347,7 +375,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -361,7 +389,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, status, groupId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.retry");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -402,7 +431,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -415,7 +444,8 @@ export const jobRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, groupId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -454,7 +484,7 @@ export const jobRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -467,7 +497,7 @@ export const jobRouter = router({
       }),
     )
     .query(async ({ input: { queueName, jobId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -475,11 +505,11 @@ export const jobRouter = router({
 
       try {
         const job = await queueInCtx.adapter.getJob(jobId);
-        return job;
+        return job ? presentJob(job, internalCtx.privacy) : null;
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
@@ -491,7 +521,7 @@ export const jobRouter = router({
       }),
     )
     .query(async ({ input: { queueName, jobId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -501,8 +531,111 @@ export const jobRouter = router({
         return null;
       }
 
-      return await queueInCtx.adapter.getJobLogs(jobId);
+      return presentLogs(
+        await queueInCtx.adapter.getJobLogs(jobId),
+        internalCtx.privacy,
+      );
     }),
+  search: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        query: z.string().trim().min(1).max(200),
+        statuses: z.array(z.enum(JOB_STATUSES)).optional(),
+        limit: z.number().min(1).max(50).default(25),
+        maxScanned: z.number().min(25).max(5_000).default(500),
+      }),
+    )
+    .query(
+      async ({
+        input: { queueName, query, statuses, limit, maxScanned },
+        ctx,
+      }) => {
+        const internalCtx = await transformContext(ctx);
+        const serverMaxScanned = Math.min(
+          Math.max(internalCtx.search?.maxScanned ?? 5_000, 25),
+          5_000,
+        );
+        const effectiveMaxScanned = Math.min(maxScanned, serverMaxScanned);
+        const queueInCtx = findQueueInCtxOrFail({
+          queues: internalCtx.queues,
+          queueName,
+        });
+        const normalizedQuery = query.toLocaleLowerCase();
+        const requestedStatuses = (statuses ?? JOB_STATUSES).filter((status) =>
+          queueInCtx.adapter.supports.statuses.includes(status),
+        );
+        const results: Array<{
+          job: AdaptedJob;
+          status: JobListStatus | null;
+        }> = [];
+        const seen = new Set<string>();
+        let scanned = 0;
+        let scanLimitReached = false;
+        let resultLimitReached = false;
+
+        try {
+          const exactJob = await queueInCtx.adapter.getJob(query);
+          if (exactJob) {
+            const presented = presentJob(exactJob, internalCtx.privacy);
+            results.push({ job: presented, status: null });
+            seen.add(presented.id);
+          }
+
+          for (const status of requestedStatuses) {
+            let start = 0;
+
+            while (scanned < effectiveMaxScanned && results.length < limit) {
+              const batchSize = Math.min(
+                JOB_SEARCH_BATCH_SIZE,
+                effectiveMaxScanned - scanned,
+              );
+              const jobs = await getJobsPage(
+                queueInCtx.adapter,
+                status,
+                start,
+                start + batchSize - 1,
+              );
+              if (jobs.length === 0) break;
+
+              scanned += jobs.length;
+              for (const rawJob of jobs) {
+                if (seen.has(rawJob.id)) continue;
+
+                const job = presentJob(rawJob, internalCtx.privacy);
+                if (!getSearchText(job).includes(normalizedQuery)) continue;
+
+                results.push({ job, status });
+                seen.add(job.id);
+                if (results.length >= limit) break;
+              }
+
+              if (jobs.length < batchSize) break;
+              start += jobs.length;
+            }
+
+            if (scanned >= effectiveMaxScanned || results.length >= limit)
+              break;
+          }
+
+          scanLimitReached = scanned >= effectiveMaxScanned;
+          resultLimitReached = results.length >= limit;
+
+          return {
+            results,
+            scanned,
+            partial: scanLimitReached || resultLimitReached,
+            scanLimitReached,
+            resultLimitReached,
+          };
+        } catch (e) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: presentErrorMessage(e, internalCtx.privacy),
+          });
+        }
+      },
+    ),
   list: procedure
     .input(
       z.object({
@@ -515,7 +648,7 @@ export const jobRouter = router({
     )
     .query(
       async ({ input: { queueName, status, limit, cursor, groupId }, ctx }) => {
-        const internalCtx = transformContext(ctx);
+        const internalCtx = await transformContext(ctx);
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
           queueName,
@@ -539,7 +672,7 @@ export const jobRouter = router({
               totalCount,
               numOfPages: Math.ceil(totalCount / limit),
               nextCursor: hasNextPage ? cursor + limit : undefined,
-              jobs,
+              jobs: jobs.map((job) => presentJob(job, internalCtx.privacy)),
             };
           }
 
@@ -557,12 +690,12 @@ export const jobRouter = router({
             totalCount,
             numOfPages: Math.ceil(totalCount / limit),
             nextCursor: hasNextPage ? cursor + limit : undefined,
-            jobs,
+            jobs: jobs.map((job) => presentJob(job, internalCtx.privacy)),
           };
         } catch (e) {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       },

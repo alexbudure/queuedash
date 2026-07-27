@@ -153,16 +153,14 @@
 }
 
 @layer base {
-  :root {
+  [data-queuedash-root] {
     color-scheme: light;
-  }
-
-  :root.dark {
-    color-scheme: dark;
-  }
-
-  body {
     @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white;
+    min-height: 100vh;
+  }
+
+  [data-queuedash-root].dark {
+    color-scheme: dark;
   }
 }
 

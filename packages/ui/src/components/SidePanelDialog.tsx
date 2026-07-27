@@ -9,6 +9,8 @@ import {
   ModalOverlay,
 } from "react-aria-components";
 
+import { useQueuedash } from "./QueuedashProvider";
+
 type SidePanelDialogProps = {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -30,10 +32,12 @@ export const SidePanelDialog = ({
   onOpenChange,
   panelClassName,
 }: SidePanelDialogProps) => {
+  const { portalContainer } = useQueuedash();
   const handleClose = () => onOpenChange(false);
 
   return (
     <ModalOverlay
+      UNSTABLE_portalContainer={portalContainer ?? undefined}
       isOpen={open}
       onOpenChange={onOpenChange}
       isDismissable

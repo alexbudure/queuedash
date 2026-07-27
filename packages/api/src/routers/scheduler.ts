@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { assertQueueActionAllowed } from "../access";
+import { presentErrorMessage, presentScheduler } from "../presentation";
 import type { SchedulerInfo } from "../queue-adapters/base.adapter";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
@@ -13,7 +15,7 @@ export const schedulerRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }): Promise<SchedulerInfo[]> => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -26,7 +28,9 @@ export const schedulerRouter = router({
         });
       }
 
-      return (await queueInCtx.adapter.getSchedulers?.()) || [];
+      return ((await queueInCtx.adapter.getSchedulers?.()) || []).map(
+        (scheduler) => presentScheduler(scheduler, internalCtx.privacy),
+      );
     }),
 
   add: procedure
@@ -50,7 +54,8 @@ export const schedulerRouter = router({
         });
       }
 
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -80,7 +85,8 @@ export const schedulerRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, jobSchedulerId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -99,7 +105,7 @@ export const schedulerRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
@@ -116,7 +122,8 @@ export const schedulerRouter = router({
         input: { jobSchedulerIds, queueName },
         ctx,
       }): Promise<SchedulerInfo[]> => {
-        const internalCtx = transformContext(ctx);
+        const internalCtx = await transformContext(ctx);
+        assertQueueActionAllowed(internalCtx, queueName, "scheduler.remove");
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
           queueName,
@@ -148,14 +155,16 @@ export const schedulerRouter = router({
             ),
           );
 
-          return schedulersToRemove;
+          return schedulersToRemove.map((scheduler) =>
+            presentScheduler(scheduler, internalCtx.privacy),
+          );
         } catch (e) {
           if (e instanceof TRPCError) {
             throw e;
           } else {
             throw new TRPCError({
               code: "INTERNAL_SERVER_ERROR",
-              message: e instanceof Error ? e.message : undefined,
+              message: presentErrorMessage(e, internalCtx.privacy),
             });
           }
         }

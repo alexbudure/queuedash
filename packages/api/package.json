@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/api",
   "version": "3.20.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "Server adapters and queue APIs for the beautiful Queuedash dashboard",
   "scripts": {
     "build": "tsc && vite build",
     "dev": "pnpm run build --watch",
@@ -26,6 +26,7 @@
     "bee-queue",
     "queue",
     "bullmq",
+    "groupmq",
     "dashboard"
   ],
   "dependencies": {

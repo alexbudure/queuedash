@@ -1,8 +1,8 @@
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
-import { REFETCH_INTERVAL } from "../utils/config";
 import { trpc } from "../utils/trpc";
+import { useQueuedash } from "./QueuedashProvider";
 import { Sparkline } from "./Sparkline";
 
 type MetricsSectionProps = {
@@ -43,6 +43,7 @@ const TrendIndicator = ({
 };
 
 export const MetricsSection = ({ queueName }: MetricsSectionProps) => {
+  const { preferences } = useQueuedash();
   const [timeRange, setTimeRange] = useState<TimeRange>("1h");
 
   const { data: completedMetrics, isLoading: isLoadingCompleted } =
@@ -55,7 +56,7 @@ export const MetricsSection = ({ queueName }: MetricsSectionProps) => {
       },
       {
         enabled: !!queueName,
-        refetchInterval: REFETCH_INTERVAL,
+        refetchInterval: preferences.refreshIntervalMs,
       },
     );
 
@@ -69,7 +70,7 @@ export const MetricsSection = ({ queueName }: MetricsSectionProps) => {
       },
       {
         enabled: !!queueName,
-        refetchInterval: REFETCH_INTERVAL,
+        refetchInterval: preferences.refreshIntervalMs,
       },
     );
 

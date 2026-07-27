@@ -1,4 +1,4 @@
-import { createQueueDashExpressMiddleware } from "@queuedash/api";
+import { createQueuedashExpressMiddleware } from "@queuedash/api";
 import Bull from "bull";
 import express from "express";
 
@@ -6,7 +6,7 @@ const app = express();
 
 app.use(
   "/queuedash",
-  createQueueDashExpressMiddleware({
+  createQueuedashExpressMiddleware({
     ctx: {
       queues: [
         {
