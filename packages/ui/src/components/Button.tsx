@@ -43,7 +43,7 @@ export const Button = ({
   );
 
   const classNames = clsx(
-    "group inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full border font-medium outline-none transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900",
+    "group inline-flex items-center justify-center gap-1.5 rounded-full border font-medium whitespace-nowrap transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900",
     {
       "h-7 px-3 text-xs": size === "sm",
       "h-8 px-3.5 text-xs": size === "md",

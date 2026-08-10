@@ -4,6 +4,7 @@ import { z } from "zod";
 import { assertQueueActionAllowed } from "../access";
 import { presentErrorMessage, presentJob, presentLogs } from "../presentation";
 import type { AdaptedJob } from "../queue-adapters/base.adapter";
+import type { InternalContext } from "../trpc";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
@@ -22,6 +23,8 @@ type JobListStatus = (typeof JOB_STATUSES)[number];
 
 const JOB_SCAN_BATCH_SIZE = 1000;
 const JOB_SEARCH_BATCH_SIZE = 100;
+const MAX_JOB_SCAN_LIMIT = 5_000;
+const BULK_ACTION_CONCURRENCY = 25;
 
 const getJobsPage = async (
   adapter: {
@@ -68,22 +71,165 @@ const getAllJobsForStatus = async (
   return jobs;
 };
 
-const getSearchText = (job: AdaptedJob): string => {
+const getEffectiveScanLimit = (
+  ctx: InternalContext,
+  requestedLimit: number,
+): number =>
+  Math.min(
+    requestedLimit,
+    Math.min(
+      Math.max(ctx.search?.maxScanned ?? MAX_JOB_SCAN_LIMIT, 25),
+      MAX_JOB_SCAN_LIMIT,
+    ),
+  );
+
+const getSearchText = (
+  job: AdaptedJob,
+  searchInData: boolean = true,
+): string => {
   try {
     return JSON.stringify(
       {
         id: job.id,
         name: job.name,
-        data: job.data,
+        groupId: job.groupId,
         failedReason: job.failedReason,
-        returnValue: job.returnValue,
+        ...(searchInData
+          ? { data: job.data, returnValue: job.returnValue }
+          : {}),
       },
       (_key, value) =>
         typeof value === "bigint" ? value.toString() : (value as unknown),
     ).toLocaleLowerCase();
   } catch {
-    return `${job.id} ${job.name}`.toLocaleLowerCase();
+    return `${job.id} ${job.name} ${job.groupId ?? ""}`.toLocaleLowerCase();
   }
+};
+
+type FilteredJob = {
+  presented: AdaptedJob;
+  raw: AdaptedJob;
+};
+
+const scanJobsForStatus = async ({
+  adapter,
+  groupId,
+  maxScanned,
+  privacy,
+  query,
+  searchInData = true,
+  status,
+}: {
+  adapter: Parameters<typeof getJobsPage>[0];
+  groupId?: string;
+  maxScanned: number;
+  privacy: InternalContext["privacy"];
+  query?: string;
+  searchInData?: boolean;
+  status: JobListStatus;
+}): Promise<{
+  jobs: FilteredJob[];
+  scanned: number;
+  scanLimitReached: boolean;
+}> => {
+  const normalizedQuery = query?.trim().toLocaleLowerCase();
+  const jobs: FilteredJob[] = [];
+  let scanned = 0;
+  let start = 0;
+  let exhausted = false;
+
+  while (scanned < maxScanned) {
+    const batchSize = Math.min(JOB_SEARCH_BATCH_SIZE, maxScanned - scanned);
+    const page = await getJobsPage(
+      adapter,
+      status,
+      start,
+      start + batchSize - 1,
+    );
+
+    if (page.length === 0) {
+      exhausted = true;
+      break;
+    }
+
+    scanned += page.length;
+    start += page.length;
+
+    for (const raw of page) {
+      if (groupId && raw.groupId !== groupId) continue;
+      const presented = presentJob(raw, privacy);
+      if (
+        normalizedQuery &&
+        !getSearchText(presented, searchInData).includes(normalizedQuery)
+      ) {
+        continue;
+      }
+      jobs.push({ presented, raw });
+    }
+
+    if (page.length < batchSize) {
+      exhausted = true;
+      break;
+    }
+  }
+
+  let scanLimitReached = false;
+  if (!exhausted && scanned >= maxScanned) {
+    scanLimitReached =
+      (await getJobsPage(adapter, status, start, start)).length > 0;
+  }
+
+  return { jobs, scanned, scanLimitReached };
+};
+
+const runFilteredJobAction = async ({
+  action,
+  adapter,
+  groupId,
+  maxScanned,
+  privacy,
+  query,
+  status,
+}: {
+  action: (jobId: string) => Promise<void>;
+  adapter: Parameters<typeof getJobsPage>[0];
+  groupId?: string;
+  maxScanned: number;
+  privacy: InternalContext["privacy"];
+  query?: string;
+  status: JobListStatus;
+}) => {
+  const scan = await scanJobsForStatus({
+    adapter,
+    groupId,
+    maxScanned,
+    privacy,
+    query,
+    status,
+  });
+  let succeeded = 0;
+  for (
+    let index = 0;
+    index < scan.jobs.length;
+    index += BULK_ACTION_CONCURRENCY
+  ) {
+    const batch = scan.jobs.slice(index, index + BULK_ACTION_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map(({ raw }) => action(raw.id)),
+    );
+    succeeded += results.filter(
+      (result) => result.status === "fulfilled",
+    ).length;
+  }
+
+  return {
+    scanned: scan.scanned,
+    matched: scan.jobs.length,
+    succeeded,
+    failed: scan.jobs.length - succeeded,
+    partial: scan.scanLimitReached,
+    scanLimitReached: scan.scanLimitReached,
+  };
 };
 
 export const jobRouter = router({
@@ -230,6 +376,26 @@ export const jobRouter = router({
       }
 
       try {
+        const currentStatus = await queueInCtx.adapter.getJobStatus(jobId);
+        if (currentStatus === null) {
+          const job = await queueInCtx.adapter.getJob(jobId);
+          if (!job) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Job not found",
+            });
+          }
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Could not verify that the job is delayed",
+          });
+        }
+        if (currentStatus !== "delayed") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Only delayed jobs can be promoted; job is currently ${currentStatus}`,
+          });
+        }
         await queueInCtx.adapter.promoteJob(jobId);
       } catch (e) {
         if (e instanceof TRPCError) {
@@ -251,6 +417,60 @@ export const jobRouter = router({
       }
       return presentJob(job, internalCtx.privacy);
     }),
+  bulkPromoteByFilter: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        status: z.literal("delayed"),
+        groupId: z.string().optional(),
+        query: z.string().trim().min(1).max(200).optional(),
+        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+      }),
+    )
+    .mutation(
+      async ({
+        input: { queueName, status, groupId, query, maxScanned },
+        ctx,
+      }) => {
+        const internalCtx = await transformContext(ctx);
+        assertQueueActionAllowed(internalCtx, queueName, "job.promote");
+        const queueInCtx = findQueueInCtxOrFail({
+          queues: internalCtx.queues,
+          queueName,
+        });
+
+        if (!queueInCtx.adapter.supports.promote) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${queueInCtx.adapter.getType()} does not support promoting jobs`,
+          });
+        }
+        if (!queueInCtx.adapter.supports.statuses.includes(status)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${queueInCtx.adapter.getType()} does not support delayed jobs`,
+          });
+        }
+
+        try {
+          return await runFilteredJobAction({
+            action: (jobId) => queueInCtx.adapter.promoteJob(jobId),
+            adapter: queueInCtx.adapter,
+            groupId,
+            maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
+            privacy: internalCtx.privacy,
+            query,
+            status,
+          });
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: presentErrorMessage(e, internalCtx.privacy),
+          });
+        }
+      },
+    ),
   remove: procedure
     .input(
       z.object({
@@ -333,6 +553,54 @@ export const jobRouter = router({
         }
       }
     }),
+  bulkRemoveByFilter: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        status: z.enum(JOB_STATUSES),
+        groupId: z.string().optional(),
+        query: z.string().trim().min(1).max(200).optional(),
+        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+      }),
+    )
+    .mutation(
+      async ({
+        input: { queueName, status, groupId, query, maxScanned },
+        ctx,
+      }) => {
+        const internalCtx = await transformContext(ctx);
+        assertQueueActionAllowed(internalCtx, queueName, "job.remove");
+        const queueInCtx = findQueueInCtxOrFail({
+          queues: internalCtx.queues,
+          queueName,
+        });
+
+        if (!queueInCtx.adapter.supports.statuses.includes(status)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${queueInCtx.adapter.getType()} does not support the ${status} job status`,
+          });
+        }
+
+        try {
+          return await runFilteredJobAction({
+            action: (jobId) => queueInCtx.adapter.removeJob(jobId),
+            adapter: queueInCtx.adapter,
+            groupId,
+            maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
+            privacy: internalCtx.privacy,
+            query,
+            status,
+          });
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: presentErrorMessage(e, internalCtx.privacy),
+          });
+        }
+      },
+    ),
   bulkRetry: procedure
     .input(
       z.object({
@@ -386,56 +654,52 @@ export const jobRouter = router({
         queueName: z.string(),
         status: z.literal("failed"),
         groupId: z.string().optional(),
+        query: z.string().trim().min(1).max(200).optional(),
+        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
       }),
     )
-    .mutation(async ({ input: { queueName, status, groupId }, ctx }) => {
-      const internalCtx = await transformContext(ctx);
-      assertQueueActionAllowed(internalCtx, queueName, "job.retry");
-      const queueInCtx = findQueueInCtxOrFail({
-        queues: internalCtx.queues,
-        queueName,
-      });
-
-      if (!queueInCtx.adapter.supports.retry) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `${queueInCtx.adapter.getType()} does not support retrying jobs`,
+    .mutation(
+      async ({
+        input: { queueName, status, groupId, query, maxScanned },
+        ctx,
+      }) => {
+        const internalCtx = await transformContext(ctx);
+        assertQueueActionAllowed(internalCtx, queueName, "job.retry");
+        const queueInCtx = findQueueInCtxOrFail({
+          queues: internalCtx.queues,
+          queueName,
         });
-      }
 
-      try {
-        const allFailedJobs = await getAllJobsForStatus(
-          queueInCtx.adapter,
-          status,
-        );
-        const jobsToRetry = groupId
-          ? allFailedJobs.filter((job) => job.groupId === groupId)
-          : allFailedJobs;
-
-        const results = await Promise.allSettled(
-          jobsToRetry.map(async (job) => {
-            await queueInCtx.adapter.retryJob(job.id);
-            return job.id;
-          }),
-        );
-
-        const succeeded = results.filter(
-          (r) => r.status === "fulfilled",
-        ).length;
-        const failed = results.filter((r) => r.status === "rejected").length;
-
-        return { total: jobsToRetry.length, succeeded, failed };
-      } catch (e) {
-        if (e instanceof TRPCError) {
-          throw e;
-        } else {
+        if (!queueInCtx.adapter.supports.retry) {
           throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: presentErrorMessage(e, internalCtx.privacy),
+            code: "BAD_REQUEST",
+            message: `${queueInCtx.adapter.getType()} does not support retrying jobs`,
           });
         }
-      }
-    }),
+
+        try {
+          const result = await runFilteredJobAction({
+            action: (jobId) => queueInCtx.adapter.retryJob(jobId),
+            adapter: queueInCtx.adapter,
+            groupId,
+            maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
+            privacy: internalCtx.privacy,
+            query,
+            status,
+          });
+          return { ...result, total: result.matched };
+        } catch (e) {
+          if (e instanceof TRPCError) {
+            throw e;
+          } else {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: presentErrorMessage(e, internalCtx.privacy),
+            });
+          }
+        }
+      },
+    ),
   bulkRemoveByGroup: procedure
     .input(
       z.object({
@@ -543,7 +807,7 @@ export const jobRouter = router({
         query: z.string().trim().min(1).max(200),
         statuses: z.array(z.enum(JOB_STATUSES)).optional(),
         limit: z.number().min(1).max(50).default(25),
-        maxScanned: z.number().min(25).max(5_000).default(500),
+        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(500),
       }),
     )
     .query(
@@ -552,11 +816,10 @@ export const jobRouter = router({
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
-        const serverMaxScanned = Math.min(
-          Math.max(internalCtx.search?.maxScanned ?? 5_000, 25),
-          5_000,
+        const effectiveMaxScanned = getEffectiveScanLimit(
+          internalCtx,
+          maxScanned,
         );
-        const effectiveMaxScanned = Math.min(maxScanned, serverMaxScanned);
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
           queueName,
@@ -578,7 +841,13 @@ export const jobRouter = router({
           const exactJob = await queueInCtx.adapter.getJob(query);
           if (exactJob) {
             const presented = presentJob(exactJob, internalCtx.privacy);
-            results.push({ job: presented, status: null });
+            const exactStatus = await queueInCtx.adapter.getJobStatus(query);
+            results.push({
+              job: presented,
+              status: JOB_STATUSES.includes(exactStatus as JobListStatus)
+                ? (exactStatus as JobListStatus)
+                : null,
+            });
             seen.add(presented.id);
           }
 
@@ -644,25 +913,62 @@ export const jobRouter = router({
         limit: z.number().min(1).max(100),
         status: z.enum(JOB_STATUSES),
         groupId: z.string().optional(),
+        query: z.string().trim().min(1).max(200).optional(),
+        searchInData: z.boolean().default(true),
+        scanLimit: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+        sort: z.enum(["newest", "oldest"]).default("newest"),
       }),
     )
     .query(
-      async ({ input: { queueName, status, limit, cursor, groupId }, ctx }) => {
+      async ({
+        input: {
+          queueName,
+          status,
+          limit,
+          cursor,
+          groupId,
+          query,
+          searchInData,
+          scanLimit,
+          sort,
+        },
+        ctx,
+      }) => {
         const internalCtx = await transformContext(ctx);
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
           queueName,
         });
 
+        if (!queueInCtx.adapter.supports.statuses.includes(status)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${queueInCtx.adapter.getType()} does not support the ${status} job status`,
+          });
+        }
+
         try {
-          if (groupId) {
-            const allJobsInStatus = await getAllJobsForStatus(
-              queueInCtx.adapter,
+          if (groupId || query || sort === "oldest") {
+            const effectiveScanLimit = getEffectiveScanLimit(
+              internalCtx,
+              scanLimit,
+            );
+            const scan = await scanJobsForStatus({
+              adapter: queueInCtx.adapter,
+              groupId,
+              maxScanned: effectiveScanLimit,
+              privacy: internalCtx.privacy,
+              query,
+              searchInData,
               status,
-            );
-            const filteredJobs = allJobsInStatus.filter(
-              (job) => job.groupId === groupId,
-            );
+            });
+            const filteredJobs = scan.jobs
+              .map(({ presented }) => presented)
+              .sort((left, right) => {
+                const difference =
+                  left.createdAt.getTime() - right.createdAt.getTime();
+                return sort === "oldest" ? difference : -difference;
+              });
 
             const jobs = filteredJobs.slice(cursor, cursor + limit);
             const totalCount = filteredJobs.length;
@@ -672,7 +978,12 @@ export const jobRouter = router({
               totalCount,
               numOfPages: Math.ceil(totalCount / limit),
               nextCursor: hasNextPage ? cursor + limit : undefined,
-              jobs: jobs.map((job) => presentJob(job, internalCtx.privacy)),
+              jobs,
+              searchMeta: {
+                scanned: scan.scanned,
+                capped: scan.scanLimitReached,
+                scanLimit: effectiveScanLimit,
+              },
             };
           }
 
@@ -691,6 +1002,7 @@ export const jobRouter = router({
             numOfPages: Math.ceil(totalCount / limit),
             nextCursor: hasNextPage ? cursor + limit : undefined,
             jobs: jobs.map((job) => presentJob(job, internalCtx.privacy)),
+            searchMeta: undefined,
           };
         } catch (e) {
           throw new TRPCError({

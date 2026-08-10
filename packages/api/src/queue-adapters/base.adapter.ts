@@ -38,6 +38,7 @@ export type JobCounts = Partial<Record<string, number>>;
 
 // Per-operation feature support with details
 export type FeatureSupport<SupportedStatus extends string = string> = {
+  addJobOptions: boolean;
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
@@ -45,6 +46,7 @@ export type FeatureSupport<SupportedStatus extends string = string> = {
   promote: boolean;
   logs: boolean;
   schedulers: boolean;
+  schedulerUpdate: boolean;
   flows: boolean;
   priorities: boolean;
   empty: boolean; // Whether queue can be completely emptied
@@ -60,13 +62,17 @@ export type SchedulerInfo = {
   id?: string | null;
   iterationCount?: number;
   limit?: number;
+  startDate?: number;
   endDate?: number;
   tz?: string;
   pattern?: string;
   every?: number;
   next?: number;
+  offset?: number;
   template?: {
+    name?: string;
     data?: Record<string, unknown>;
+    opts?: Record<string, unknown>;
   };
 };
 
@@ -135,6 +141,10 @@ export abstract class QueueAdapter<
     end: number,
   ): Promise<AdaptedJob[]>;
   abstract getJob(jobId: string): Promise<AdaptedJob | null>;
+  async getJobStatus(jobId: string): Promise<SupportedStatus | null> {
+    void jobId;
+    return null;
+  }
   abstract addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
@@ -149,6 +159,11 @@ export abstract class QueueAdapter<
   getSchedulers?(): Promise<SchedulerInfo[]>;
   addScheduler?(
     name: string,
+    opts: Record<string, unknown>,
+    template: Record<string, unknown>,
+  ): Promise<void>;
+  updateScheduler?(
+    key: string,
     opts: Record<string, unknown>,
     template: Record<string, unknown>,
   ): Promise<void>;

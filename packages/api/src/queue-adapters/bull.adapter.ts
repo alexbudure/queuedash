@@ -23,6 +23,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   private queue: Bull.Queue;
 
   supports: FeatureSupport<BullStatus> = {
+    addJobOptions: true,
     pause: true,
     resume: true,
     clean: {
@@ -39,6 +40,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     promote: true,
     logs: false,
     schedulers: false,
+    schedulerUpdate: false,
     flows: false,
     priorities: true,
     empty: true,
@@ -127,6 +129,15 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     const job = await this.queue.getJob(jobId);
     if (!job) return null;
     return this.adaptJob(job);
+  }
+
+  async getJobStatus(jobId: string): Promise<BullStatus | null> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return null;
+    const status = await job.getState();
+    return this.supportsStatus(status as BullStatus)
+      ? (status as BullStatus)
+      : null;
   }
 
   async addJob(

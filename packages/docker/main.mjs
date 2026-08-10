@@ -100,6 +100,7 @@ const queueConfigSchema = z.object({
                   "job.rerun",
                   "job.remove",
                   "scheduler.add",
+                  "scheduler.update",
                   "scheduler.remove",
                 ]),
               )

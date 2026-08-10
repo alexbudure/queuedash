@@ -5,7 +5,7 @@ import type * as BullMQ from "bullmq";
 import type { Queue as GroupMQQueue } from "groupmq";
 
 import { resolveQueueAccess } from "./access";
-import { presentErrorMessage } from "./presentation";
+import { presentErrorMessage, redactText } from "./presentation";
 import type { QueueAdapter } from "./queue-adapters/base.adapter";
 import { getQueueRegistry } from "./queue-registry";
 
@@ -85,6 +85,7 @@ export type QueuedashAction =
   | "job.rerun"
   | "job.remove"
   | "scheduler.add"
+  | "scheduler.update"
   | "scheduler.remove";
 
 export type QueuedashAccessMode = "full" | "read-only" | "hidden";
@@ -173,8 +174,32 @@ export type InternalContext = {
 };
 
 const t = initTRPC.context<Context>().create();
+const presentProcedureErrors = t.middleware(async ({ ctx, next }) => {
+  const result = await next();
+  if (result.ok) return result;
+
+  const error = result.error;
+  if (error instanceof TRPCError) {
+    const message = redactText(error.message, ctx.privacy);
+    if (message === error.message) throw error;
+
+    throw new TRPCError({
+      code: error.code,
+      message,
+      cause: error,
+    });
+  }
+
+  throw new TRPCError({
+    code: "INTERNAL_SERVER_ERROR",
+    message:
+      presentErrorMessage(error, ctx.privacy) ?? "Unexpected server error",
+    cause: error,
+  });
+});
+
 export const router = t.router;
-export const procedure = t.procedure;
+export const procedure = t.procedure.use(presentProcedureErrors);
 
 // Helper to transform user context to the cached internal registry.
 export async function transformContext(ctx: Context): Promise<InternalContext> {

@@ -92,6 +92,7 @@ export class QueueRegistry {
   private lastRefreshAt = 0;
   private refreshPromise?: Promise<void>;
   private lastAttemptAt?: number;
+  private lastError?: unknown;
   private lastErrorAt?: number;
   private lastSuccessfulRefreshAt?: number;
   private truncated = false;
@@ -129,6 +130,11 @@ export class QueueRegistry {
     );
     this.discoveredQueues.clear();
     this.lastRefreshAt = 0;
+    this.lastAttemptAt = undefined;
+    this.lastError = undefined;
+    this.lastErrorAt = undefined;
+    this.lastSuccessfulRefreshAt = undefined;
+    this.truncated = false;
   }
 
   getDiscoveryStatus(): QueueDiscoveryStatus {
@@ -170,18 +176,34 @@ export class QueueRegistry {
       discovery.refreshIntervalMs ?? DEFAULT_DISCOVERY_REFRESH_INTERVAL_MS,
       MIN_DISCOVERY_REFRESH_INTERVAL_MS,
     );
-    if (Date.now() - this.lastRefreshAt < refreshIntervalMs) return;
-
-    if (!this.refreshPromise) {
-      this.refreshPromise = this.discover(discovery)
-        .catch((error) => {
-          this.lastErrorAt = Date.now();
-          throw error;
-        })
-        .finally(() => {
-          this.refreshPromise = undefined;
-        });
+    if (this.refreshPromise) {
+      try {
+        await this.refreshPromise;
+      } catch (error) {
+        if (this.discoveredQueues.size === 0) throw error;
+        // Keep the last known-good registry during a temporary Redis outage.
+        this.lastRefreshAt = Date.now();
+      }
+      return;
     }
+
+    const refreshReferenceAt = this.lastRefreshAt || this.lastAttemptAt || 0;
+    if (Date.now() - refreshReferenceAt < refreshIntervalMs) {
+      if (this.lastError && this.discoveredQueues.size === 0) {
+        throw this.lastError;
+      }
+      return;
+    }
+
+    this.refreshPromise = this.discover(discovery)
+      .catch((error) => {
+        this.lastError = error;
+        this.lastErrorAt = Date.now();
+        throw error;
+      })
+      .finally(() => {
+        this.refreshPromise = undefined;
+      });
 
     try {
       await this.refreshPromise;
@@ -196,7 +218,10 @@ export class QueueRegistry {
     discovery: QueuedashQueueDiscoveryConfig,
   ): Promise<void> {
     this.lastAttemptAt = Date.now();
-    const client = createClient({ url: discovery.connectionUrl });
+    const client = createClient({
+      url: discovery.connectionUrl,
+      socket: { reconnectStrategy: false },
+    });
     const prefix = discovery.prefix ?? "bull";
     const maxQueues = clamp(
       discovery.maxQueues ?? DEFAULT_MAX_DISCOVERED_QUEUES,
@@ -251,6 +276,7 @@ export class QueueRegistry {
 
     this.discoveredQueues = next;
     this.lastRefreshAt = Date.now();
+    this.lastError = undefined;
     this.lastSuccessfulRefreshAt = this.lastRefreshAt;
     this.truncated = queueNames.size >= maxQueues;
   }

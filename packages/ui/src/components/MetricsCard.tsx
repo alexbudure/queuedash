@@ -27,11 +27,11 @@ export const MetricsCard = ({
 
   return (
     <div className="group flex flex-col space-y-2 rounded-xl border border-slate-200/80 bg-white/80 px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:border-slate-300 hover:shadow-sm dark:border-slate-700/50 dark:bg-slate-900/50 dark:hover:border-slate-600">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
         {label}
       </p>
       <div className="flex items-baseline space-x-2">
-        <p className="font-mono text-2xl font-semibold tabular-nums leading-none text-slate-900 dark:text-slate-50">
+        <p className="font-mono text-2xl leading-none font-semibold text-slate-900 tabular-nums dark:text-slate-50">
           {typeof value === "number" ? value.toLocaleString() : value}
         </p>
         {trend && (

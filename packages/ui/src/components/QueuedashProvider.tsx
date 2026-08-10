@@ -334,6 +334,7 @@ export const QueuedashProvider = ({
 
     try {
       window.localStorage.removeItem(storageKey);
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
     } catch {
       // Browser storage is an optional enhancement.
     }

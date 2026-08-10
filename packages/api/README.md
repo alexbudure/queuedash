@@ -292,11 +292,28 @@ Supported action identifiers:
 - `job.rerun`
 - `job.remove`
 - `scheduler.add`
+- `scheduler.update`
 - `scheduler.remove`
 
 Every mutation checks its effective server policy. Hidden queues are omitted
 from listings, resolve as not found, and are not disclosed through Settings
 metadata.
+
+### Bounded filtering and bulk actions
+
+`job.list` accepts optional `query`, `searchInData`, `scanLimit`, and `sort`
+inputs. Filtering is status-scoped, operates on the server-presented redacted
+job shape, and returns `searchMeta` when a bounded scan is used. The hard server
+ceiling remains 5,000 inspected jobs.
+
+`job.bulkPromoteByFilter`, `job.bulkRemoveByFilter`, and
+`job.bulkRetryByFilter` reuse that bounded filter. They process mutations with
+limited concurrency and report scanned, matched, succeeded, failed, and partial
+counts. Single-job promotion also verifies that the job is currently delayed.
+
+BullMQ exposes `scheduler.update` through native job-scheduler upsert semantics.
+The corresponding access action can be denied separately. Bee-Queue rejects
+non-empty add-job options because its adapter cannot apply them safely.
 
 ### Privacy and redaction
 

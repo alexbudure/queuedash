@@ -4,6 +4,10 @@ import { z } from "zod";
 import { assertQueueActionAllowed } from "../access";
 import { presentErrorMessage, presentScheduler } from "../presentation";
 import type { SchedulerInfo } from "../queue-adapters/base.adapter";
+import {
+  schedulerOptionsSchema,
+  schedulerTemplateSchema,
+} from "../scheduler.schemas";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
@@ -37,11 +41,11 @@ export const schedulerRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-        jobName: z.string(),
+        jobName: z.string().trim().min(1),
         data: z.record(z.string(), z.unknown()),
-        pattern: z.string().optional(),
-        every: z.number().optional(),
-        tz: z.string().optional(),
+        pattern: z.string().trim().min(1).optional(),
+        every: z.number().positive().optional(),
+        tz: z.string().trim().min(1).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -67,14 +71,66 @@ export const schedulerRouter = router({
           message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
       }
+      if (!queueInCtx.adapter.addScheduler) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Scheduler support is not implemented for this queue",
+        });
+      }
 
-      await queueInCtx.adapter.addScheduler?.(
+      await queueInCtx.adapter.addScheduler(
         `scheduler-${Date.now()}`,
         { pattern, every, tz },
         { name: jobName, data },
       );
 
       return { success: true };
+    }),
+
+  update: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        key: z.string().min(1),
+        template: schedulerTemplateSchema,
+        opts: schedulerOptionsSchema,
+      }),
+    )
+    .mutation(async ({ input: { queueName, key, template, opts }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.update");
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (
+        !queueInCtx.adapter.supports.schedulerUpdate ||
+        !queueInCtx.adapter.updateScheduler
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support updating job schedulers`,
+        });
+      }
+
+      try {
+        const schedulers = await queueInCtx.adapter.getSchedulers?.();
+        if (!schedulers?.some((scheduler) => scheduler.key === key)) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Job scheduler not found",
+          });
+        }
+        await queueInCtx.adapter.updateScheduler(key, opts, template);
+        return { success: true };
+      } catch (e) {
+        if (e instanceof TRPCError) throw e;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: presentErrorMessage(e, internalCtx.privacy),
+        });
+      }
     }),
 
   remove: procedure

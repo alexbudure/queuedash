@@ -19,6 +19,7 @@ export const QUEUEDASH_ACTIONS = [
   "job.rerun",
   "job.remove",
   "scheduler.add",
+  "scheduler.update",
   "scheduler.remove",
 ] as const satisfies readonly QueuedashAction[];
 

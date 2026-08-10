@@ -85,7 +85,7 @@ const QueueNavLink = ({
       >
         <span className="truncate">{label}</span>
         {isReadOnly ? (
-          <span className="shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] uppercase tracking-wide text-gray-500 dark:bg-slate-800 dark:text-slate-400">
+          <span className="shrink-0 rounded bg-gray-100 px-1 py-px text-[9px] tracking-wide text-gray-500 uppercase dark:bg-slate-800 dark:text-slate-400">
             Read-only
           </span>
         ) : null}
@@ -151,7 +151,7 @@ const SidebarContent = ({
     <div className="flex min-h-0 flex-1 flex-col">
       {showHeader && (
         <>
-          <div className="pb-4 pt-3">
+          <div className="pt-3 pb-4">
             <BrandLink onClick={onNavClick} />
           </div>
 
@@ -161,7 +161,7 @@ const SidebarContent = ({
 
       <div className="min-h-0 flex-1 overflow-y-auto py-4">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-600">
+          <div className="text-[11px] font-semibold tracking-wider text-gray-400 uppercase dark:text-slate-600">
             Queues
           </div>
           {data ? (
@@ -173,13 +173,13 @@ const SidebarContent = ({
 
         {!isLoading && !isError && data && data.length > 5 ? (
           <label className="relative mb-2 block">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
             <input
               value={queueFilter}
               onChange={(event) => setQueueFilter(event.target.value)}
               placeholder="Filter queues"
               aria-label="Filter queues"
-              className="h-8 w-full rounded-md border border-gray-200 bg-white pl-8 pr-2 text-xs text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-brand-400 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-600"
+              className="h-8 w-full rounded-md border border-gray-200 bg-white pr-2 pl-8 text-xs text-gray-900 transition outline-none placeholder:text-gray-400 focus:border-brand-400 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-600"
             />
           </label>
         ) : null}
@@ -284,7 +284,7 @@ const MobileNav = ({
 
   return (
     <>
-      <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-gray-100/60 bg-white/90 px-4 py-3 backdrop-blur-md dark:border-slate-800/60 dark:bg-slate-900/90 xl:hidden">
+      <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-gray-100/60 bg-white/90 px-4 py-3 backdrop-blur-md xl:hidden dark:border-slate-800/60 dark:bg-slate-900/90">
         <BrandLink />
         <button
           onClick={() => setOpen(true)}
@@ -341,7 +341,7 @@ export const Layout: FC<LayoutProps> = ({ children, top }) => {
       <div className="min-w-0 flex-1">
         <div className="mx-auto max-w-[1700px] pt-14 xl:py-3 xl:pr-4">
           {top ? <div className="mb-3 hidden px-1 xl:block">{top}</div> : null}
-          <div className="min-h-[calc(100vh-3.5rem)] bg-white p-4 dark:bg-slate-900 xl:min-h-[calc(100vh-3.25rem)] xl:rounded-2xl xl:border xl:border-gray-100/60 xl:p-6 xl:shadow-[0_1px_3px_0_rgb(0_0_0/0.04)] xl:dark:border-slate-800/40 xl:dark:shadow-none">
+          <div className="min-h-[calc(100vh-3.5rem)] bg-white p-4 xl:min-h-[calc(100vh-3.25rem)] xl:rounded-2xl xl:border xl:border-gray-100/60 xl:p-6 xl:shadow-[0_1px_3px_0_rgb(0_0_0/0.04)] dark:bg-slate-900 xl:dark:border-slate-800/40 xl:dark:shadow-none">
             {children}
           </div>
         </div>

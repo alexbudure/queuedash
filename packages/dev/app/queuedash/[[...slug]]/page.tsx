@@ -153,6 +153,7 @@ export default function QueuedashPage() {
               </p>
 
               <label
+                htmlFor="queuedash-dev-adapter"
                 style={{
                   display: "block",
                   marginBottom: 6,
@@ -164,6 +165,7 @@ export default function QueuedashPage() {
                 API Adapter
               </label>
               <select
+                id="queuedash-dev-adapter"
                 value={selectedAdapter}
                 onChange={(e) => handleAdapterChange(e.target.value)}
                 style={{

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
-import { Toaster } from "sonner";
+import { toast, Toaster } from "sonner";
 
 import { LoginLoading, LoginPage } from "./components/LoginPage";
 import { QueuedashAuthProvider } from "./components/QueuedashAuthProvider";
@@ -138,15 +138,17 @@ const QueuedashWithAuth = ({
 
   const handleSignOut = useCallback(async () => {
     try {
-      await fetch(joinAuthPath(auth.baseUrl, "logout"), {
+      const response = await fetch(joinAuthPath(auth.baseUrl, "logout"), {
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
       });
-    } catch {
-      // Clear the local authenticated state even if the server is unavailable.
-    } finally {
+      if (!response.ok) {
+        throw new Error(`Sign out failed with status ${response.status}`);
+      }
       setAuthState("unauthenticated");
+    } catch {
+      toast.error("Could not sign out. Please try again.");
     }
   }, [auth.baseUrl]);
 

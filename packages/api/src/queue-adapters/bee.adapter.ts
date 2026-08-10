@@ -16,6 +16,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   private queue: BeeQueue;
 
   supports: FeatureSupport<BeeStatus> = {
+    addJobOptions: false,
     pause: false,
     resume: false,
     clean: false,
@@ -23,6 +24,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     promote: false,
     logs: false,
     schedulers: false,
+    schedulerUpdate: false,
     flows: false,
     priorities: false,
     empty: false,

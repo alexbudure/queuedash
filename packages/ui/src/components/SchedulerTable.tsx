@@ -6,12 +6,14 @@ import {
 } from "@tanstack/react-table";
 import cronstrue from "cronstrue";
 import { Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { Scheduler } from "../utils/trpc";
+import { NUM_OF_RETRIES } from "../utils/config";
+import type { Queue, Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
+import { ErrorCard } from "./ErrorCard";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { useQueuedash } from "./QueuedashProvider";
 import { SchedulerModal } from "./SchedulerModal";
@@ -136,18 +138,27 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
 
 type SchedulerTableProps = {
   canRemove: boolean;
+  queue?: Queue;
   queueName: string;
 };
 export const SchedulerTable = ({
   canRemove,
+  queue,
   queueName,
 }: SchedulerTableProps) => {
   const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
   const lastClickedIndexRef = useRef<number | null>(null);
-  const { data, isLoading } = trpc.scheduler.list.useQuery({
-    queueName,
-  });
+  const { data, isError, isLoading } = trpc.scheduler.list.useQuery(
+    {
+      queueName,
+    },
+    {
+      enabled: queue?.supports.schedulers === true,
+      refetchInterval: preferences.refreshIntervalMs,
+      retry: NUM_OF_RETRIES,
+    },
+  );
 
   const isEmpty = data?.length === 0;
 
@@ -170,6 +181,22 @@ export const SchedulerTable = ({
   const [selectedScheduler, setSelectedScheduler] = useState<Scheduler | null>(
     null,
   );
+
+  useEffect(() => {
+    setRowSelection({});
+    setSelectedScheduler(null);
+    lastClickedIndexRef.current = null;
+  }, [queueName]);
+
+  useEffect(() => {
+    if (
+      selectedScheduler &&
+      data &&
+      !data.some((scheduler) => scheduler.key === selectedScheduler.key)
+    ) {
+      setSelectedScheduler(null);
+    }
+  }, [data, selectedScheduler]);
 
   const { mutate: bulkRemove } = trpc.scheduler.bulkRemove.useMutation();
 
@@ -196,15 +223,22 @@ export const SchedulerTable = ({
     }
   };
 
-  if (!isLoading && isEmpty) return null;
+  if (isError) {
+    return <ErrorCard message="Could not fetch schedulers" />;
+  }
 
   return (
     <div>
-      {selectedScheduler ? (
+      {selectedScheduler && queue ? (
         <SchedulerModal
           canRemove={canRemove}
+          canUpdate={
+            queue.supports.schedulerUpdate &&
+            queue.access.actions["scheduler.update"] &&
+            selectedScheduler.template?.data !== undefined
+          }
           scheduler={selectedScheduler}
-          queueName={queueName}
+          queue={queue}
           onDismiss={() => setSelectedScheduler(null)}
         />
       ) : null}
@@ -254,13 +288,20 @@ export const SchedulerTable = ({
                 ))}
               </TableRow>
             ))}
+            {!isLoading && isEmpty ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-sm text-gray-500 dark:text-slate-400">
+                  No schedulers found
+                </p>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
 
       {canRemove && table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-full border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-900 dark:text-slate-100">
               {table.getSelectedRowModel().rows.length} selected
             </p>

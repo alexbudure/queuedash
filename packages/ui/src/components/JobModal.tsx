@@ -10,7 +10,7 @@ import {
 import { type ReactNode, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
 
-import type { Job } from "../utils/trpc";
+import type { Job, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { JobActionMenu } from "./JobActionMenu";
 import { JobTimeline } from "./JobTimeline";
@@ -20,6 +20,7 @@ import { Timestamp } from "./Timestamp";
 
 type JobModalProps = {
   job: Job;
+  status?: Status | null;
   onDismiss: () => void;
   queueName: string;
 };
@@ -143,7 +144,12 @@ const getBackoffLabel = (value: unknown) => {
   return null;
 };
 
-export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
+export const JobModal = ({
+  job,
+  status,
+  queueName,
+  onDismiss,
+}: JobModalProps) => {
   const [showOpts, setShowOpts] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -278,6 +284,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
       headerActions={
         <JobActionMenu
           job={job}
+          status={status}
           queueName={queueName}
           queue={queueReq.data ?? undefined}
           onRemove={onDismiss}
@@ -311,7 +318,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
 
         {optionBadges.length > 0 ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Options
             </h3>
             <div className="flex flex-wrap gap-1.5">
@@ -353,7 +360,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                 <p className="mb-1.5 text-xs font-medium text-red-800 dark:text-red-300">
                   Failed Reason
                 </p>
-                <pre className="overflow-wrap-anywhere whitespace-pre-wrap break-all font-mono text-xs text-red-700/90 dark:text-red-400/80">
+                <pre className="overflow-wrap-anywhere font-mono text-xs break-all whitespace-pre-wrap text-red-700/90 dark:text-red-400/80">
                   {showFullError || job.failedReason.length <= 300
                     ? job.failedReason
                     : `${job.failedReason.slice(0, 300)}...`}
@@ -372,7 +379,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
         ) : null}
 
         <div>
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          <h3 className="mb-3 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
             Details
           </h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -450,7 +457,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
 
         {parsedData ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Job Data
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -467,7 +474,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
 
         {parsedReturnValue !== null ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Return Value
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -488,7 +495,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
               onClick={() => setShowLogs((prev) => !prev)}
               className="mb-2 flex w-full items-center justify-between"
             >
-              <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+              <span className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
                 Logs
               </span>
               <span className="text-xs text-gray-400 dark:text-slate-500">
@@ -501,7 +508,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                   {(logs as string[]).map((line: string, index: number) => (
                     <div
                       key={index}
-                      className="whitespace-pre-wrap break-all font-mono text-xs text-gray-300"
+                      className="font-mono text-xs break-all whitespace-pre-wrap text-gray-300"
                     >
                       {line}
                     </div>
@@ -527,7 +534,7 @@ export const JobModal = ({ job, queueName, onDismiss }: JobModalProps) => {
                   {job.stacktrace.map((line: string, index: number) => (
                     <div
                       key={index}
-                      className="whitespace-pre-wrap break-all font-mono text-xs text-gray-500 dark:text-slate-400"
+                      className="font-mono text-xs break-all whitespace-pre-wrap text-gray-500 dark:text-slate-400"
                     >
                       {line}
                     </div>

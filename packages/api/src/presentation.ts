@@ -119,9 +119,6 @@ export const redactValue = (
   return config ? redactValueWithConfig(value, config) : value;
 };
 
-const escapeRegExp = (value: string): string =>
-  value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 export const redactText = (
   value: string,
   privacy?: QueuedashPrivacyConfig,
@@ -138,18 +135,16 @@ export const redactText = (
     // Non-JSON logs are handled by the conservative key/value matcher below.
   }
 
-  const keys = Array.from(config.keys).filter(Boolean).map(escapeRegExp);
-  if (keys.length === 0) return value;
+  const assignment =
+    /\b([a-z0-9][a-z0-9_.-]*)(\s*[:=]\s*)(?![a-z0-9][a-z0-9_.-]*\s*[:=])(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu;
+  return value.replace(assignment, (match, key: string, separator: string) => {
+    const keyParts = key.split(".");
+    const isSensitive =
+      config.keys.has(normalizeKey(key)) ||
+      keyParts.some((part) => config.keys.has(normalizeKey(part)));
 
-  const assignment = new RegExp(
-    `\\b(${keys.join("|")})\\b(\\s*[:=]\\s*)(?:"[^"]*"|'[^']*'|[^\\s,;]+)`,
-    "giu",
-  );
-  return value.replace(
-    assignment,
-    (_match, key: string, separator: string) =>
-      `${key}${separator}${config.replacement}`,
-  );
+    return isSensitive ? `${key}${separator}${config.replacement}` : match;
+  });
 };
 
 export const presentJob = (
@@ -201,7 +196,7 @@ export const presentScheduler = (
     : {
         ...scheduler,
         template: scheduler.template
-          ? { ...scheduler.template, data: undefined }
+          ? { ...scheduler.template, data: undefined, opts: undefined }
           : undefined,
       };
   return redactValue(exposed, privacy) as SchedulerInfo;

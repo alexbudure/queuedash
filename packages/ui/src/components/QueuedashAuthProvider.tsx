@@ -24,7 +24,11 @@ export const QueuedashAuthProvider = ({
   const signOut = onSignOut
     ? async () => {
         setIsSigningOut(true);
-        await onSignOut();
+        try {
+          await onSignOut();
+        } finally {
+          setIsSigningOut(false);
+        }
       }
     : undefined;
 

@@ -130,7 +130,7 @@ export const MetricsSection = ({ queueName }: MetricsSectionProps) => {
             role="radio"
             aria-checked={timeRange === range}
             onClick={() => setTimeRange(range)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium outline-none transition-colors ${
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors outline-none ${
               timeRange === range
                 ? "bg-gray-100 text-gray-900 dark:bg-slate-800 dark:text-slate-100"
                 : "text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"

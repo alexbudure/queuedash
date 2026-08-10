@@ -8,15 +8,17 @@ import { Check, RotateCcw, Shield, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "../components/Button";
+import { ErrorCard } from "../components/ErrorCard";
 import { Layout } from "../components/Layout";
 import {
   type UserPreferences,
   useQueuedash,
 } from "../components/QueuedashProvider";
+import { Select, type SelectOption } from "../components/Select";
 import { Timestamp } from "../components/Timestamp";
 import { trpc } from "../utils/trpc";
 
-const THEME_OPTIONS: Array<{ label: string; value: QueuedashTheme }> = [
+const THEME_OPTIONS: Array<SelectOption<QueuedashTheme>> = [
   { label: "System", value: "system" },
   { label: "Light", value: "light" },
   { label: "Dark", value: "dark" },
@@ -30,6 +32,26 @@ const REFRESH_OPTIONS = [
   { label: "10 seconds", value: "10000" },
   { label: "30 seconds", value: "30000" },
   { label: "1 minute", value: "60000" },
+];
+
+const JOBS_PER_PAGE_OPTIONS = [20, 30, 50, 100].map((value) => ({
+  label: String(value),
+  value: String(value),
+}));
+
+const DENSITY_OPTIONS: Array<SelectOption<QueuedashDensity>> = [
+  { label: "Compact", value: "compact" },
+  { label: "Comfortable", value: "comfortable" },
+];
+
+const TIMESTAMP_OPTIONS: Array<SelectOption<QueuedashTimestampMode>> = [
+  { label: "Relative", value: "relative" },
+  { label: "Absolute", value: "absolute" },
+];
+
+const TOGGLE_OPTIONS = [
+  { label: "On", value: "on" },
+  { label: "Off", value: "off" },
 ];
 
 const JOB_STATUS_OPTIONS: Array<{
@@ -47,9 +69,6 @@ const JOB_STATUS_OPTIONS: Array<{
   { label: "Paused", value: "paused" },
 ];
 
-const selectClassName =
-  "min-w-40 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white";
-
 const formatRefreshInterval = (value: number | false): string =>
   value === false ? "off" : `${value / 1_000}s`;
 
@@ -62,7 +81,7 @@ const SettingRow = ({
   label: string;
   children: ReactNode;
 }) => (
-  <div className="flex flex-col justify-between gap-3 border-b border-gray-100 py-4 last:border-b-0 dark:border-slate-800 sm:flex-row sm:items-center">
+  <div className="flex flex-col justify-between gap-3 border-b border-gray-100 py-4 last:border-b-0 sm:flex-row sm:items-center dark:border-slate-800">
     <div>
       <div className="text-sm font-medium text-gray-900 dark:text-white">
         {label}
@@ -127,7 +146,7 @@ export const SettingsPage = () => {
         </div>
 
         <section className="mt-7">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+          <h2 className="text-xs font-semibold tracking-wider text-gray-400 uppercase dark:text-slate-500">
             My dashboard
           </h2>
           <div className="mt-2 rounded-xl border border-gray-100 px-4 dark:border-slate-800">
@@ -135,20 +154,12 @@ export const SettingsPage = () => {
               label="Appearance"
               description={`Server default: ${defaultPreferences.theme}`}
             >
-              <select
-                aria-label="Appearance"
+              <Select
+                ariaLabel="Appearance"
+                options={THEME_OPTIONS}
                 value={preferences.theme}
-                onChange={(event) =>
-                  setTheme(event.target.value as QueuedashTheme)
-                }
-                className={selectClassName}
-              >
-                {THEME_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setTheme}
+              />
             </SettingRow>
 
             <SettingRow
@@ -157,108 +168,70 @@ export const SettingsPage = () => {
                 defaultPreferences.refreshIntervalMs,
               )}`}
             >
-              <select
-                aria-label="Auto-refresh"
+              <Select
+                ariaLabel="Auto-refresh"
+                options={REFRESH_OPTIONS}
                 value={
                   preferences.refreshIntervalMs === false
                     ? "off"
                     : String(preferences.refreshIntervalMs)
                 }
-                onChange={(event) =>
-                  setRefreshInterval(
-                    event.target.value === "off"
-                      ? false
-                      : Number(event.target.value),
-                  )
+                onChange={(value) =>
+                  setRefreshInterval(value === "off" ? false : Number(value))
                 }
-                className={selectClassName}
-              >
-                {REFRESH_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              />
             </SettingRow>
 
             <SettingRow
               label="Jobs per load"
               description={`Server default: ${defaultPreferences.jobsPerPage}`}
             >
-              <select
-                aria-label="Jobs per load"
-                value={preferences.jobsPerPage}
-                onChange={(event) =>
+              <Select
+                ariaLabel="Jobs per load"
+                options={JOBS_PER_PAGE_OPTIONS}
+                value={String(preferences.jobsPerPage)}
+                onChange={(value) =>
                   setJobsPerPage(
-                    Number(
-                      event.target.value,
-                    ) as UserPreferences["jobsPerPage"],
+                    Number(value) as UserPreferences["jobsPerPage"],
                   )
                 }
-                className={selectClassName}
-              >
-                {[20, 30, 50, 100].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+              />
             </SettingRow>
 
             <SettingRow
               label="Default job tab"
               description={`Server default: ${defaultPreferences.defaultJobStatus}`}
             >
-              <select
-                aria-label="Default job tab"
+              <Select
+                ariaLabel="Default job tab"
+                options={JOB_STATUS_OPTIONS}
                 value={preferences.defaultJobStatus}
-                onChange={(event) =>
-                  setDefaultJobStatus(
-                    event.target.value as QueuedashDefaultJobStatus,
-                  )
-                }
-                className={selectClassName}
-              >
-                {JOB_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={setDefaultJobStatus}
+              />
             </SettingRow>
 
             <SettingRow
               label="Table density"
               description={`Server default: ${defaultPreferences.density}`}
             >
-              <select
-                aria-label="Table density"
+              <Select
+                ariaLabel="Table density"
+                options={DENSITY_OPTIONS}
                 value={preferences.density}
-                onChange={(event) =>
-                  setDensity(event.target.value as QueuedashDensity)
-                }
-                className={selectClassName}
-              >
-                <option value="compact">Compact</option>
-                <option value="comfortable">Comfortable</option>
-              </select>
+                onChange={setDensity}
+              />
             </SettingRow>
 
             <SettingRow
               label="Timestamps"
               description={`Server default: ${defaultPreferences.timestamps}`}
             >
-              <select
-                aria-label="Timestamps"
+              <Select
+                ariaLabel="Timestamps"
+                options={TIMESTAMP_OPTIONS}
                 value={preferences.timestamps}
-                onChange={(event) =>
-                  setTimestamps(event.target.value as QueuedashTimestampMode)
-                }
-                className={selectClassName}
-              >
-                <option value="relative">Relative</option>
-                <option value="absolute">Absolute</option>
-              </select>
+                onChange={setTimestamps}
+              />
             </SettingRow>
 
             <SettingRow
@@ -267,17 +240,12 @@ export const SettingsPage = () => {
                 defaultPreferences.showOverviewMetrics ? "on" : "off"
               }`}
             >
-              <select
-                aria-label="Overview sparklines"
+              <Select
+                ariaLabel="Overview sparklines"
+                options={TOGGLE_OPTIONS}
                 value={preferences.showOverviewMetrics ? "on" : "off"}
-                onChange={(event) =>
-                  setShowOverviewMetrics(event.target.value === "on")
-                }
-                className={selectClassName}
-              >
-                <option value="on">On</option>
-                <option value="off">Off</option>
-              </select>
+                onChange={(value) => setShowOverviewMetrics(value === "on")}
+              />
             </SettingRow>
 
             <SettingRow
@@ -303,133 +271,153 @@ export const SettingsPage = () => {
         </section>
 
         <section className="mt-7">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+          <h2 className="text-xs font-semibold tracking-wider text-gray-400 uppercase dark:text-slate-500">
             Server policy
           </h2>
-          <div className="mt-2 rounded-xl border border-gray-100 px-4 dark:border-slate-800">
-            <SettingRow
-              label="Access default"
-              description="Applied before matching queue-specific rules"
-            >
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-slate-800 dark:text-slate-300">
-                <Shield className="size-3" />
-                {server.data?.access.default ?? "Loading…"}
-              </span>
-            </SettingRow>
-
-            <SettingRow
-              label="Visible queue policies"
-              description="Effective read-only and action-specific policies; hidden queues are omitted"
-            >
-              <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
-                {server.data?.access.rules.length ?? "—"}
-              </span>
-            </SettingRow>
-
-            {server.data?.access.rules.map((rule, index) => (
-              <div
-                key={`${rule.queues.join(",")}-${index}`}
-                className="border-b border-gray-100 py-3 text-xs last:border-b-0 dark:border-slate-800"
-              >
-                <div className="font-mono text-gray-700 dark:text-slate-300">
-                  {rule.queues.join(", ")}
-                </div>
-                <div className="mt-1 text-gray-500 dark:text-slate-500">
-                  {rule.mode ?? "inherit"}
-                  {rule.deny.length > 0
-                    ? ` · denies ${rule.deny.join(", ")}`
-                    : ""}
-                </div>
-              </div>
-            ))}
-
-            <SettingRow
-              label="Sensitive-key redaction"
-              description="Applied before API responses reach this browser"
-            >
-              <BooleanState
-                enabled={server.data?.privacy.redactionEnabled === true}
-                falseLabel="Disabled"
-                trueLabel="Enabled"
-              />
-            </SettingRow>
-
-            {server.data
-              ? Object.entries(server.data.privacy.expose).map(
-                  ([category, exposed]) => (
-                    <SettingRow
-                      key={category}
-                      label={category.replaceAll(/([A-Z])/g, " $1")}
-                      description="Server-controlled data exposure"
-                    >
-                      <BooleanState enabled={exposed} />
-                    </SettingRow>
-                  ),
-                )
-              : null}
-
-            <SettingRow
-              label="Search scan cap"
-              description="Maximum jobs inspected by one search request"
-            >
-              <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
-                {server.data?.search.maxScanned.toLocaleString() ?? "—"}
-              </span>
-            </SettingRow>
-
-            <SettingRow
-              label="Queue discovery"
-              description={
-                server.data?.discovery.enabled
-                  ? `${server.data.discovery.type} · ${
-                      server.data.discovery.discoveredCount
-                    } discovered${
-                      server.data.discovery.truncated ? " · truncated" : ""
-                    }`
-                  : "Static queues only"
-              }
-            >
-              <span
-                className={`text-sm ${
-                  server.data?.discovery.healthy === false
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-green-700 dark:text-green-400"
-                }`}
-              >
-                {server.data?.discovery.healthy === false ? "Stale" : "Healthy"}
-              </span>
-            </SettingRow>
-
-            {server.data?.discovery.lastSuccessfulRefreshAt ? (
+          {server.isError ? (
+            <div className="mt-2">
+              <ErrorCard message="Could not fetch server settings" />
+            </div>
+          ) : (
+            <div className="mt-2 rounded-xl border border-gray-100 px-4 dark:border-slate-800">
               <SettingRow
-                label="Last discovery refresh"
-                description="Last successful Redis scan"
+                label="Access default"
+                description="Applied before matching queue-specific rules"
               >
-                <span className="text-sm text-gray-600 dark:text-slate-300">
-                  <Timestamp
-                    value={server.data.discovery.lastSuccessfulRefreshAt}
-                    variant="full"
-                  />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-slate-800 dark:text-slate-300">
+                  <Shield className="size-3" />
+                  {server.data?.access.default ?? "Loading…"}
                 </span>
               </SettingRow>
-            ) : null}
 
-            <SettingRow
-              label="Product"
-              description="Configured by the Queuedash server"
-            >
-              <span className="text-sm text-gray-600 dark:text-slate-300">
-                {branding.name}
-                {branding.logoUrl ? " · custom logo" : ""}
-              </span>
-            </SettingRow>
+              <SettingRow
+                label="Visible queue policies"
+                description="Effective read-only and action-specific policies; hidden queues are omitted"
+              >
+                <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
+                  {server.data?.access.rules.length ?? "—"}
+                </span>
+              </SettingRow>
 
-            <SettingRow label="Version" description="Queuedash API package">
-              <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
-                {server.data?.version ?? "—"}
-              </span>
-            </SettingRow>
-          </div>
+              {server.data?.access.rules.map((rule, index) => (
+                <div
+                  key={`${rule.queues.join(",")}-${index}`}
+                  className="border-b border-gray-100 py-3 text-xs last:border-b-0 dark:border-slate-800"
+                >
+                  <div className="font-mono text-gray-700 dark:text-slate-300">
+                    {rule.queues.join(", ")}
+                  </div>
+                  <div className="mt-1 text-gray-500 dark:text-slate-500">
+                    {rule.mode ?? "inherit"}
+                    {rule.deny.length > 0
+                      ? ` · denies ${rule.deny.join(", ")}`
+                      : ""}
+                  </div>
+                </div>
+              ))}
+
+              <SettingRow
+                label="Sensitive-key redaction"
+                description="Applied before API responses reach this browser"
+              >
+                {server.data ? (
+                  <BooleanState
+                    enabled={server.data.privacy.redactionEnabled}
+                    falseLabel="Disabled"
+                    trueLabel="Enabled"
+                  />
+                ) : (
+                  <span className="text-sm text-gray-400 dark:text-slate-500">
+                    Loading…
+                  </span>
+                )}
+              </SettingRow>
+
+              {server.data
+                ? Object.entries(server.data.privacy.expose).map(
+                    ([category, exposed]) => (
+                      <SettingRow
+                        key={category}
+                        label={category.replaceAll(/([A-Z])/g, " $1")}
+                        description="Server-controlled data exposure"
+                      >
+                        <BooleanState enabled={exposed} />
+                      </SettingRow>
+                    ),
+                  )
+                : null}
+
+              <SettingRow
+                label="Search scan cap"
+                description="Maximum jobs inspected by one filtered request or action"
+              >
+                <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
+                  {server.data?.search.maxScanned.toLocaleString() ?? "—"}
+                </span>
+              </SettingRow>
+
+              <SettingRow
+                label="Queue discovery"
+                description={
+                  !server.data
+                    ? "Loading server policy…"
+                    : server.data.discovery.enabled
+                      ? `${server.data.discovery.type} · ${
+                          server.data.discovery.discoveredCount
+                        } discovered${
+                          server.data.discovery.truncated ? " · truncated" : ""
+                        }`
+                      : "Static queues only"
+                }
+              >
+                <span
+                  className={`text-sm ${
+                    !server.data
+                      ? "text-gray-400 dark:text-slate-500"
+                      : server.data.discovery.healthy === false
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-green-700 dark:text-green-400"
+                  }`}
+                >
+                  {!server.data
+                    ? "Loading…"
+                    : server.data.discovery.healthy === false
+                      ? "Stale"
+                      : "Healthy"}
+                </span>
+              </SettingRow>
+
+              {server.data?.discovery.lastSuccessfulRefreshAt ? (
+                <SettingRow
+                  label="Last discovery refresh"
+                  description="Last successful Redis scan"
+                >
+                  <span className="text-sm text-gray-600 dark:text-slate-300">
+                    <Timestamp
+                      value={server.data.discovery.lastSuccessfulRefreshAt}
+                      variant="full"
+                    />
+                  </span>
+                </SettingRow>
+              ) : null}
+
+              <SettingRow
+                label="Product"
+                description="Configured by the Queuedash server"
+              >
+                <span className="text-sm text-gray-600 dark:text-slate-300">
+                  {branding.name}
+                  {branding.logoUrl ? " · custom logo" : ""}
+                </span>
+              </SettingRow>
+
+              <SettingRow label="Version" description="Queuedash API package">
+                <span className="font-mono text-sm text-gray-600 dark:text-slate-300">
+                  {server.data?.version ?? "—"}
+                </span>
+              </SettingRow>
+            </div>
+          )}
         </section>
       </div>
     </Layout>

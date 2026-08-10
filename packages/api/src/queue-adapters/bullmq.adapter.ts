@@ -21,7 +21,7 @@ type BullMQStatus =
   | "paused"
   | "prioritized";
 
-type BullMQCleanableStatus = BullMQStatus;
+type BullMQCleanableStatus = Exclude<BullMQStatus, "waiting-children">;
 
 type BullMQProQueueLike = {
   getGroups?: (start?: number, end?: number) => Promise<unknown[]>;
@@ -36,13 +36,25 @@ export class BullMQAdapter extends QueueAdapter<
   private queue: BullMQQueue;
 
   supports: FeatureSupport<BullMQStatus> = {
+    addJobOptions: true,
     pause: true,
     resume: true,
-    clean: true,
+    clean: {
+      supportedStatuses: [
+        "waiting",
+        "active",
+        "completed",
+        "failed",
+        "delayed",
+        "paused",
+        "prioritized",
+      ],
+    },
     retry: true,
     promote: true,
     logs: true,
     schedulers: true,
+    schedulerUpdate: true,
     flows: true,
     priorities: true,
     empty: true,
@@ -110,8 +122,7 @@ export class BullMQAdapter extends QueueAdapter<
   }
 
   async clean(status: BullMQCleanableStatus, graceMs: number): Promise<void> {
-    const bullmqStatus =
-      status === "waiting" || status === "waiting-children" ? "wait" : status;
+    const bullmqStatus = status === "waiting" ? "wait" : status;
     await this.queue.clean(graceMs, 0, bullmqStatus);
   }
 
@@ -136,6 +147,15 @@ export class BullMQAdapter extends QueueAdapter<
     const job = await this.queue.getJob(jobId);
     if (!job) return null;
     return this.adaptJob(job);
+  }
+
+  async getJobStatus(jobId: string): Promise<BullMQStatus | null> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return null;
+    const status = await job.getState();
+    return this.supportsStatus(status as BullMQStatus)
+      ? (status as BullMQStatus)
+      : null;
   }
 
   async addJob(
@@ -198,11 +218,15 @@ export class BullMQAdapter extends QueueAdapter<
       key: scheduler.key,
       name: scheduler.name,
       id: scheduler.id,
+      iterationCount: scheduler.iterationCount,
+      limit: scheduler.limit,
+      startDate: scheduler.startDate,
       endDate: scheduler.endDate,
       tz: scheduler.tz,
       pattern: scheduler.pattern,
       every: scheduler.every,
       next: scheduler.next,
+      offset: scheduler.offset,
       template: scheduler.template,
     }));
   }
@@ -213,6 +237,14 @@ export class BullMQAdapter extends QueueAdapter<
     template: Record<string, unknown>,
   ): Promise<void> {
     await this.queue.upsertJobScheduler(name, opts, template);
+  }
+
+  async updateScheduler(
+    key: string,
+    opts: Record<string, unknown>,
+    template: Record<string, unknown>,
+  ): Promise<void> {
+    await this.queue.upsertJobScheduler(key, opts, template);
   }
 
   async removeScheduler(key: string): Promise<void> {

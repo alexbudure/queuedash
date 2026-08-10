@@ -8,6 +8,7 @@ import {
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
   NUM_OF_WAITING_CHILDREN_JOBS,
+  expectTRPCError,
   sleep,
   type,
 } from "./test.utils";
@@ -24,6 +25,40 @@ test("list completed jobs", async () => {
   });
 
   expect(list.totalCount).toBe(NUM_OF_COMPLETED_JOBS);
+});
+
+test("rejects statuses unsupported by the queue adapter", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queue = await caller.queue.byName({
+    queueName: firstQueue.queue.name,
+  });
+  const allStatuses = [
+    "completed",
+    "failed",
+    "delayed",
+    "active",
+    "prioritized",
+    "waiting",
+    "waiting-children",
+    "paused",
+  ] as const;
+  const unsupportedStatus = allStatuses.find(
+    (status) => !queue.supports.statuses.includes(status),
+  );
+
+  if (!unsupportedStatus) return;
+
+  await expectTRPCError(
+    () =>
+      caller.job.list({
+        limit: 10,
+        cursor: 0,
+        status: unsupportedStatus,
+        queueName: firstQueue.queue.name,
+      }),
+    "BAD_REQUEST",
+  );
 });
 
 test("job has returnValue when worker returns data", async () => {
@@ -113,6 +148,93 @@ test("search is bounded and only matches server-presented data", async () => {
     limit: 5,
   });
   expect(capped.scanned).toBeLessThanOrEqual(25);
+});
+
+test("job list filters visible fields and sorts oldest first", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const filtered = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "completed",
+    limit: 100,
+    query: '"index":1',
+  });
+
+  expect(filtered.jobs).toHaveLength(1);
+  expect(filtered.jobs[0].data.index).toBe(1);
+  expect(filtered.searchMeta?.capped).toBe(false);
+
+  const oldestFirst = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "completed",
+    limit: 100,
+    sort: "oldest",
+  });
+  const timestamps = oldestFirst.jobs.map((job) => job.createdAt.getTime());
+  expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
+});
+
+test("job list reports partial results at the configured scan cap", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") return;
+
+  for (let index = 0; index < 30; index += 1) {
+    await caller.queue.addJob({
+      queueName: firstQueue.queue.name,
+      data: { capTest: index },
+      opts:
+        firstQueue.type === "groupmq"
+          ? { delay: 60_000, groupId: `cap-test-${index}` }
+          : { delay: 60_000 },
+    });
+  }
+
+  const result = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    limit: 25,
+    query: "does-not-match-cap-test",
+    scanLimit: 25,
+  });
+
+  expect(result.jobs).toHaveLength(0);
+  expect(result.searchMeta).toMatchObject({
+    scanned: 25,
+    capped: true,
+    scanLimit: 25,
+  });
+});
+
+test("bulk remove by filter removes only matching jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const before = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "failed",
+    limit: 100,
+  });
+
+  const result = await caller.job.bulkRemoveByFilter({
+    queueName: firstQueue.queue.name,
+    status: "failed",
+    query: '"index":13',
+  });
+
+  expect(result).toMatchObject({
+    matched: 1,
+    succeeded: 1,
+    failed: 0,
+    partial: false,
+  });
+  const after = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "failed",
+    limit: 100,
+  });
+  expect(after.totalCount).toBe(before.totalCount - 1);
 });
 
 test("retry job", async () => {
@@ -517,6 +639,86 @@ test("promote job", async () => {
   }
 });
 
+test("promote rejects jobs that are not delayed", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const completed = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "completed",
+    limit: 1,
+  });
+
+  await expectTRPCError(
+    () =>
+      caller.job.promote({
+        queueName: firstQueue.queue.name,
+        jobId: completed.jobs[0].id,
+      }),
+    "BAD_REQUEST",
+  );
+});
+
+test("bulk promote by filter promotes only matching delayed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type === "bee") {
+    await expectTRPCError(
+      () =>
+        caller.job.bulkPromoteByFilter({
+          queueName: firstQueue.queue.name,
+          status: "delayed",
+          query: "bulk-promote-target",
+        }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
+
+  await caller.queue.pause({ queueName: firstQueue.queue.name });
+  for (const marker of [
+    "bulk-promote-target",
+    "bulk-promote-target",
+    "bulk-promote-control",
+  ]) {
+    await caller.queue.addJob({
+      queueName: firstQueue.queue.name,
+      data: { marker },
+      opts:
+        firstQueue.type === "groupmq"
+          ? { delay: 60_000, groupId: marker }
+          : { delay: 60_000 },
+    });
+  }
+
+  const result = await caller.job.bulkPromoteByFilter({
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    query: "bulk-promote-target",
+  });
+
+  expect(result).toMatchObject({
+    matched: 2,
+    succeeded: 2,
+    failed: 0,
+    partial: false,
+  });
+  const delayedTargets = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    limit: 10,
+    query: "bulk-promote-target",
+  });
+  const delayedControl = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    limit: 10,
+    query: "bulk-promote-control",
+  });
+  expect(delayedTargets.jobs).toHaveLength(0);
+  expect(delayedControl.jobs).toHaveLength(1);
+});
+
 test("get job logs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -763,32 +965,34 @@ test("list paused jobs", async () => {
 test("list prioritized jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  const queue = await caller.queue.byName({
+    queueName: firstQueue.queue.name,
+  });
 
-  if (firstQueue.type === "bee") {
-    // Bee doesn't support prioritized status
-    try {
-      await caller.job.list({
-        limit: 10,
-        cursor: 0,
-        status: "prioritized",
-        queueName: firstQueue.queue.name,
-      });
-      throw new Error("Should have thrown TRPCError");
-    } catch (e) {
-      expect(e).toBeInstanceOf(TRPCError);
-    }
-  } else {
-    const result = await caller.job.list({
-      limit: 10,
-      cursor: 0,
-      status: "prioritized",
-      queueName: firstQueue.queue.name,
-    });
-
-    expect(result).toHaveProperty("totalCount");
-    expect(result).toHaveProperty("jobs");
-    expect(Array.isArray(result.jobs)).toBe(true);
+  if (!queue.supports.statuses.includes("prioritized")) {
+    await expectTRPCError(
+      () =>
+        caller.job.list({
+          limit: 10,
+          cursor: 0,
+          status: "prioritized",
+          queueName: firstQueue.queue.name,
+        }),
+      "BAD_REQUEST",
+    );
+    return;
   }
+
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "prioritized",
+    queueName: firstQueue.queue.name,
+  });
+
+  expect(result).toHaveProperty("totalCount");
+  expect(result).toHaveProperty("jobs");
+  expect(Array.isArray(result.jobs)).toBe(true);
 });
 
 test("list failed jobs", async () => {
@@ -864,9 +1068,8 @@ test("job not found error on promote", async () => {
       throw new Error("Should have thrown TRPCError");
     } catch (e) {
       expect(e).toBeInstanceOf(TRPCError);
-      // Could be NOT_FOUND or INTERNAL_SERVER_ERROR depending on implementation
       if (e instanceof TRPCError) {
-        expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
+        expect(e.code).toBe("NOT_FOUND");
       }
     }
   }
@@ -938,29 +1141,15 @@ test("empty job list for status with no jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  if (firstQueue.type === "bee") {
-    // Bee doesn't support prioritized - use delayed instead
-    const result = await caller.job.list({
-      limit: 10,
-      cursor: 0,
-      status: "delayed",
-      queueName: firstQueue.queue.name,
-    });
+  const result = await caller.job.list({
+    limit: 10,
+    cursor: 0,
+    status: "delayed",
+    queueName: firstQueue.queue.name,
+  });
 
-    expect(result.jobs).toEqual(result.jobs); // Should not throw
-    expect(Array.isArray(result.jobs)).toBe(true);
-  } else {
-    // Prioritized status should have no jobs in most test scenarios
-    const result = await caller.job.list({
-      limit: 10,
-      cursor: 0,
-      status: "prioritized",
-      queueName: firstQueue.queue.name,
-    });
-
-    expect(result.jobs).toEqual(result.jobs); // Should not throw
-    expect(Array.isArray(result.jobs)).toBe(true);
-  }
+  expect(result.jobs).toEqual(result.jobs); // Should not throw
+  expect(Array.isArray(result.jobs)).toBe(true);
 });
 
 test("logs on non-existent job returns null or empty", async () => {

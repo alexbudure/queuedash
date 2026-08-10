@@ -3,7 +3,8 @@ import { AlertTriangle, Calendar, Clock, Info } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
 
-import type { Scheduler } from "../utils/trpc";
+import type { Queue, Scheduler } from "../utils/trpc";
+import { AddJobModal } from "./AddJobModal";
 import { useQueuedash } from "./QueuedashProvider";
 import { SchedulerActionMenu } from "./SchedulerActionMenu";
 import { SidePanelDialog } from "./SidePanelDialog";
@@ -11,8 +12,9 @@ import { Timestamp } from "./Timestamp";
 
 type SchedulerModalProps = {
   canRemove: boolean;
+  canUpdate: boolean;
   scheduler: Scheduler;
-  queueName: string;
+  queue: Queue;
   onDismiss: () => void;
 };
 
@@ -109,11 +111,13 @@ const formatEvery = (every?: number) => {
 
 export const SchedulerModal = ({
   canRemove,
+  canUpdate,
   scheduler,
-  queueName,
+  queue,
   onDismiss,
 }: SchedulerModalProps) => {
   const [showRawDetails, setShowRawDetails] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const { isDark } = useQueuedash();
   const jsonTreeTheme = isDark ? jsonTreeDarkTheme : jsonTreeLightTheme;
 
@@ -140,6 +144,18 @@ export const SchedulerModal = ({
 
   const nextRunDate = scheduler.next ? new Date(scheduler.next) : null;
 
+  if (showEdit) {
+    return (
+      <AddJobModal
+        queue={queue}
+        scheduler={scheduler}
+        variant="scheduler"
+        onDismiss={() => setShowEdit(false)}
+        onSuccess={onDismiss}
+      />
+    );
+  }
+
   return (
     <SidePanelDialog
       title={scheduler.name}
@@ -153,9 +169,11 @@ export const SchedulerModal = ({
       headerActions={
         <SchedulerActionMenu
           canRemove={canRemove}
-          queueName={queueName}
+          canUpdate={canUpdate}
+          queueName={queue.name}
           scheduler={scheduler}
           onRemove={onDismiss}
+          onUpdate={() => setShowEdit(true)}
         />
       }
     >
@@ -163,7 +181,7 @@ export const SchedulerModal = ({
         <div className="rounded-lg bg-gray-50/80 p-3.5 dark:bg-slate-800/40">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+              <p className="inline-flex items-center gap-1.5 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
                 <Clock className="size-3" />
                 Schedule
               </p>
@@ -218,11 +236,11 @@ export const SchedulerModal = ({
         )}
 
         <div>
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          <h3 className="mb-3 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
             Details
           </h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <DetailItem label="Queue" value={queueName} />
+            <DetailItem label="Queue" value={queue.name} />
             <DetailItem label="Key" value={scheduler.key} mono />
             <DetailItem label="ID" value={scheduler.id ?? "-"} mono />
             <DetailItem
@@ -252,7 +270,7 @@ export const SchedulerModal = ({
 
         {templateData ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Job Data
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -269,7 +287,7 @@ export const SchedulerModal = ({
 
         {templateOpts ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Job Options
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -324,7 +342,7 @@ const DetailItem = ({
   <div>
     <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">{label}</p>
     <p
-      className={`break-all text-sm text-gray-900 dark:text-white ${mono ? "font-mono" : ""}`}
+      className={`text-sm break-all text-gray-900 dark:text-white ${mono ? "font-mono" : ""}`}
     >
       {value}
     </p>

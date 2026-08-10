@@ -1,7 +1,36 @@
+import { useSyncExternalStore } from "react";
+
 import { useQueuedash } from "./QueuedashProvider";
 
 type TimestampValue = Date | number | string | null | undefined;
 type TimestampVariant = "date" | "full" | "time";
+
+let currentNow = Date.now();
+let ticker: ReturnType<typeof setInterval> | undefined;
+const relativeTimestampListeners = new Set<() => void>();
+
+const subscribeToRelativeTimestamps = (listener: () => void) => {
+  relativeTimestampListeners.add(listener);
+  if (relativeTimestampListeners.size === 1) {
+    currentNow = Date.now();
+    ticker = setInterval(() => {
+      currentNow = Date.now();
+      relativeTimestampListeners.forEach((notify) => notify());
+    }, 1_000);
+  }
+
+  return () => {
+    relativeTimestampListeners.delete(listener);
+    if (relativeTimestampListeners.size === 0 && ticker !== undefined) {
+      clearInterval(ticker);
+      ticker = undefined;
+    }
+  };
+};
+
+const doNotSubscribe = () => () => {};
+const getCurrentNow = () => currentNow;
+const getStaticNow = () => 0;
 
 const toDate = (value: TimestampValue): Date | null => {
   if (value === null || value === undefined) return null;
@@ -9,11 +38,14 @@ const toDate = (value: TimestampValue): Date | null => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export const formatRelativeTimestamp = (value: TimestampValue): string => {
+export const formatRelativeTimestamp = (
+  value: TimestampValue,
+  now = Date.now(),
+): string => {
   const date = toDate(value);
   if (!date) return "-";
 
-  const seconds = Math.round((date.getTime() - Date.now()) / 1_000);
+  const seconds = Math.round((date.getTime() - now) / 1_000);
   const absoluteSeconds = Math.abs(seconds);
   const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
@@ -58,7 +90,14 @@ export const Timestamp = ({
   variant?: TimestampVariant;
 }) => {
   const { preferences } = useQueuedash();
-  return preferences.timestamps === "relative"
-    ? formatRelativeTimestamp(value)
+  const isRelative = preferences.timestamps === "relative";
+  const now = useSyncExternalStore(
+    isRelative ? subscribeToRelativeTimestamps : doNotSubscribe,
+    isRelative ? getCurrentNow : getStaticNow,
+    isRelative ? getCurrentNow : getStaticNow,
+  );
+
+  return isRelative
+    ? formatRelativeTimestamp(value, now)
     : formatAbsoluteTimestamp(value, variant);
 };

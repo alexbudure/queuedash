@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import type { JSONEditorValidationState } from "../utils/jsonEditor";
 import { normalizeJSONEditorValue } from "../utils/jsonEditor";
-import type { Queue } from "../utils/trpc";
+import type { Queue, Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { Button } from "./Button";
 import { JSONEditor } from "./JSONEditor";
@@ -12,6 +12,8 @@ import { SidePanelDialog } from "./SidePanelDialog";
 type JobModalProps = {
   queue: Queue;
   onDismiss: () => void;
+  onSuccess?: () => void;
+  scheduler?: Scheduler;
   variant?: "job" | "scheduler";
 };
 
@@ -21,13 +23,13 @@ const JSON_HELPER_TEXT =
 const errorTextClassName = "mt-1.5 text-xs text-red-600 dark:text-red-400";
 
 const inputClassName =
-  "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-gray-300 focus:ring-1 focus:ring-gray-200 dark:border-slate-700 dark:bg-slate-900/60 dark:text-white dark:focus:border-slate-600 dark:focus:ring-slate-700/50";
+  "w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none transition-colors focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-900/60 dark:text-white dark:focus:border-brand-600 dark:focus:ring-brand-950";
 
 const TIMEZONES = Intl.supportedValuesOf("timeZone");
 
 const SectionHeader = ({ children }: { children: React.ReactNode }) => (
   <div className="border-t border-gray-100 pt-5 dark:border-slate-800/60">
-    <h3 className="mb-4 text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-slate-500">
+    <h3 className="mb-4 text-xs font-medium tracking-wide text-gray-400 uppercase dark:text-slate-500">
       {children}
     </h3>
   </div>
@@ -73,12 +75,15 @@ const getSchedulerScheduleError = (
 export const AddJobModal = ({
   queue,
   onDismiss,
+  onSuccess,
+  scheduler,
   variant = "job",
 }: JobModalProps) => {
   const { mutate: addJob, status: addJobStatus } =
     trpc.queue.addJob.useMutation({
       onSuccess() {
         toast.success("New job has been added");
+        onSuccess?.();
         onDismiss();
       },
       onError(error) {
@@ -90,6 +95,19 @@ export const AddJobModal = ({
     trpc.queue.addJobScheduler.useMutation({
       onSuccess() {
         toast.success("New job scheduler has been added");
+        onSuccess?.();
+        onDismiss();
+      },
+      onError(error) {
+        toast.error(error.message);
+      },
+    });
+
+  const { mutate: updateJobScheduler, status: updateSchedulerStatus } =
+    trpc.scheduler.update.useMutation({
+      onSuccess() {
+        toast.success("Job scheduler has been updated");
+        onSuccess?.();
         onDismiss();
       },
       onError(error) {
@@ -108,10 +126,12 @@ export const AddJobModal = ({
       getInitialValidationState("{}", "Options"),
     );
 
-  const [schedulerName, setSchedulerName] = useState("manual-scheduler");
+  const [schedulerName, setSchedulerName] = useState(
+    scheduler?.name ?? "manual-scheduler",
+  );
   const [templateDataValue, setTemplateDataValue] = useState(
     JSON.stringify(
-      {
+      scheduler?.template?.data ?? {
         message: "Scheduled from Queuedash",
       },
       null,
@@ -120,22 +140,29 @@ export const AddJobModal = ({
   );
   const [templateOptsValue, setTemplateOptsValue] = useState(
     JSON.stringify(
-      {
+      scheduler?.template?.opts ?? {
         attempts: 1,
       },
       null,
       2,
     ),
   );
-  const [patternValue, setPatternValue] = useState("0 * * * *");
-  const [everyValue, setEveryValue] = useState("");
+  const [patternValue, setPatternValue] = useState(
+    scheduler?.pattern ?? (scheduler ? "" : "0 * * * *"),
+  );
+  const [everyValue, setEveryValue] = useState(
+    scheduler?.every ? String(scheduler.every) : "",
+  );
   const [timezoneValue, setTimezoneValue] = useState(
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    scheduler?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
   const [schedulerOptionsValue, setSchedulerOptionsValue] = useState(
     JSON.stringify(
       {
-        limit: undefined,
+        limit: scheduler?.limit,
+        startDate: scheduler?.startDate,
+        endDate: scheduler?.endDate,
+        offset: scheduler?.offset,
       },
       null,
       2,
@@ -155,14 +182,21 @@ export const AddJobModal = ({
     );
 
   const isJob = variant === "job";
-  const status = isJob ? addJobStatus : addSchedulerStatus;
+  const supportsJobOptions = queue.supports.addJobOptions;
+  const isEditingScheduler = !isJob && !!scheduler;
+  const status = isJob
+    ? addJobStatus
+    : isEditingScheduler
+      ? updateSchedulerStatus
+      : addSchedulerStatus;
 
   const schedulerScheduleError = useMemo(() => {
     return getSchedulerScheduleError(patternValue, everyValue);
   }, [everyValue, patternValue]);
 
   const isJobFormInvalid =
-    !jobDataValidation.isValid || !jobOptsValidation.isValid;
+    !jobDataValidation.isValid ||
+    (supportsJobOptions && !jobOptsValidation.isValid);
   const isSchedulerFormInvalid =
     !templateDataValidation.isValid ||
     !templateOptsValidation.isValid ||
@@ -209,21 +243,23 @@ export const AddJobModal = ({
       setValue: setDataValue,
       setValidation: setJobDataValidation,
     });
-    const normalizedOpts = normalizeObjectField({
-      value: optsValue,
-      label: "Options",
-      setValue: setOptsValue,
-      setValidation: setJobOptsValidation,
-    });
+    const normalizedOpts = supportsJobOptions
+      ? normalizeObjectField({
+          value: optsValue,
+          label: "Options",
+          setValue: setOptsValue,
+          setValidation: setJobOptsValidation,
+        })
+      : null;
 
-    if (!normalizedData.isValid || !normalizedOpts.isValid) {
+    if (!normalizedData.isValid || normalizedOpts?.isValid === false) {
       return;
     }
 
     addJob({
       queueName: queue.name,
       data: normalizedData.parsedValue as Record<string, unknown>,
-      opts: normalizedOpts.parsedValue as Record<string, unknown> | undefined,
+      opts: normalizedOpts?.parsedValue as Record<string, unknown> | undefined,
     });
   };
 
@@ -268,7 +304,7 @@ export const AddJobModal = ({
         | Record<string, unknown>
         | undefined) || {};
 
-    addJobScheduler({
+    const input = {
       queueName: queue.name,
       template: {
         name: schedulerName.trim() || undefined,
@@ -283,12 +319,26 @@ export const AddJobModal = ({
         every: parsedEvery,
         tz: timezoneValue.trim() || undefined,
       },
-    });
+    };
+
+    if (isEditingScheduler) {
+      updateJobScheduler({
+        ...input,
+        key: scheduler.key,
+        opts: input.opts,
+      });
+    } else {
+      addJobScheduler(input);
+    }
   };
 
   return (
     <SidePanelDialog
-      title={`Add ${isJob ? "job" : "scheduler"}`}
+      title={
+        isEditingScheduler
+          ? "Edit scheduler"
+          : `Add ${isJob ? "job" : "scheduler"}`
+      }
       subtitle={queue.displayName}
       open={true}
       onOpenChange={(isOpen) => {
@@ -313,23 +363,34 @@ export const AddJobModal = ({
                 onValidationChange={setJobDataValidation}
               />
 
-              <JSONEditor
-                label="Options"
-                value={optsValue}
-                onChange={setOptsValue}
-                rootType="object"
-                helperText={JSON_HELPER_TEXT}
-                height="240px"
-                onValidationChange={setJobOptsValidation}
-              />
+              {supportsJobOptions ? (
+                <JSONEditor
+                  label="Options"
+                  value={optsValue}
+                  onChange={setOptsValue}
+                  rootType="object"
+                  helperText={JSON_HELPER_TEXT}
+                  height="240px"
+                  onValidationChange={setJobOptsValidation}
+                />
+              ) : (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                  This queue accepts job data only; its adapter does not support
+                  job options.
+                </p>
+              )}
             </>
           ) : (
             <>
               <div>
-                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                <label
+                  htmlFor="queuedash-scheduler-name"
+                  className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+                >
                   Scheduler name
                 </label>
                 <input
+                  id="queuedash-scheduler-name"
                   value={schedulerName}
                   onChange={(e) => setSchedulerName(e.target.value)}
                   className={inputClassName}
@@ -341,10 +402,14 @@ export const AddJobModal = ({
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  <label
+                    htmlFor="queuedash-scheduler-pattern"
+                    className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+                  >
                     Cron pattern
                   </label>
                   <input
+                    id="queuedash-scheduler-pattern"
                     value={patternValue}
                     onChange={(e) => setPatternValue(e.target.value)}
                     className={`${inputClassName} font-mono text-xs`}
@@ -353,10 +418,14 @@ export const AddJobModal = ({
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                  <label
+                    htmlFor="queuedash-scheduler-every"
+                    className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+                  >
                     Interval (ms)
                   </label>
                   <input
+                    id="queuedash-scheduler-every"
                     value={everyValue}
                     onChange={(e) => setEveryValue(e.target.value)}
                     className={`${inputClassName} font-mono text-xs`}
@@ -374,10 +443,14 @@ export const AddJobModal = ({
               )}
 
               <div>
-                <label className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400">
+                <label
+                  htmlFor="queuedash-scheduler-timezone"
+                  className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+                >
                   Timezone
                 </label>
                 <select
+                  id="queuedash-scheduler-timezone"
                   value={timezoneValue}
                   onChange={(e) => setTimezoneValue(e.target.value)}
                   className={`${inputClassName} font-mono text-xs`}
@@ -431,7 +504,13 @@ export const AddJobModal = ({
         <div className="mt-auto flex items-center justify-end gap-2 border-t border-gray-100/80 bg-gray-50/50 px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900/30">
           <Button label="Cancel" onClick={onDismiss} />
           <Button
-            label={isJob ? "Add job" : "Add scheduler"}
+            label={
+              isJob
+                ? "Add job"
+                : isEditingScheduler
+                  ? "Save changes"
+                  : "Add scheduler"
+            }
             variant="filled"
             disabled={
               status === "pending" ||

@@ -31,6 +31,7 @@ describe("queue access policy", () => {
     expect(access.actions["queue.empty"]).toBe(false);
     expect(access.actions["job.remove"]).toBe(false);
     expect(access.actions["job.retry"]).toBe(true);
+    expect(access.actions["scheduler.update"]).toBe(true);
   });
 
   it("rejects disabled actions at the server boundary", () => {

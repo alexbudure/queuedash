@@ -38,7 +38,9 @@ export const QueuePage = () => {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const isSchedulersView = searchParams.get("view") === "schedulers";
+  const requestedSchedulersView = searchParams.get("view") === "schedulers";
+  const query = searchParams.get("q")?.trim() ?? "";
+  const sort = searchParams.get("sort") === "oldest" ? "oldest" : "newest";
   const preferredStatus =
     preferences.defaultJobStatus === "remember"
       ? preferences.lastJobStatus
@@ -53,16 +55,37 @@ export const QueuePage = () => {
   const handleTabChange = useCallback(
     (key: Key) => {
       const k = String(key);
-      if (k === "schedulers") {
-        setSearchParams({ view: "schedulers" });
-      } else {
+      if (k !== "schedulers") {
         setLastJobStatus(k as Status);
-        setSearchParams({ status: k });
       }
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        if (k === "schedulers") {
+          next.set("view", "schedulers");
+          next.delete("status");
+        } else {
+          next.set("status", k);
+          next.delete("view");
+        }
+        return next;
+      });
     },
     [setLastJobStatus, setSearchParams],
   );
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const queueReq = trpc.queue.byName.useQuery(
+    {
+      queueName,
+    },
+    {
+      enabled: !!queueName,
+      refetchInterval: preferences.refreshIntervalMs,
+      retry: NUM_OF_RETRIES,
+    },
+  );
+  const isSchedulersView =
+    requestedSchedulersView && queueReq.data?.supports.schedulers !== false;
+
   const {
     data,
     fetchNextPage,
@@ -76,10 +99,16 @@ export const QueuePage = () => {
       limit: preferences.jobsPerPage,
       status,
       groupId: selectedGroupId ?? undefined,
+      query: query || undefined,
+      sort,
     },
     {
       getNextPageParam: (lastPage) => lastPage.nextCursor,
-      enabled: !!queueName && !isSchedulersView,
+      enabled:
+        !!queueName &&
+        !isSchedulersView &&
+        !!queueReq.data &&
+        queueReq.data.supports.statuses.includes(status),
       refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
@@ -87,29 +116,65 @@ export const QueuePage = () => {
 
   useEffect(() => {
     const searchStatus = searchParams.get("status");
-    if (searchStatus && VALID_STATUSES.includes(searchStatus as Status)) {
-      const nextStatus = searchStatus as Status;
-      if (nextStatus !== status) {
-        setStatus(nextStatus);
-      }
+    const requestedStatus =
+      searchStatus && VALID_STATUSES.includes(searchStatus as Status)
+        ? (searchStatus as Status)
+        : preferredStatus;
+    const supportedStatuses = queueReq.data?.supports.statuses;
+    const nextStatus = (
+      supportedStatuses && !supportedStatuses.includes(requestedStatus)
+        ? supportedStatuses.includes("completed")
+          ? "completed"
+          : (supportedStatuses[0] ?? requestedStatus)
+        : requestedStatus
+    ) as Status;
+
+    if (nextStatus !== status) {
+      setStatus(nextStatus);
+    }
+
+    if (
+      !isSchedulersView &&
+      searchStatus &&
+      searchStatus !== nextStatus &&
+      supportedStatuses
+    ) {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.set("status", nextStatus);
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [
+    isSchedulersView,
+    preferredStatus,
+    queueReq.data?.supports.statuses,
+    searchParams,
+    setSearchParams,
+    status,
+  ]);
+
+  useEffect(() => {
+    if (
+      !requestedSchedulersView ||
+      !queueReq.data ||
+      queueReq.data.supports.schedulers
+    ) {
       return;
     }
 
-    if (!searchStatus && !isSchedulersView && status !== preferredStatus) {
-      setStatus(preferredStatus);
-    }
-  }, [searchParams, isSchedulersView, preferredStatus, status]);
-
-  const queueReq = trpc.queue.byName.useQuery(
-    {
-      queueName,
-    },
-    {
-      enabled: !!queueName,
-      refetchInterval: preferences.refreshIntervalMs,
-      retry: NUM_OF_RETRIES,
-    },
-  );
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete("view");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [queueReq.data, requestedSchedulersView, setSearchParams]);
 
   useEffect(() => {
     setSelectedGroupId(null);
@@ -137,6 +202,9 @@ export const QueuePage = () => {
       })
       .flat() ?? [];
   const totalJobs = data?.pages.at(-1)?.totalCount || 0;
+  const firstPage = data?.pages[0];
+  const searchMeta =
+    firstPage && "searchMeta" in firstPage ? firstPage.searchMeta : undefined;
   const redisStatus =
     queueReq.data === null ? null : (
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -183,9 +251,15 @@ export const QueuePage = () => {
 
   return (
     <Layout top={redisStatus}>
-      {queueReq.data === null ? (
-        <ErrorCard message="No queue found" />
-      ) : isError ? (
+      {queueReq.isError ? (
+        <ErrorCard
+          message={
+            queueReq.error.data?.code === "NOT_FOUND"
+              ? "No queue found"
+              : "Could not fetch queue"
+          }
+        />
+      ) : !isSchedulersView && isError ? (
         <ErrorCard message="Could not fetch jobs" />
       ) : (
         <div className="space-y-5">
@@ -235,8 +309,6 @@ export const QueuePage = () => {
             </div>
           </div>
 
-          <JobSearch queueName={queueName} />
-
           {queueReq.isLoading ? (
             <div className="space-y-4 pb-2">
               <Skeleton className="h-[30px] w-72 rounded-lg" />
@@ -262,21 +334,6 @@ export const QueuePage = () => {
             enabled={queueReq.data?.supports.workers === true}
           />
 
-          {selectedGroupId && !queueReq.data?.supports.groups ? (
-            <div className="flex items-center justify-between rounded-lg bg-purple-50/80 px-3 py-2 dark:bg-purple-950/30">
-              <span className="text-xs font-medium text-purple-900 dark:text-purple-100">
-                Filtering by group:{" "}
-                <span className="font-mono">{selectedGroupId}</span>
-              </span>
-              <button
-                onClick={() => setSelectedGroupId(null)}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 transition-colors hover:bg-purple-100 dark:text-purple-400 dark:hover:bg-purple-900/50"
-              >
-                Clear
-              </button>
-            </div>
-          ) : null}
-
           {queueReq.data?.supports.groups ? (
             <GroupsSection
               canRemoveJobs={queueReq.data.access.actions["job.remove"]}
@@ -294,11 +351,36 @@ export const QueuePage = () => {
               schedulerCount={schedulersReq.data?.length}
               onTabChange={handleTabChange}
             />
+            {!isSchedulersView ? (
+              <JobSearch
+                query={query}
+                sort={sort}
+                searchMeta={searchMeta}
+                isLoading={isLoading}
+                onQueryChange={(nextQuery) => {
+                  setSearchParams((current) => {
+                    const next = new URLSearchParams(current);
+                    if (nextQuery) next.set("q", nextQuery);
+                    else next.delete("q");
+                    return next;
+                  });
+                }}
+                onSortChange={(nextSort) => {
+                  setSearchParams((current) => {
+                    const next = new URLSearchParams(current);
+                    if (nextSort === "oldest") next.set("sort", nextSort);
+                    else next.delete("sort");
+                    return next;
+                  });
+                }}
+              />
+            ) : null}
             {isSchedulersView ? (
               <SchedulerTable
                 canRemove={
                   queueReq.data?.access.actions["scheduler.remove"] === true
                 }
+                queue={queueReq.data}
                 queueName={queueName}
               />
             ) : (
@@ -315,6 +397,8 @@ export const QueuePage = () => {
                 queueName={queueName}
                 queue={queueReq.data}
                 selectedGroupId={selectedGroupId}
+                query={query || undefined}
+                searchIsPartial={searchMeta?.capped === true}
               />
             )}
           </div>

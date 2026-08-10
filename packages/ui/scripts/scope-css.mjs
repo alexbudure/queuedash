@@ -92,6 +92,32 @@ const scopeSelector = (selector) => {
 
 const source = await readFile(stylesheetPath, "utf8");
 const root = postcss.parse(source);
+const animationNames = new Map();
+
+root.walkAtRules((atRule) => {
+  if (atRule.name !== "keyframes" && !atRule.name.endsWith("keyframes")) {
+    return;
+  }
+
+  const originalName = atRule.params.trim();
+  const scopedName = originalName.startsWith("queuedash-")
+    ? originalName
+    : `queuedash-${originalName}`;
+  animationNames.set(originalName, scopedName);
+  atRule.params = scopedName;
+});
+
+const escapeRegExp = (value) => value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+root.walkDecls((declaration) => {
+  for (const [originalName, scopedName] of animationNames) {
+    const animationName = new RegExp(
+      `(?<![-_a-zA-Z0-9])${escapeRegExp(originalName)}(?![-_a-zA-Z0-9])`,
+      "gu",
+    );
+    declaration.value = declaration.value.replaceAll(animationName, scopedName);
+  }
+});
 
 root.walkRules((rule) => {
   if (hasRuleAncestor(rule) || isInsideKeyframes(rule)) return;

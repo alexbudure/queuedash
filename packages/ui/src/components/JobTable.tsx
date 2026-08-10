@@ -11,6 +11,7 @@ import {
   Clock,
   Loader2,
   PlusCircle,
+  Rocket,
   RotateCcw,
   RotateCw,
   Trash2,
@@ -387,7 +388,7 @@ const columns = [
                   </span>
                 </Tooltip>
               ) : (
-                <span className="whitespace-nowrap text-[10px] text-gray-400 dark:text-slate-500">
+                <span className="text-[10px] whitespace-nowrap text-gray-400 dark:text-slate-500">
                   no timing
                 </span>
               )}
@@ -437,6 +438,8 @@ type JobTableProps = {
   status: Status;
   queue?: RouterOutput["queue"]["byName"];
   selectedGroupId?: string | null;
+  query?: string;
+  searchIsPartial?: boolean;
 };
 export const JobTable = ({
   jobs,
@@ -448,6 +451,8 @@ export const JobTable = ({
   status,
   queue,
   selectedGroupId,
+  query,
+  searchIsPartial = false,
 }: JobTableProps) => {
   const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
@@ -469,11 +474,41 @@ export const JobTable = ({
     onRowSelectionChange: setRowSelection,
   });
   const isEmpty = jobs.length === 0;
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJob] = useState<
+    (Job & { status: Status }) | null
+  >(null);
 
   const { mutate: retry } = trpc.job.retry.useMutation();
   const { mutate: rerun } = trpc.job.rerun.useMutation();
   const { mutate: bulkRemove } = trpc.job.bulkRemove.useMutation();
+
+  const { mutate: bulkRemoveByFilter, status: bulkRemoveByFilterStatus } =
+    trpc.job.bulkRemoveByFilter.useMutation({
+      onSuccess(data) {
+        toast.success(
+          `Removed ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${
+            data.failed > 0 ? `, ${data.failed} failed` : ""
+          }${data.partial ? "; more jobs may match" : ""}`,
+        );
+      },
+      onError(error) {
+        toast.error(error.message || "Failed to remove jobs");
+      },
+    });
+
+  const { mutate: bulkPromote, status: bulkPromoteStatus } =
+    trpc.job.bulkPromoteByFilter.useMutation({
+      onSuccess(data) {
+        toast.success(
+          `Promoted ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${
+            data.failed > 0 ? `, ${data.failed} failed` : ""
+          }${data.partial ? "; more jobs may match" : ""}`,
+        );
+      },
+      onError(error) {
+        toast.error(error.message || "Failed to promote jobs");
+      },
+    });
 
   const { mutate: cleanQueue, status: cleanQueueStatus } =
     trpc.queue.clean.useMutation({
@@ -486,7 +521,7 @@ export const JobTable = ({
     trpc.job.bulkRetryByFilter.useMutation({
       onSuccess(data) {
         toast.success(
-          `Retried ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${data.failed > 0 ? `, ${data.failed} failed` : ""}`,
+          `Retried ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${data.failed > 0 ? `, ${data.failed} failed` : ""}${data.partial ? "; more jobs may match" : ""}`,
         );
       },
       onError(error) {
@@ -494,21 +529,39 @@ export const JobTable = ({
       },
     });
 
+  const cleanSupport = queue?.supports.clean;
+  const canCleanStatus =
+    status !== "waiting-children" &&
+    (cleanSupport === true ||
+      (typeof cleanSupport === "object" &&
+        cleanSupport.supportedStatuses.includes(status)));
+  const hasFilter = Boolean(query || selectedGroupId);
   const showCleanAll =
     totalJobs > 0 &&
-    status !== "waiting-children" &&
-    !!queue?.supports.clean &&
-    queue.access.actions["queue.clean"];
+    !hasFilter &&
+    canCleanStatus &&
+    queue?.access.actions["queue.clean"] === true;
+  const showRemoveAll =
+    totalJobs > 0 &&
+    !showCleanAll &&
+    queue?.access.actions["job.remove"] === true;
   const showRetryAll =
     totalJobs > 0 &&
     status === "failed" &&
     !!queue?.supports.retry &&
     queue.access.actions["job.retry"];
-  const hasStatusActions = showCleanAll || showRetryAll;
+  const showPromoteAll =
+    totalJobs > 0 &&
+    status === "delayed" &&
+    !!queue?.supports.promote &&
+    queue.access.actions["job.promote"];
+  const hasStatusActions =
+    showCleanAll || showRemoveAll || showRetryAll || showPromoteAll;
 
   useEffect(() => {
-    table.resetRowSelection();
-  }, [status]);
+    setRowSelection({});
+    setSelectedJob(null);
+  }, [query, queueName, selectedGroupId, status]);
 
   return (
     <div>
@@ -516,6 +569,7 @@ export const JobTable = ({
         <JobModal
           queueName={queueName}
           job={selectedJob}
+          status={selectedJob.status}
           onDismiss={() => setSelectedJob(null)}
         />
       ) : null}
@@ -568,7 +622,7 @@ export const JobTable = ({
             {!isLoading && isEmpty ? (
               <div className="flex items-center justify-center py-12">
                 <p className="text-sm text-gray-500 dark:text-slate-400">
-                  No jobs found
+                  {hasFilter ? "No jobs match this filter" : "No jobs found"}
                 </p>
               </div>
             ) : null}
@@ -590,7 +644,7 @@ export const JobTable = ({
 
       {table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-full border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-900 dark:text-slate-100">
               {table.getSelectedRowModel().rows.length} selected
             </p>
@@ -640,28 +694,29 @@ export const JobTable = ({
         </div>
       ) : hasStatusActions ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
-          <div className="pointer-events-auto flex items-center space-x-3 rounded-full border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur dark:border-slate-700/60 dark:bg-slate-900/90">
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-500 dark:text-slate-400">
               {totalJobs} {status} job{totalJobs !== 1 ? "s" : ""}
             </p>
             {showRetryAll ? (
               <Alert
                 title={
-                  selectedGroupId
-                    ? "Retry all failed jobs in this group?"
+                  hasFilter
+                    ? "Retry matching failed jobs?"
                     : "Retry all failed jobs?"
                 }
-                description={`This will retry ${totalJobs} failed job${totalJobs !== 1 ? "s" : ""}. Jobs will be moved back to waiting state.`}
+                description={`This will retry ${totalJobs} failed job${totalJobs !== 1 ? "s" : ""} and move them back to the waiting state.${searchIsPartial ? " More jobs may match beyond the server scan limit." : ""}`}
                 action={
                   <Button
                     variant="filled"
                     colorScheme="slate"
-                    label="Yes, retry all"
+                    label={hasFilter ? "Yes, retry matches" : "Yes, retry all"}
                     onClick={() =>
                       bulkRetry({
                         queueName,
                         status: "failed",
                         groupId: selectedGroupId ?? undefined,
+                        query,
                       })
                     }
                   />
@@ -670,9 +725,42 @@ export const JobTable = ({
                 <Button
                   as="span"
                   icon={<RotateCw className="size-3.5" />}
-                  label="Retry all"
+                  label={hasFilter ? "Retry matches" : "Retry all"}
                   size="sm"
                   isLoading={bulkRetryStatus === "pending"}
+                />
+              </Alert>
+            ) : null}
+            {showPromoteAll ? (
+              <Alert
+                title={
+                  hasFilter
+                    ? "Promote matching delayed jobs?"
+                    : "Promote all delayed jobs?"
+                }
+                description={`This will promote ${totalJobs} delayed job${totalJobs !== 1 ? "s" : ""} into the runnable queue.${searchIsPartial ? " Only the bounded results currently shown will be affected." : ""}`}
+                action={
+                  <Button
+                    variant="filled"
+                    colorScheme="slate"
+                    label="Yes, promote"
+                    onClick={() =>
+                      bulkPromote({
+                        queueName,
+                        status: "delayed",
+                        groupId: selectedGroupId ?? undefined,
+                        query,
+                      })
+                    }
+                  />
+                }
+              >
+                <Button
+                  as="span"
+                  icon={<Rocket className="size-3.5" />}
+                  label={hasFilter ? "Promote matches" : "Promote all"}
+                  size="sm"
+                  isLoading={bulkPromoteStatus === "pending"}
                 />
               </Alert>
             ) : null}
@@ -701,6 +789,40 @@ export const JobTable = ({
                   label="Clean all"
                   size="sm"
                   isLoading={cleanQueueStatus === "pending"}
+                />
+              </Alert>
+            ) : null}
+            {showRemoveAll ? (
+              <Alert
+                title={
+                  hasFilter
+                    ? "Remove matching jobs?"
+                    : `Remove all ${status} jobs?`
+                }
+                description={`This action cannot be undone. It will remove ${totalJobs} job${totalJobs !== 1 ? "s" : ""} through the bounded filter pipeline.${searchIsPartial ? " More jobs may match beyond the server scan limit." : ""}`}
+                action={
+                  <Button
+                    variant="filled"
+                    colorScheme="red"
+                    label="Yes, remove jobs"
+                    onClick={() =>
+                      bulkRemoveByFilter({
+                        queueName,
+                        status,
+                        groupId: selectedGroupId ?? undefined,
+                        query,
+                      })
+                    }
+                  />
+                }
+              >
+                <Button
+                  as="span"
+                  colorScheme="red"
+                  icon={<Trash2 className="size-3.5" />}
+                  label={hasFilter ? "Remove matches" : "Remove all"}
+                  size="sm"
+                  isLoading={bulkRemoveByFilterStatus === "pending"}
                 />
               </Alert>
             ) : null}

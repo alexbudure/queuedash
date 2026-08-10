@@ -241,7 +241,7 @@ export const JSONEditor = ({
             ) : null}
           </label>
 
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:bg-slate-800 dark:text-slate-500">
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] tracking-[0.18em] text-gray-400 uppercase dark:bg-slate-800 dark:text-slate-500">
             JSON
           </span>
         </div>

@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { assertQueueActionAllowed, resolveQueueAccess } from "../access";
 import { presentErrorMessage } from "../presentation";
+import {
+  schedulerOptionsSchema,
+  schedulerTemplateSchema,
+} from "../scheduler.schemas";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
@@ -221,6 +225,17 @@ export const queueRouter = router({
         queueName,
       });
 
+      if (
+        opts &&
+        Object.keys(opts).length > 0 &&
+        !queueInCtx.adapter.supports.addJobOptions
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support job options`,
+        });
+      }
+
       try {
         await queueInCtx.adapter.addJob(data, opts);
       } catch (e) {
@@ -239,18 +254,8 @@ export const queueRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-        template: z.object({
-          name: z.string().optional(),
-          data: z.any(),
-          opts: z.any().optional(),
-        }),
-        opts: z
-          .object({
-            every: z.number().optional(),
-            pattern: z.string().optional(),
-            tz: z.string().optional(),
-          })
-          .optional(),
+        template: schedulerTemplateSchema,
+        opts: schedulerOptionsSchema,
       }),
     )
     .mutation(async ({ input: { queueName, template, opts }, ctx }) => {
@@ -267,11 +272,17 @@ export const queueRouter = router({
           message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
       }
+      if (!queueInCtx.adapter.addScheduler) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Scheduler support is not implemented for this queue",
+        });
+      }
 
       try {
-        await queueInCtx.adapter.addScheduler?.(
+        await queueInCtx.adapter.addScheduler(
           `scheduler-${Date.now()}`,
-          opts || {},
+          opts,
           template,
         );
       } catch (e) {

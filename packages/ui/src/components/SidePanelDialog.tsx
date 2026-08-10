@@ -53,7 +53,7 @@ export const SidePanelDialog = ({
           <Dialog className="flex h-full flex-col overflow-hidden outline-none">
             <AriaButton
               onPress={handleClose}
-              className="absolute -left-11 top-3 hidden rounded-full bg-white/90 p-1.5 text-gray-500 shadow-sm transition-colors hover:text-gray-900 dark:bg-slate-800/90 dark:text-slate-400 dark:hover:text-slate-200 sm:flex"
+              className="absolute top-3 -left-11 hidden rounded-full bg-white/90 p-1.5 text-gray-500 shadow-sm transition-colors hover:text-gray-900 sm:flex dark:bg-slate-800/90 dark:text-slate-400 dark:hover:text-slate-200"
               aria-label="Close panel"
             >
               <X className="size-4" />
@@ -85,7 +85,7 @@ export const SidePanelDialog = ({
 
               <AriaButton
                 onPress={handleClose}
-                className="ml-2 rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 sm:hidden"
+                className="ml-2 rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:hidden dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 aria-label="Close panel"
               >
                 <X className="size-4" />

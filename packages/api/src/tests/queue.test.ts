@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { appRouter } from "../routers/_app";
 import {
@@ -264,6 +264,25 @@ test("clean completed jobs", async () => {
   }
 });
 
+test("GroupMQ clean requests the adapter's full supported batch", async () => {
+  if (type !== "groupmq") return;
+
+  const { ctx, firstQueue } = await initRedisInstance();
+  if (firstQueue.type !== "groupmq") {
+    throw new Error("Expected the GroupMQ test adapter");
+  }
+
+  const clean = vi.spyOn(firstQueue.queue, "clean").mockResolvedValue(0);
+  const caller = appRouter.createCaller(ctx);
+
+  await caller.queue.clean({
+    queueName: firstQueue.queue.name,
+    status: "completed",
+  });
+
+  expect(clean).toHaveBeenCalledWith(0, Number.MAX_SAFE_INTEGER, "completed");
+});
+
 test("clean failed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -310,30 +329,58 @@ test("add job to queue with opts", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  const testData = { userId: 123, action: "test-action" };
+  const testData = { userId: 123, action: "option-test" };
+
+  if (firstQueue.type === "bee") {
+    await expectTRPCError(
+      () =>
+        caller.queue.addJob({
+          queueName: firstQueue.queue.name,
+          data: testData,
+          opts: { delay: 30_000 },
+        }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
 
   await caller.queue.addJob({
     queueName: firstQueue.queue.name,
     data: testData,
-    opts: {
-      delay: 50,
-      attempts: 2,
-    },
+    opts:
+      firstQueue.type === "groupmq"
+        ? {
+            delay: 30_000,
+            data: { action: "must-not-override-job-data" },
+            groupId: "option-test-group",
+            maxAttempts: 2,
+          }
+        : {
+            delay: 30_000,
+            attempts: 2,
+            priority: 3,
+          },
   });
 
-  await sleep(100);
-
-  const queue = await caller.queue.byName({
+  const delayed = await caller.job.list({
     queueName: firstQueue.queue.name,
+    status: "delayed",
+    limit: 10,
+    query: "option-test",
   });
 
-  // Job should be in waiting, active, or completed depending on processing speed
-  const totalJobs =
-    queue.counts.waiting +
-    queue.counts.active +
-    queue.counts.completed +
-    queue.counts.delayed;
-  expect(totalJobs).toBeGreaterThan(0);
+  expect(delayed.jobs).toHaveLength(1);
+  expect(delayed.jobs[0].data).toEqual(testData);
+  if (firstQueue.type === "groupmq") {
+    expect(delayed.jobs[0].opts.delay).toEqual(expect.any(Number));
+    expect(Number(delayed.jobs[0].opts.delay)).toBeGreaterThan(29_000);
+    expect(Number(delayed.jobs[0].opts.delay)).toBeLessThanOrEqual(30_000);
+    expect(delayed.jobs[0].groupId).toBe("option-test-group");
+  } else {
+    expect(delayed.jobs[0].opts.delay).toBe(30_000);
+    expect(delayed.jobs[0].opts.attempts).toBe(2);
+    expect(delayed.jobs[0].opts.priority).toBe(3);
+  }
 });
 
 test("add job to queue without opts", async () => {
@@ -498,6 +545,39 @@ test("add job scheduler with interval", async () => {
   }
 });
 
+test("add job scheduler rejects missing or blank schedules", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bullmq") return;
+
+  await expectTRPCError(
+    () =>
+      caller.queue.addJobScheduler({
+        queueName: firstQueue.queue.name,
+        template: {
+          name: "invalid-scheduler",
+          data: {},
+        },
+        opts: {},
+      }),
+    "BAD_REQUEST",
+  );
+
+  await expectTRPCError(
+    () =>
+      caller.queue.addJobScheduler({
+        queueName: firstQueue.queue.name,
+        template: {
+          name: "invalid-scheduler",
+          data: {},
+        },
+        opts: { pattern: "   " },
+      }),
+    "BAD_REQUEST",
+  );
+});
+
 // ============================================================================
 // MEDIUM PRIORITY TESTS - Edge Cases and Error Scenarios
 // ============================================================================
@@ -520,6 +600,30 @@ test("clean with invalid status", async () => {
       }
     }
   }
+});
+
+test("clean rejects adapter statuses outside its cleanability matrix", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queue = await caller.queue.byName({
+    queueName: firstQueue.queue.name,
+  });
+
+  const cleanSupport = queue.supports.clean;
+  if (typeof cleanSupport !== "object") return;
+  const unsupportedStatus = queue.supports.statuses.find(
+    (status) => !cleanSupport.supportedStatuses.includes(status),
+  );
+  if (!unsupportedStatus) return;
+
+  await expectTRPCError(
+    () =>
+      caller.queue.clean({
+        queueName: firstQueue.queue.name,
+        status: unsupportedStatus,
+      }),
+    "BAD_REQUEST",
+  );
 });
 
 test("clean delayed jobs", async () => {
@@ -610,21 +714,26 @@ test("get queue by name returns correct supports flags", async () => {
 
   expect(queue.supports).toBeDefined();
   expect(typeof queue.supports.pause).toBe("boolean");
+  expect(typeof queue.supports.addJobOptions).toBe("boolean");
   expect(typeof queue.supports.resume).toBe("boolean");
   expect(typeof queue.supports.retry).toBe("boolean");
   expect(typeof queue.supports.promote).toBe("boolean");
   expect(typeof queue.supports.logs).toBe("boolean");
   expect(typeof queue.supports.schedulers).toBe("boolean");
+  expect(typeof queue.supports.schedulerUpdate).toBe("boolean");
   expect(typeof queue.supports.groups).toBe("boolean");
 
   // Verify correct values for current adapter
   if (type === "bee") {
+    expect(queue.supports.addJobOptions).toBe(false);
     expect(queue.supports.pause).toBe(false);
     expect(queue.supports.clean).toBe(false);
     expect(queue.supports.retry).toBe(false);
     expect(queue.supports.groups).toBe(false);
   } else if (type === "bullmq") {
+    expect(queue.supports.addJobOptions).toBe(true);
     expect(queue.supports.schedulers).toBe(true);
+    expect(queue.supports.schedulerUpdate).toBe(true);
     expect(queue.supports.logs).toBe(true);
     expect(queue.supports.groups).toBe(false);
   } else if (type === "groupmq") {
@@ -777,8 +886,7 @@ test("get metrics with different time ranges", async () => {
 });
 
 test("metrics endpoint validates queue name", async () => {
-  const { ctx } = await initRedisInstance();
-  const caller = appRouter.createCaller(ctx);
+  const caller = appRouter.createCaller({ queues: [] });
 
   try {
     await caller.queue.metrics({
@@ -816,15 +924,6 @@ test("metrics count matches actual completed jobs", async () => {
   const caller = appRouter.createCaller(ctx);
 
   if (firstQueue.type === "bullmq") {
-    // Wait for jobs to be processed and metrics to be aggregated
-    // BullMQ aggregates metrics at minute boundaries, so calculate wait time
-    // to reach 10 seconds after the next minute boundary
-    const now = Date.now();
-    const currentSeconds = Math.floor(now / 1000) % 60;
-    const secondsUntilNextMinute = 60 - currentSeconds;
-    const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
-    await sleep(waitTime);
-
     const metrics = await caller.queue.metrics({
       queueName: firstQueue.queue.name,
       type: "completed",
@@ -847,22 +946,13 @@ test("metrics count matches actual completed jobs", async () => {
       expect(metrics.count).toBeGreaterThanOrEqual(NUM_OF_COMPLETED_JOBS);
     }
   }
-}, 100000); // Max wait ~70s + buffer for test execution
+});
 
 test("metrics count matches actual failed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
   if (firstQueue.type === "bullmq") {
-    // Wait for jobs to be processed and metrics to be aggregated
-    // BullMQ aggregates metrics at minute boundaries, so calculate wait time
-    // to reach 10 seconds after the next minute boundary
-    const now = Date.now();
-    const currentSeconds = Math.floor(now / 1000) % 60;
-    const secondsUntilNextMinute = 60 - currentSeconds;
-    const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
-    await sleep(waitTime);
-
     const metrics = await caller.queue.metrics({
       queueName: firstQueue.queue.name,
       type: "failed",
@@ -885,21 +975,13 @@ test("metrics count matches actual failed jobs", async () => {
       expect(metrics.count).toBeGreaterThanOrEqual(NUM_OF_FAILED_JOBS);
     }
   }
-}, 100000); // Max wait ~70s + buffer for test execution
+});
 
 test("metrics count is sum of data array for completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
   if (firstQueue.type === "bullmq") {
-    // Wait for metrics to be aggregated (BullMQ aggregates at minute boundaries)
-    // Calculate wait time to reach 10 seconds after the next minute boundary
-    const now = Date.now();
-    const currentSeconds = Math.floor(now / 1000) % 60;
-    const secondsUntilNextMinute = 60 - currentSeconds;
-    const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
-    await sleep(waitTime);
-
     const metrics = await caller.queue.metrics({
       queueName: firstQueue.queue.name,
       type: "completed",
@@ -920,21 +1002,13 @@ test("metrics count is sum of data array for completed jobs", async () => {
       expect(metrics.count).not.toBe(metrics.data.length); // Should not be the number of data points
     }
   }
-}, 100000); // Max wait ~70s + buffer for test execution
+});
 
 test("metrics count is sum of data array for failed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
   if (firstQueue.type === "bullmq") {
-    // Wait for metrics to be aggregated (BullMQ aggregates at minute boundaries)
-    // Calculate wait time to reach 10 seconds after the next minute boundary
-    const now = Date.now();
-    const currentSeconds = Math.floor(now / 1000) % 60;
-    const secondsUntilNextMinute = 60 - currentSeconds;
-    const waitTime = (secondsUntilNextMinute + 10) * 1000; // Add 10s buffer after boundary
-    await sleep(waitTime);
-
     const metrics = await caller.queue.metrics({
       queueName: firstQueue.queue.name,
       type: "failed",
@@ -955,4 +1029,4 @@ test("metrics count is sum of data array for failed jobs", async () => {
       expect(metrics.count).not.toBe(metrics.data.length); // Should not be the number of data points
     }
   }
-}, 100000); // Max wait ~70s + buffer for test execution
+});

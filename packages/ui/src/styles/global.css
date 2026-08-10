@@ -6,8 +6,9 @@
 
 @theme {
   --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono:
+    "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
   --color-brand-50: #f0f7ff;
   --color-brand-100: #e0effe;
@@ -19,6 +20,7 @@
   --color-brand-700: #0159a2;
   --color-brand-800: #064c85;
   --color-brand-900: #0b406f;
+  --color-brand-950: #062b4d;
 
   --color-slate-50: #f8f8f8;
   --color-slate-100: #f0f0f0;

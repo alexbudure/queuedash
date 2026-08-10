@@ -27,6 +27,7 @@ export class GroupMQAdapter extends QueueAdapter<
   private queue: GroupMQQueue;
 
   supports: FeatureSupport<GroupMQStatus> = {
+    addJobOptions: true,
     pause: true,
     resume: true,
     clean: {
@@ -36,6 +37,7 @@ export class GroupMQAdapter extends QueueAdapter<
     promote: true,
     logs: false,
     schedulers: false,
+    schedulerUpdate: false,
     flows: false,
     priorities: true,
     empty: false,
@@ -101,9 +103,9 @@ export class GroupMQAdapter extends QueueAdapter<
   }
 
   async clean(status: GroupMQCleanableStatus, graceMs: number): Promise<void> {
-    // GroupMQ's clean method: clean(graceTimeMs, limit, status)
-    // limit is max number of jobs to clean - use a large number to clean all
-    await this.queue.clean(graceMs, 1000, status);
+    // GroupMQ clamps this internally; MAX_SAFE_INTEGER requests its full
+    // supported clean batch instead of silently stopping after 1,000 jobs.
+    await this.queue.clean(graceMs, Number.MAX_SAFE_INTEGER, status);
   }
 
   async getRedisInfo() {
@@ -119,8 +121,52 @@ export class GroupMQAdapter extends QueueAdapter<
     start: number,
     end: number,
   ): Promise<AdaptedJob[]> {
-    const jobs = await this.queue.getJobsByStatus([status], start, end);
-    return jobs.map((job) => this.adaptJob(job));
+    const namespace = this.queue.namespace;
+    let jobIds: string[];
+
+    switch (status) {
+      case "active":
+        jobIds = await this.queue.redis.zrange(
+          `${namespace}:processing`,
+          start,
+          end,
+        );
+        break;
+      case "delayed":
+        jobIds = await this.queue.redis.zrange(
+          `${namespace}:delayed`,
+          start,
+          end,
+        );
+        break;
+      case "completed":
+      case "failed":
+        jobIds = await this.queue.redis.zrevrange(
+          `${namespace}:${status}`,
+          start,
+          end,
+        );
+        break;
+      case "waiting":
+        jobIds = (await this.queue.getWaitingJobs()).slice(start, end + 1);
+        break;
+      case "paused":
+      case "prioritized":
+        return [];
+    }
+
+    const jobs = await Promise.all(
+      jobIds.map(async (jobId) => {
+        try {
+          return await this.queue.getJob(jobId);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return jobs
+      .filter((job): job is GroupMQJob => job !== null)
+      .map((job) => this.adaptJob(job));
   }
 
   async getJob(jobId: string): Promise<AdaptedJob | null> {
@@ -136,16 +182,34 @@ export class GroupMQAdapter extends QueueAdapter<
     }
   }
 
+  async getJobStatus(jobId: string): Promise<GroupMQStatus | null> {
+    try {
+      const job = await this.queue.getJob(jobId);
+      if (!job) return null;
+      const status = await job.getState();
+      return this.supportsStatus(status as GroupMQStatus)
+        ? (status as GroupMQStatus)
+        : null;
+    } catch (error) {
+      if (error instanceof Error && /not found/i.test(error.message)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
   ): Promise<AdaptedJob> {
+    const { groupId: requestedGroupId, ...jobOptions } = opts ?? {};
+    delete jobOptions.data;
     const job = await this.queue.add({
+      ...jobOptions,
       groupId:
-        (opts?.groupId as string) ||
+        (typeof requestedGroupId === "string" && requestedGroupId) ||
         Math.random().toString(36).substring(2, 15),
       data,
-      ...opts,
     });
     return this.adaptJob(job);
   }

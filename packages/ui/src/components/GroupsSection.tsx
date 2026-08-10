@@ -35,7 +35,7 @@ export const GroupsSection = ({
   if (isLoading && !selectedGroupId) {
     return (
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+        <h2 className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
           Groups
         </h2>
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
@@ -56,7 +56,7 @@ export const GroupsSection = ({
 
   return (
     <div className="space-y-3">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+      <h2 className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
         Groups
       </h2>
 

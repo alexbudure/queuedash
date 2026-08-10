@@ -28,9 +28,10 @@ export const TableRow = ({
           onKeyboardActivate();
         }
       }}
-      role="button"
+      role="group"
       tabIndex={0}
-      aria-label="Open row details"
+      aria-keyshortcuts="Enter Space"
+      aria-label="Queue item row. Press Enter or Space to open details"
       className={`group grid w-full cursor-pointer px-2 transition-colors duration-150 ${
         preferences.density === "compact" ? "py-0.5" : "py-2"
       } ${

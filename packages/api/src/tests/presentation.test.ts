@@ -79,6 +79,7 @@ describe("presentation redaction", () => {
       name: "daily",
       template: {
         data: { token: "raw-secret", visible: "yes" },
+        opts: { authorization: "raw-secret" },
       },
     };
 
@@ -90,8 +91,20 @@ describe("presentation redaction", () => {
     expect(presentScheduler(scheduler, { redact: true })).toMatchObject({
       template: {
         data: { token: "[REDACTED]", visible: "yes" },
+        opts: { authorization: "[REDACTED]" },
       },
     });
+  });
+
+  it("normalizes common sensitive key spellings in free-form text", () => {
+    expect(
+      redactText(
+        "access_token=raw api-key:raw refresh.token='raw' headers.authorization=Bearer-raw visible=value",
+        { redact: true },
+      ),
+    ).toBe(
+      "access_token=[REDACTED] api-key:[REDACTED] refresh.token=[REDACTED] headers.authorization=[REDACTED] visible=value",
+    );
   });
 
   it("withholds entire response categories before serialization", () => {
@@ -117,11 +130,14 @@ describe("presentation redaction", () => {
         {
           key: "daily",
           name: "daily",
-          template: { data: { secret: "raw" } },
+          template: {
+            data: { secret: "raw" },
+            opts: { authorization: "raw" },
+          },
         },
         privacy,
-      ).template?.data,
-    ).toBeUndefined();
+      ).template,
+    ).toMatchObject({ data: undefined, opts: undefined });
   });
 
   it("leaves output untouched when redaction is disabled", () => {

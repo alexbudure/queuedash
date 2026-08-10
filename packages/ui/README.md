@@ -207,6 +207,18 @@ server, and can be reset to server defaults.
 Access, privacy, discovery, and search policy remain server-owned and read-only
 in the browser.
 
+## Queue operations
+
+Job filters are status-scoped and keep `q` and `sort` in the URL for shareable
+views. Bulk retry, remove, and delayed-job promote actions use the server's
+bounded scan and disclose partial results. Clean all is shown only when the
+current adapter can clean the selected status, and it is never used while a
+search or group filter is active.
+
+BullMQ scheduler details include an Edit action when `scheduler.update` is
+allowed. Queue libraries without scheduler upsert support do not expose it.
+Add-job options are likewise hidden for Bee-Queue, whose API cannot apply them.
+
 ## Styles
 
 Import:

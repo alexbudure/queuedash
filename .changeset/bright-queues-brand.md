@@ -14,3 +14,11 @@ package documentation for the new configuration surface. Replace the default
 browser-native Basic Auth challenge with a branded, white-label-aware login,
 signed HttpOnly sessions, explicit logout, expiry handling, Docker session
 configuration, and an opt-in legacy Basic Auth mode.
+
+Complete the operator workflows with status-scoped, URL-backed job filtering
+and sorting, bounded bulk retry/remove/delayed-job promotion with partial-result
+reporting, delayed-only single promotion, adapter-aware cleaning, verified job
+option support, and BullMQ scheduler editing with a separately enforceable
+access action. Pin the proven React Aria dependency graph so fresh consumer
+installs remain reproducible, and replace native Settings dropdowns with
+accessible, scoped Queuedash selectors.

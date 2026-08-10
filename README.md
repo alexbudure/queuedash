@@ -23,9 +23,9 @@ where the dashboard runs or which data and actions it exposes.
 ## Features
 
 - A clean, responsive overview for multiple queues
-- Job inspection, bounded search, filtering, and status-aware actions
+- Job inspection, bounded status filtering, shareable search/sort URLs, and status-aware actions
 - Queue counts plus duration, wait-time, and throughput metrics where supported
-- Job schedulers, worker inspection, flows, priorities, and groups where supported
+- Job schedulers with BullMQ editing, worker inspection, flows, priorities, and groups where supported
 - Optional Redis discovery for Bull and BullMQ queues
 - Server-enforced full, read-only, hidden, and action-specific queue policies
 - Sensitive-key redaction and whole-category data exposure controls
@@ -280,8 +280,20 @@ createQueuedashExpressMiddleware({
 ```
 
 Job search runs within the selected queue. It searches only server-presented
-data and never scans more than the configured hard limit of 25 to 5,000 jobs
-per request.
+data in the selected status and never scans more than the configured hard limit
+of 25 to 5,000 jobs per request. Filters match job ID, name, group ID, failure
+reason, and visible payload or return-value text. The dashboard stores `q` and
+`sort` in the URL so a filtered status view can be shared.
+
+Filtered retry, removal, and delayed-job promotion use the same bounded,
+server-redacted scan. Confirmations and results identify partial operations when
+more jobs may exist beyond the configured cap. Unfiltered Clean all remains an
+adapter-native operation and is shown only for statuses the adapter can clean.
+
+BullMQ schedulers can be added, inspected, edited with upsert semantics, and
+removed. Other adapters hide scheduler controls rather than emulating behavior
+their queue library does not support. Bee-Queue accepts job data but rejects job
+options instead of silently ignoring them.
 
 ### Browser-local preferences
 

@@ -34,7 +34,7 @@ export const ActionMenu = ({
     <MenuTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
       <AriaButton
         className={clsx(
-          "rounded-md p-1.5 outline-none transition-colors disabled:opacity-50",
+          "rounded-md p-1.5 transition-colors outline-none disabled:opacity-50",
           isOpen
             ? "bg-gray-100 dark:bg-slate-800"
             : "hover:bg-gray-100 dark:hover:bg-slate-800",
@@ -56,7 +56,7 @@ export const ActionMenu = ({
             return (
               <MenuItem
                 className={clsx(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm outline-none transition-colors",
+                  "flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors outline-none",
                   action.tone === "destructive" || action.tone === "warning"
                     ? ""
                     : "text-gray-700 dark:text-slate-300",

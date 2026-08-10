@@ -11,6 +11,7 @@ import {
   CirclePause,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Tab, TabList, Tabs, type Key } from "react-aria-components";
 
 import type { RouterOutput, Status } from "../utils/trpc";
@@ -105,6 +106,7 @@ export const QueueStatusTabs = ({
   onTabChange,
 }: QueueStatusTabsProps) => {
   const selectedKey = isSchedulersView ? "schedulers" : status;
+  const selectedTabRef = useRef<HTMLDivElement>(null);
   const tabs: StatusTab[] = [
     {
       name: "Completed",
@@ -137,6 +139,17 @@ export const QueueStatusTabs = ({
       : []),
   ];
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      selectedTabRef.current?.scrollIntoView({
+        block: "nearest",
+        inline: "nearest",
+      });
+    }, 50);
+
+    return () => window.clearTimeout(timeout);
+  }, [queue?.supports.schedulers, selectedKey]);
+
   return (
     <Tabs
       selectedKey={selectedKey}
@@ -155,10 +168,11 @@ export const QueueStatusTabs = ({
               const count = queue.counts[tab.status] ?? 0;
               return (
                 <Tab
+                  ref={isActive ? selectedTabRef : undefined}
                   id={tab.status}
                   key={tab.status}
                   className={clsx(
-                    "relative flex min-w-[120px] flex-1 cursor-pointer flex-col px-3 py-2.5 outline-none transition-colors",
+                    "relative flex min-w-[120px] flex-1 cursor-pointer flex-col px-3 py-2.5 transition-colors outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-inset",
                     isActive
                       ? statusActiveBgMap[tab.status]
                       : statusHoverBgMap[tab.status],
@@ -205,9 +219,10 @@ export const QueueStatusTabs = ({
             })}
             {queue.supports.schedulers ? (
               <Tab
+                ref={isSchedulersView ? selectedTabRef : undefined}
                 id="schedulers"
                 className={clsx(
-                  "relative flex min-w-[120px] flex-1 cursor-pointer flex-col px-3 py-2.5 outline-none transition-colors",
+                  "relative flex min-w-[120px] flex-1 cursor-pointer flex-col px-3 py-2.5 transition-colors outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-inset",
                   isSchedulersView
                     ? "bg-violet-50 dark:bg-violet-950/30"
                     : "hover:bg-violet-50/50 dark:hover:bg-violet-950/15",

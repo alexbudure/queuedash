@@ -34,6 +34,16 @@ test("read-only queues can list schedulers but cannot add them", async () => {
       }),
     "FORBIDDEN",
   );
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: firstQueue.queue.name,
+        key: "blocked-scheduler",
+        template: { data: {} },
+        opts: { every: 60_000 },
+      }),
+    "FORBIDDEN",
+  );
 });
 
 test("list schedulers", async () => {
@@ -189,6 +199,80 @@ test("add scheduler with interval", async () => {
     const addedScheduler = schedulers.find((s) => s.every === 300000);
     expect(addedScheduler).toBeDefined();
   }
+});
+
+test("update scheduler uses BullMQ upsert semantics", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bullmq") {
+    await expectTRPCError(
+      () =>
+        caller.scheduler.update({
+          queueName: firstQueue.queue.name,
+          key: "unsupported",
+          template: { data: {} },
+          opts: { every: 120_000 },
+        }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
+
+  const schedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  const scheduler = schedulers[0];
+  const result = await caller.scheduler.update({
+    queueName: firstQueue.queue.name,
+    key: scheduler.key,
+    template: {
+      name: "updated-job",
+      data: { updated: true },
+      opts: { attempts: 2 },
+    },
+    opts: { every: 120_000, tz: "UTC", limit: 5 },
+  });
+
+  expect(result).toEqual({ success: true });
+  const updatedSchedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  const updated = updatedSchedulers.find((item) => item.key === scheduler.key);
+  expect(updated).toMatchObject({
+    every: 120_000,
+    tz: "UTC",
+    limit: 5,
+    template: {
+      data: { updated: true },
+      opts: { attempts: 2 },
+    },
+  });
+});
+
+test("update scheduler does not create a missing scheduler", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bullmq") return;
+
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: firstQueue.queue.name,
+        key: "missing-scheduler",
+        template: { data: { shouldNotExist: true } },
+        opts: { every: 60_000 },
+      }),
+    "NOT_FOUND",
+  );
+
+  const schedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  expect(
+    schedulers.some((scheduler) => scheduler.key === "missing-scheduler"),
+  ).toBe(false);
 });
 
 test("add scheduler validation - requires pattern or every", async () => {
