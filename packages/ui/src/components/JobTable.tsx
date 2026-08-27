@@ -23,9 +23,17 @@ import { toast } from "sonner";
 
 import type { Job, RouterOutput, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import {
+  canSelectJobRows,
+  formatJobCountLabel,
+  getJobRowAriaLabel,
+  getJobRowId,
+  getJobSelectionAriaLabel,
+  getTableGridClassName,
+} from "../utils/viewState";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
-import { Checkbox } from "./Checkbox";
+import { Checkbox, ROW_SELECTION_CHECKBOX_CLASS_NAME } from "./Checkbox";
 import { JobModal } from "./JobModal";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { useQueuedash } from "./QueuedashProvider";
@@ -68,6 +76,7 @@ const columns = [
     id: "select",
     header: ({ table }) => (
       <Checkbox
+        aria-label="Select all displayed jobs"
         {...{
           checked: table.getIsSomeRowsSelected()
             ? "indeterminate"
@@ -80,10 +89,11 @@ const columns = [
     ),
     cell: ({ row, table }) => (
       <Checkbox
+        aria-label={getJobSelectionAriaLabel(row.original)}
         className={
           table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()
             ? ""
-            : "opacity-0 transition group-hover:opacity-100"
+            : ROW_SELECTION_CHECKBOX_CLASS_NAME
         }
         {...{
           checked: row.getIsSomeSelected()
@@ -456,6 +466,11 @@ export const JobTable = ({
 }: JobTableProps) => {
   const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
+  const canSelectRows = canSelectJobRows({
+    actions: queue?.access.actions,
+    status,
+    supportsRetry: queue?.supports.retry,
+  });
   const { ref } = useInView({
     threshold: 0,
     onChange(inView) {
@@ -466,7 +481,9 @@ export const JobTable = ({
   });
   const table = useReactTable({
     data: jobs,
-    columns,
+    columns: canSelectRows ? columns : columns.slice(1),
+    enableRowSelection: canSelectRows,
+    getRowId: getJobRowId,
     getCoreRowModel: getCoreRowModel(),
     state: {
       rowSelection,
@@ -563,6 +580,10 @@ export const JobTable = ({
     setSelectedJob(null);
   }, [query, queueName, selectedGroupId, status]);
 
+  useEffect(() => {
+    if (!canSelectRows) setRowSelection({});
+  }, [canSelectRows]);
+
   return (
     <div>
       {selectedJob ? (
@@ -575,12 +596,15 @@ export const JobTable = ({
       ) : null}
       <div className="mb-4 overflow-x-auto rounded-xl border border-gray-100/60 dark:border-slate-800/60">
         {isLoading && (queue?.counts[status] ?? 0) > 0 ? (
-          <JobTableSkeleton rows={preferences.jobsPerPage} />
+          <JobTableSkeleton
+            rows={preferences.jobsPerPage}
+            selectable={canSelectRows}
+          />
         ) : (
           <div className="min-w-max">
             {table.getHeaderGroups().map((headerGroup) => (
               <div
-                className={`sticky top-0 z-10 grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
+                className={`sticky top-0 z-10 grid ${getTableGridClassName("job", canSelectRows)} border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
                   preferences.density === "compact" ? "py-1" : "py-2"
                 }`}
                 key={headerGroup.id}
@@ -602,12 +626,14 @@ export const JobTable = ({
             ))}
             {table.getRowModel().rows.map((row, rowIndex) => (
               <TableRow
+                ariaLabel={getJobRowAriaLabel(row.original)}
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
-                isSelected={row.getIsSelected()}
+                isSelected={canSelectRows && row.getIsSelected()}
                 onClick={() => setSelectedJob(row.original)}
                 onKeyboardActivate={() => setSelectedJob(row.original)}
                 layoutVariant="job"
+                selectable={canSelectRows}
               >
                 {row.getVisibleCells().map((cell) => (
                   <div
@@ -642,14 +668,16 @@ export const JobTable = ({
         </div>
       ) : null}
 
-      {table.getSelectedRowModel().rows.length > 0 ? (
+      {canSelectRows && table.getSelectedRowModel().rows.length > 0 ? (
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
           <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-900 dark:text-slate-100">
               {table.getSelectedRowModel().rows.length} selected
             </p>
             {(status === "completed" && queue?.access.actions["job.rerun"]) ||
-            (status === "failed" && queue?.access.actions["job.retry"]) ? (
+            (status === "failed" &&
+              queue?.supports.retry &&
+              queue?.access.actions["job.retry"]) ? (
               <Button
                 label={status === "failed" ? "Retry" : "Rerun"}
                 icon={<RotateCw className="size-3.5" />}
@@ -696,21 +724,29 @@ export const JobTable = ({
         <div className="pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5">
           <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
             <p className="text-gray-500 dark:text-slate-400">
-              {totalJobs} {status} job{totalJobs !== 1 ? "s" : ""}
+              {formatJobCountLabel({
+                hasFilter,
+                isPartial: searchIsPartial,
+                status,
+                total: totalJobs,
+              })}
             </p>
             {showRetryAll ? (
               <Alert
+                isPending={bulkRetryStatus === "pending"}
                 title={
                   hasFilter
                     ? "Retry matching failed jobs?"
-                    : "Retry all failed jobs?"
+                    : "Retry eligible failed jobs?"
                 }
-                description={`This will retry ${totalJobs} failed job${totalJobs !== 1 ? "s" : ""} and move them back to the waiting state.${searchIsPartial ? " More jobs may match beyond the server scan limit." : ""}`}
+                description="This will retry eligible failed jobs found within the server scan limit and move them back to the waiting state."
                 action={
                   <Button
                     variant="filled"
                     colorScheme="slate"
-                    label={hasFilter ? "Yes, retry matches" : "Yes, retry all"}
+                    label={
+                      hasFilter ? "Yes, retry matches" : "Yes, retry eligible"
+                    }
                     onClick={() =>
                       bulkRetry({
                         queueName,
@@ -725,7 +761,7 @@ export const JobTable = ({
                 <Button
                   as="span"
                   icon={<RotateCw className="size-3.5" />}
-                  label={hasFilter ? "Retry matches" : "Retry all"}
+                  label={hasFilter ? "Retry matches" : "Retry eligible"}
                   size="sm"
                   isLoading={bulkRetryStatus === "pending"}
                 />
@@ -733,12 +769,13 @@ export const JobTable = ({
             ) : null}
             {showPromoteAll ? (
               <Alert
+                isPending={bulkPromoteStatus === "pending"}
                 title={
                   hasFilter
                     ? "Promote matching delayed jobs?"
-                    : "Promote all delayed jobs?"
+                    : "Promote eligible delayed jobs?"
                 }
-                description={`This will promote ${totalJobs} delayed job${totalJobs !== 1 ? "s" : ""} into the runnable queue.${searchIsPartial ? " Only the bounded results currently shown will be affected." : ""}`}
+                description="This will promote eligible delayed jobs found within the server scan limit into the runnable queue."
                 action={
                   <Button
                     variant="filled"
@@ -758,7 +795,7 @@ export const JobTable = ({
                 <Button
                   as="span"
                   icon={<Rocket className="size-3.5" />}
-                  label={hasFilter ? "Promote matches" : "Promote all"}
+                  label={hasFilter ? "Promote matches" : "Promote eligible"}
                   size="sm"
                   isLoading={bulkPromoteStatus === "pending"}
                 />
@@ -766,6 +803,7 @@ export const JobTable = ({
             ) : null}
             {showCleanAll ? (
               <Alert
+                isPending={cleanQueueStatus === "pending"}
                 title="Are you absolutely sure?"
                 description={`This action cannot be undone. This will permanently remove all ${status} jobs from the queue.`}
                 action={
@@ -794,12 +832,13 @@ export const JobTable = ({
             ) : null}
             {showRemoveAll ? (
               <Alert
+                isPending={bulkRemoveByFilterStatus === "pending"}
                 title={
                   hasFilter
                     ? "Remove matching jobs?"
-                    : `Remove all ${status} jobs?`
+                    : `Remove eligible ${status} jobs?`
                 }
-                description={`This action cannot be undone. It will remove ${totalJobs} job${totalJobs !== 1 ? "s" : ""} through the bounded filter pipeline.${searchIsPartial ? " More jobs may match beyond the server scan limit." : ""}`}
+                description="This action cannot be undone. It will remove eligible jobs found within the server scan limit."
                 action={
                   <Button
                     variant="filled"
@@ -820,7 +859,7 @@ export const JobTable = ({
                   as="span"
                   colorScheme="red"
                   icon={<Trash2 className="size-3.5" />}
-                  label={hasFilter ? "Remove matches" : "Remove all"}
+                  label={hasFilter ? "Remove matches" : "Remove eligible"}
                   size="sm"
                   isLoading={bulkRemoveByFilterStatus === "pending"}
                 />

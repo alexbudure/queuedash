@@ -1,7 +1,11 @@
 import { version } from "../../package.json";
 import { resolveQueueAccess } from "../access";
 import { resolvePrivacyExposure } from "../presentation";
-import { getQueueRegistry } from "../queue-registry";
+import {
+  getQueueRegistry,
+  normalizeDiscoveryMaxQueues,
+  normalizeDiscoveryRefreshInterval,
+} from "../queue-registry";
 import { procedure, router } from "../trpc";
 
 export const settingsRouter = router({
@@ -17,7 +21,7 @@ export const settingsRouter = router({
     const defaultAccess = ctx.access?.default ?? "full";
     const visiblePolicies = queueEntries.flatMap(({ adapter }) => {
       const queueName = adapter.getName();
-      const access = resolveQueueAccess(queueName, ctx.access);
+      const access = resolveQueueAccess(queueName, ctx.access, ctx.privacy);
       if (access.mode === "hidden") return [];
 
       const deny = access.mode === "full" ? access.deniedActions : [];
@@ -44,7 +48,12 @@ export const settingsRouter = router({
       },
       search: {
         maxScanned: Math.min(
-          Math.max(ctx.search?.maxScanned ?? 5_000, 25),
+          Math.max(
+            Number.isFinite(ctx.search?.maxScanned)
+              ? Math.floor(ctx.search?.maxScanned as number)
+              : 5_000,
+            25,
+          ),
           5_000,
         ),
       },
@@ -52,11 +61,10 @@ export const settingsRouter = router({
         ...registry.getDiscoveryStatus(),
         type: ctx.discovery?.type,
         prefix: ctx.discovery?.prefix ?? "bull",
-        refreshIntervalMs: ctx.discovery?.refreshIntervalMs ?? 30_000,
-        maxQueues: Math.min(
-          Math.max(ctx.discovery?.maxQueues ?? 100, 1),
-          1_000,
+        refreshIntervalMs: normalizeDiscoveryRefreshInterval(
+          ctx.discovery?.refreshIntervalMs,
         ),
+        maxQueues: normalizeDiscoveryMaxQueues(ctx.discovery?.maxQueues),
       },
     };
   }),

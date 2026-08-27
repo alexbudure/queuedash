@@ -23,7 +23,9 @@ export const HomePage = () => {
       })
     : undefined;
   const actions = [
-    ...(data?.some((queue) => queue.access.actions["queue.resume"])
+    ...(data?.some(
+      (queue) => queue.supports.resume && queue.access.actions["queue.resume"],
+    )
       ? [
           {
             label: "Resume all",
@@ -32,7 +34,9 @@ export const HomePage = () => {
           },
         ]
       : []),
-    ...(data?.some((queue) => queue.access.actions["queue.pause"])
+    ...(data?.some(
+      (queue) => queue.supports.pause && queue.access.actions["queue.pause"],
+    )
       ? [
           {
             label: "Pause all",

@@ -29,6 +29,16 @@ export const createQueuedashHtml = (
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          html,
+          body {
+            margin: 0;
+            min-height: 100%;
+          }
+          #root {
+            min-height: 100vh;
+          }
+        </style>
         <title>${escapeHtml(
           ui?.branding?.name?.trim() || DEFAULT_PRODUCT_NAME,
         )}</title>

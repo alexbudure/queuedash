@@ -86,6 +86,7 @@ export const createHonoAdapter = ({
     .use(
       "/trpc/*",
       async (c, next) => {
+        c.header("Cache-Control", "private, no-store");
         if (
           authMode === "session" &&
           !isQueuedashSessionAuthorized(c.req.header("Cookie"), auth)

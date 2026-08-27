@@ -1,8 +1,10 @@
 import { CheckCircle, CircleX, Zap, Clock } from "lucide-react";
+import { useInView } from "react-intersection-observer";
 import { Link } from "react-router";
 
 import { NUM_OF_RETRIES } from "../utils/config";
 import { trpc } from "../utils/trpc";
+import { getQueuePath } from "../utils/viewState";
 import { useQueuedash } from "./QueuedashProvider";
 import { Skeleton } from "./Skeleton";
 import { Sparkline } from "./Sparkline";
@@ -38,9 +40,13 @@ const statConfig = [
 
 export const OverviewQueueCard = ({ queueName }: { queueName: string }) => {
   const { preferences } = useQueuedash();
+  const { ref: visibilityRef, inView } = useInView({
+    rootMargin: "400px 0px",
+  });
   const { data: queue, isLoading } = trpc.queue.byName.useQuery(
     { queueName },
     {
+      enabled: inView,
       refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
@@ -52,7 +58,7 @@ export const OverviewQueueCard = ({ queueName }: { queueName: string }) => {
   const { data: completedMetrics } = trpc.queue.metrics.useQuery(
     { queueName, type: "completed", start: 0, end: 60 },
     {
-      enabled: supportsMetrics,
+      enabled: inView && supportsMetrics,
       refetchInterval: preferences.refreshIntervalMs,
     },
   );
@@ -60,24 +66,29 @@ export const OverviewQueueCard = ({ queueName }: { queueName: string }) => {
   const { data: failedMetrics } = trpc.queue.metrics.useQuery(
     { queueName, type: "failed", start: 0, end: 60 },
     {
-      enabled: supportsMetrics,
+      enabled: inView && supportsMetrics,
       refetchInterval: preferences.refreshIntervalMs,
     },
   );
 
-  if (isLoading) {
-    return <Skeleton className="h-10 rounded-lg" />;
+  if (!inView || isLoading) {
+    return (
+      <div ref={visibilityRef} className="min-h-10">
+        <Skeleton className="h-10 rounded-lg" />
+      </div>
+    );
   }
 
-  if (!queue) return null;
+  if (!queue) return <div ref={visibilityRef} className="min-h-10" />;
 
   const completedData = completedMetrics?.data ?? [];
   const failedData = failedMetrics?.data ?? [];
 
   return (
     <Link
-      to={`../${encodeURIComponent(queue.name)}`}
-      className="group flex items-center gap-4 rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-100/60 dark:hover:bg-slate-800/50"
+      ref={visibilityRef}
+      to={getQueuePath(queue.name)}
+      className="group flex min-h-10 items-center gap-4 rounded-lg px-3 py-2.5 transition-colors hover:bg-gray-100/60 dark:hover:bg-slate-800/50"
     >
       {/* Queue name */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5">

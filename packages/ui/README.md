@@ -218,6 +218,8 @@ search or group filter is active.
 BullMQ scheduler details include an Edit action when `scheduler.update` is
 allowed. Queue libraries without scheduler upsert support do not expose it.
 Add-job options are likewise hidden for Bee-Queue, whose API cannot apply them.
+For other adapters, the server accepts a safe manual-option allowlist and
+rejects repeat/scheduler, parent-flow, and internal queue fields.
 
 ## Styles
 
@@ -232,12 +234,19 @@ The distributed stylesheet:
 - Scopes Tailwind utilities and preflight beneath `[data-queuedash-root]`
 - Uses a specificity-hardened root selector
 - Emits Queuedash rules outside Tailwind cascade layers
+- Namespaces Tailwind's registered custom properties for Queuedash
 - Keeps dark mode on the Queuedash root instead of the host `<html>` element
 
-This prevents Queuedash styles from leaking into the host and wins normal
-same-named host utility collisions. A host stylesheet using `!important` or
-greater specificity can still override ordinary CSS; use an iframe if the
-embedding environment requires absolute style isolation.
+This isolates Queuedash selectors and internal Tailwind variables while winning
+normal same-named host utility collisions. The stylesheet also imports Inter and
+Roboto Mono from Google Fonts. A host stylesheet using `!important` or greater
+specificity can still override ordinary CSS; use an iframe if the embedding
+environment requires absolute style and resource isolation.
+
+Monaco editor themes are global within a JavaScript realm. If two Queuedash
+mounts must show different editor themes at the same time, isolate the mounts
+in separate iframes; ordinary dashboard colors and browser preferences remain
+instance-scoped.
 
 ## Authentication headers
 

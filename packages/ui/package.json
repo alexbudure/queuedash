@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc && vite build && npx @tailwindcss/cli -i src/styles/global.css -o ./dist/styles.css && node scripts/scope-css.mjs",
-    "dev": "pnpm run build --watch",
+    "dev": "node scripts/dev.mjs",
     "tailwind": "npx @tailwindcss/cli -i src/styles/global.css -o ./dist/styles.css --watch",
     "lint": "oxlint --config ../../.oxlintrc.json --disable-nested-config .",
     "lint:fix": "oxlint --config ../../.oxlintrc.json --disable-nested-config --fix .",

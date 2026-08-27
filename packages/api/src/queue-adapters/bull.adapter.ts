@@ -6,6 +6,7 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type JobPageMeta,
   type WorkerInfo,
 } from "./base.adapter";
 
@@ -21,6 +22,7 @@ type BullCleanableStatus = BullStatus;
 
 export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   private queue: Bull.Queue;
+  private pageMeta = new WeakMap<AdaptedJob[], JobPageMeta>();
 
   supports: FeatureSupport<BullStatus> = {
     addJobOptions: true,
@@ -36,6 +38,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         "paused",
       ],
     },
+    discard: false,
     retry: true,
     promote: true,
     logs: false,
@@ -122,7 +125,22 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     end: number,
   ): Promise<AdaptedJob[]> {
     const jobs = await this.queue.getJobs([status], start, end);
-    return jobs.map((job) => this.adaptJob(job));
+    const adapted = jobs
+      .filter((job): job is Bull.Job => job != null)
+      .map((job) => this.adaptJob(job));
+    const requested = end - start + 1;
+    this.pageMeta.set(adapted, {
+      capped: false,
+      cursorAdvance: requested,
+      exhausted: jobs.length < requested,
+      scanned: start + jobs.length,
+      scanLimit: Math.max(end + 1, 1),
+    });
+    return adapted;
+  }
+
+  getJobPageMeta(jobs: AdaptedJob[]): JobPageMeta | undefined {
+    return this.pageMeta.get(jobs);
   }
 
   async getJob(jobId: string): Promise<AdaptedJob | null> {
@@ -170,9 +188,8 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   }
 
   async discardJob(jobId: string): Promise<void> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) throw new Error("Job not found");
-    await job.discard();
+    void jobId;
+    throw new Error("Bull does not support persistent job discarding");
   }
 
   async getJobLogs(): Promise<string[] | null> {

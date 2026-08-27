@@ -1,7 +1,7 @@
 import { Loader2, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type JobSort = "newest" | "oldest";
+import type { JobSort } from "../utils/viewState";
 
 type JobSearchProps = {
   query: string;
@@ -41,13 +41,14 @@ export const JobSearch = ({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            onQueryChange(draft.trim());
+            onQueryChange(draft.trim().slice(0, 200));
           }}
           className="relative min-w-0 flex-1"
         >
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
           <input
             value={draft}
+            maxLength={200}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="Filter jobs"
             placeholder="Filter this status by ID, name, group, or visible data"
@@ -86,8 +87,9 @@ export const JobSearch = ({
           onChange={(event) => onSortChange(event.target.value as JobSort)}
           className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 transition outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:focus:border-brand-600 dark:focus:ring-brand-950"
         >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
+          <option value="queue">Queue order</option>
+          <option value="newest">Newest created</option>
+          <option value="oldest">Oldest created</option>
         </select>
       </div>
 

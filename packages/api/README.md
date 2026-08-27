@@ -16,7 +16,8 @@ npm install @queuedash/api
 
 Bull, BullMQ, Bee-Queue, GroupMQ, Express, Fastify, Hono, and Elysia are
 optional peer dependencies. Install only the libraries used by your
-application.
+application. BullMQ integrations require BullMQ 5.60 or newer so scheduler
+updates can safely preserve the complete native scheduler definition.
 
 ## Express quick start
 
@@ -99,7 +100,10 @@ const app = new Elysia().use(
 
 For Next.js or another tRPC-compatible runtime, mount the exported `appRouter`
 and render [`@queuedash/ui`](https://www.npmjs.com/package/@queuedash/ui)
-separately.
+separately. Custom handlers must protect the tRPC route with authentication and
+set `Cache-Control: private, no-store` on every success and error response. The
+Queuedash UI also requests tRPC data with `cache: "no-store"`, but only the
+server response header protects data from shared intermediary caches.
 
 ## Authentication
 
@@ -178,6 +182,12 @@ type Context = {
 };
 ```
 
+Create the queue instances and `ctx` once when the dashboard mount starts, then
+reuse that same object for every request. The registry is scoped to the context
+object so separate mounts cannot share queues or policy by accident. In custom
+tRPC handlers, return the module-scoped `ctx` from `createContext`; do not
+construct queues or an equivalent context inside the request callback.
+
 ### Static queues
 
 ```typescript
@@ -221,6 +231,13 @@ Discovery:
 - Keeps the last known-good registry during a temporary Redis outage
 - Can be combined with static queues
 - Does not support Bee-Queue, GroupMQ, or Redis Cluster
+
+Fastify awaits cleanup of discovery-owned Redis connections during shutdown.
+Elysia starts the same cleanup from its stop hook, but Elysia does not await
+asynchronous stop callbacks; call and await `closeQueuedashContext(ctx)` before
+`app.stop()` when deterministic cleanup is required. Express, Hono, and custom
+tRPC mounts should also await that helper when the dashboard shuts down. Static
+queue instances remain owned by your application and are never closed by it.
 
 ### Branding and dashboard defaults
 
@@ -314,6 +331,16 @@ counts. Single-job promotion also verifies that the job is currently delayed.
 BullMQ exposes `scheduler.update` through native job-scheduler upsert semantics.
 The corresponding access action can be denied separately. Bee-Queue rejects
 non-empty add-job options because its adapter cannot apply them safely.
+
+Manual add-job options are allowlisted per adapter. Bull and BullMQ accept
+ordinary execution controls such as delay, attempts, backoff, priority,
+and retention; GroupMQ accepts group ID, delay/run time, ordering, attempts,
+and job ID. Scheduling, repeat, parent-flow, and internal queue fields are
+rejected—create schedules through the scheduler controls instead. Custom Bull
+and BullMQ job IDs are intentionally unavailable because they share the queue's
+internal Redis key namespace. GroupMQ group IDs must be 1–256 characters and
+cannot contain colons or control characters because those delimit the queue's
+internal Redis keys.
 
 ### Privacy and redaction
 

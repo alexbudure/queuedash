@@ -1,4 +1,8 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
+import Bull from "bull";
+import { Queue as BullMQQueue } from "bullmq";
 import { expect, test, vi } from "vitest";
 
 import { appRouter } from "../routers/_app";
@@ -46,6 +50,148 @@ test("read-only and hidden queue policies are enforced server-side", async () =>
   );
 });
 
+test("manual job options cannot create schedulers or cross-queue dependencies", async () => {
+  const add = vi.fn();
+  const queueName = "manual-option-boundary";
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue: { name: queueName, add },
+        displayName: "Manual option boundary",
+        type: "bullmq" as const,
+      },
+    ],
+    access: {
+      rules: [{ queues: [queueName], deny: ["scheduler.add"] }],
+    },
+  } as never);
+
+  await expectTRPCError(
+    () =>
+      caller.queue.addJob({
+        queueName,
+        data: {},
+        opts: { repeat: { every: 1_000 } },
+      }),
+    "BAD_REQUEST",
+  );
+  await expectTRPCError(
+    () =>
+      caller.queue.addJob({
+        queueName,
+        data: {},
+        opts: {
+          parent: { id: "secret-parent", queue: "bull:hidden-queue" },
+        },
+      }),
+    "BAD_REQUEST",
+  );
+  expect(add).not.toHaveBeenCalled();
+});
+
+test("manual Bull and BullMQ job IDs cannot alias queue keys", async () => {
+  if (type !== "bull" && type !== "bullmq") return;
+
+  const queueName = `manual-job-id-boundary-${randomUUID()}`;
+  const queue =
+    type === "bull" ? new Bull(queueName) : new BullMQQueue(queueName);
+
+  try {
+    if (type === "bull") await (queue as Bull.Queue).isReady();
+    else await (queue as BullMQQueue).waitUntilReady();
+    const client =
+      type === "bull"
+        ? (queue as Bull.Queue).client
+        : await (queue as BullMQQueue).client;
+    const waitKey = queue.toKey("wait");
+    expect(await client.type(waitKey)).toBe("none");
+
+    const caller = appRouter.createCaller({
+      queues: [
+        {
+          queue,
+          displayName: "Manual job ID boundary",
+          type,
+        },
+      ],
+    } as never);
+
+    for (const jobId of ["wait", "victim:logs"]) {
+      await expectTRPCError(
+        () =>
+          caller.queue.addJob({
+            queueName,
+            data: {},
+            opts: { jobId },
+          }),
+        "BAD_REQUEST",
+      );
+    }
+    expect(await client.type(waitKey)).toBe("none");
+
+    await caller.queue.addJob({
+      queueName,
+      data: { healthy: true },
+    });
+    expect(await client.type(waitKey)).toBe("list");
+  } finally {
+    await queue.obliterate({ force: true });
+    await queue.close();
+  }
+});
+
+test("manual GroupMQ group IDs cannot collide with internal Redis keys", async () => {
+  const add = vi.fn(
+    async ({
+      data,
+      groupId,
+    }: {
+      data: Record<string, unknown>;
+      groupId: string;
+    }) => ({
+      id: "safe-group-job",
+      groupId,
+      data,
+      opts: {},
+      timestamp: Date.now(),
+      attemptsMade: 0,
+    }),
+  );
+  const queueName = "groupmq-option-boundary";
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue: { name: queueName, add },
+        displayName: "GroupMQ option boundary",
+        type: "groupmq" as const,
+      },
+    ],
+  } as never);
+
+  for (const groupId of ["", "victim:active", "line\nbreak", "x".repeat(257)]) {
+    await expectTRPCError(
+      () =>
+        caller.queue.addJob({
+          queueName,
+          data: {},
+          opts: { groupId },
+        }),
+      "BAD_REQUEST",
+    );
+  }
+  expect(add).not.toHaveBeenCalled();
+
+  await caller.queue.addJob({
+    queueName,
+    data: { safe: true },
+    opts: { groupId: "tenant-42" },
+  });
+  expect(add).toHaveBeenCalledWith({
+    data: { safe: true },
+    groupId: "tenant-42",
+  });
+});
+
 test("settings returns browser-safe server policy metadata", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const queueName = firstQueue.queue.name;
@@ -84,6 +230,25 @@ test("settings returns browser-safe server policy metadata", async () => {
   expect(settings.version).toMatch(/^\d+\.\d+\.\d+/u);
 });
 
+test("settings reports privacy-derived identity action denials", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+  const settings = await appRouter
+    .createCaller({
+      ...ctx,
+      privacy: { redact: { keys: ["id"] } },
+    })
+    .settings.get();
+
+  expect(settings.access.rules).toEqual([
+    expect.objectContaining({
+      queues: [queueName],
+      mode: "full",
+      deny: expect.arrayContaining(["job.remove", "job.retry"]),
+    }),
+  ]);
+});
+
 test("worker inspection is capability-gated and normalized", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -118,6 +283,10 @@ test("list queues", async () => {
       return {
         name: q.queue.name,
         displayName: q.displayName,
+        supports: {
+          pause: type !== "bee",
+          resume: type !== "bee",
+        },
       };
     }),
   );
@@ -230,8 +399,8 @@ test("clean completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  if (firstQueue.type === "bee") {
-    // Bee doesn't support cleaning
+  if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+    // Bee and GroupMQ don't support verifiable cleaning.
     try {
       await caller.queue.clean({
         queueName: firstQueue.queue.name,
@@ -264,7 +433,7 @@ test("clean completed jobs", async () => {
   }
 });
 
-test("GroupMQ clean requests the adapter's full supported batch", async () => {
+test("GroupMQ rejects clean without calling its ambiguous native helper", async () => {
   if (type !== "groupmq") return;
 
   const { ctx, firstQueue } = await initRedisInstance();
@@ -272,23 +441,27 @@ test("GroupMQ clean requests the adapter's full supported batch", async () => {
     throw new Error("Expected the GroupMQ test adapter");
   }
 
-  const clean = vi.spyOn(firstQueue.queue, "clean").mockResolvedValue(0);
+  const clean = vi.spyOn(firstQueue.queue, "clean");
   const caller = appRouter.createCaller(ctx);
 
-  await caller.queue.clean({
-    queueName: firstQueue.queue.name,
-    status: "completed",
-  });
+  await expectTRPCError(
+    () =>
+      caller.queue.clean({
+        queueName: firstQueue.queue.name,
+        status: "completed",
+      }),
+    "BAD_REQUEST",
+  );
 
-  expect(clean).toHaveBeenCalledWith(0, Number.MAX_SAFE_INTEGER, "completed");
+  expect(clean).not.toHaveBeenCalled();
 });
 
 test("clean failed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  if (firstQueue.type === "bee") {
-    // Bee doesn't support cleaning
+  if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+    // Bee and GroupMQ don't support verifiable cleaning.
     try {
       await caller.queue.clean({
         queueName: firstQueue.queue.name,
@@ -344,6 +517,18 @@ test("add job to queue with opts", async () => {
     return;
   }
 
+  if (firstQueue.type === "groupmq") {
+    await expectTRPCError(
+      () =>
+        caller.queue.addJob({
+          queueName: firstQueue.queue.name,
+          data: testData,
+          opts: { data: { action: "must-not-override-job-data" } },
+        }),
+      "BAD_REQUEST",
+    );
+  }
+
   await caller.queue.addJob({
     queueName: firstQueue.queue.name,
     data: testData,
@@ -351,7 +536,6 @@ test("add job to queue with opts", async () => {
       firstQueue.type === "groupmq"
         ? {
             delay: 30_000,
-            data: { action: "must-not-override-job-data" },
             groupId: "option-test-group",
             maxAttempts: 2,
           }
@@ -411,6 +595,7 @@ test("add job to queue without opts", async () => {
 test("empty queue", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  let delayedBullMQJobId: string | undefined;
 
   if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
     // Bee and GroupMQ don't support empty
@@ -430,6 +615,12 @@ test("empty queue", async () => {
     } else if (firstQueue.type === "bullmq") {
       await firstQueue.queue.pause();
       await firstQueue.queue.add("test", { test: "data" });
+      const delayedJob = await firstQueue.queue.add(
+        "delayed-test",
+        { test: "delayed-data" },
+        { delay: 60_000 },
+      );
+      delayedBullMQJobId = delayedJob.id;
     }
 
     await caller.queue.empty({
@@ -442,6 +633,13 @@ test("empty queue", async () => {
 
     // Waiting jobs should be emptied
     expect(queue.counts.waiting).toBe(0);
+    if (firstQueue.type === "bullmq" && delayedBullMQJobId) {
+      // BullMQ intentionally retains delayed jobs owned by schedulers, but a
+      // regular delayed job must still be drained.
+      await expect(
+        firstQueue.queue.getJob(delayedBullMQJobId),
+      ).resolves.toBeUndefined();
+    }
   }
 });
 
@@ -449,16 +647,18 @@ test("pause all queues", async () => {
   const { ctx } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
+  if (type === "bee") {
+    await expectTRPCError(() => caller.queue.pauseAll(), "BAD_REQUEST");
+    return;
+  }
+
   const result = await caller.queue.pauseAll();
   expect(result).toBe("ok");
 
-  // Verify queue is paused (if supported)
-  if (type !== "bee") {
-    const queue = await caller.queue.byName({
-      queueName: ctx.queues[0].queue.name,
-    });
-    expect(queue.paused).toBe(true);
-  }
+  const queue = await caller.queue.byName({
+    queueName: ctx.queues[0].queue.name,
+  });
+  expect(queue.paused).toBe(true);
 });
 
 test("resume all queues", async () => {
@@ -671,18 +871,15 @@ test("clean delayed jobs", async () => {
     expect(queue.counts.delayed).toBeLessThanOrEqual(
       afterAddQueue.counts.delayed,
     );
-  } else if (firstQueue.type === "groupmq") {
-    // GroupMQ supports cleaning delayed
-    const { ctx: freshCtx, firstQueue: freshQueue } = await initRedisInstance();
-    const freshCaller = appRouter.createCaller(freshCtx);
-
-    await freshCaller.queue.clean({
-      queueName: freshQueue.queue.name,
-      status: "delayed",
-    });
-
-    // Should not throw
-    expect(true).toBe(true);
+  } else if (firstQueue.type === "groupmq" || firstQueue.type === "bee") {
+    await expectTRPCError(
+      () =>
+        caller.queue.clean({
+          queueName: firstQueue.queue.name,
+          status: "delayed",
+        }),
+      "BAD_REQUEST",
+    );
   }
 });
 
@@ -738,6 +935,7 @@ test("get queue by name returns correct supports flags", async () => {
     expect(queue.supports.groups).toBe(false);
   } else if (type === "groupmq") {
     expect(queue.supports.groups).toBe(true);
+    expect(queue.supports.retry).toBe(false);
   } else {
     expect(queue.supports.groups).toBe(false);
   }

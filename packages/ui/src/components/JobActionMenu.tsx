@@ -70,7 +70,9 @@ export const JobActionMenu = ({
   const showRetry = !!job.failedReason && supportsRetry;
   const showPromote = status === "delayed" && supportsPromote;
   const showDiscard =
-    !job.finishedAt && queue?.access.actions["job.discard"] === true;
+    !job.finishedAt &&
+    queue?.supports.discard === true &&
+    queue.access.actions["job.discard"] === true;
   const showClone = queue?.access.actions["job.rerun"] === true;
   const showRemove = queue?.access.actions["job.remove"] === true;
 

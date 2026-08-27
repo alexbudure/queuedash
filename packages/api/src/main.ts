@@ -1,4 +1,5 @@
 export * from "./routers/_app";
+export { closeQueuedashContext } from "./queue-registry";
 export type {
   QueuedashAuthMode,
   QueuedashAuthOptions,

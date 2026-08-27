@@ -5,6 +5,7 @@ import type {
   preHandlerHookHandler,
 } from "fastify";
 
+import { closeQueuedashContext } from "../queue-registry";
 import { appRouter } from "../routers/_app";
 import type { Context } from "../trpc";
 import {
@@ -54,24 +55,34 @@ export function fastifyQueuedashPlugin(
     return res.code(401).send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
   };
 
-  if (authMode) {
-    fastify.addHook("onRequest", async (req, res) => {
-      if (
-        authMode === "basic" &&
-        !isQueuedashBasicAuthorized(req.headers.authorization, auth)
-      ) {
-        return sendUnauthorized(res, true);
-      }
+  fastify.addHook("onRequest", async (req, res) => {
+    const registeredRoute = req.routeOptions.url ?? "";
+    const trpcRoute = `${baseUrl}/trpc`;
+    const isTrpcRoute =
+      registeredRoute === trpcRoute ||
+      registeredRoute.startsWith(`${trpcRoute}/`);
+    if (isTrpcRoute) {
+      res.header("Cache-Control", "private, no-store");
+    }
 
-      if (
-        authMode === "session" &&
-        req.url.startsWith(`${baseUrl}/trpc`) &&
-        !isQueuedashSessionAuthorized(req.headers.cookie, auth)
-      ) {
-        return sendUnauthorized(res);
-      }
-    });
-  }
+    if (
+      authMode === "basic" &&
+      !isQueuedashBasicAuthorized(req.headers.authorization, auth)
+    ) {
+      return sendUnauthorized(res, true);
+    }
+
+    if (
+      authMode === "session" &&
+      isTrpcRoute &&
+      !isQueuedashSessionAuthorized(req.headers.cookie, auth)
+    ) {
+      return sendUnauthorized(res);
+    }
+  });
+  fastify.addHook("onClose", async () => {
+    await closeQueuedashContext(ctx);
+  });
 
   if (authMode === "session" && auth) {
     fastify.get(`${baseUrl}/auth/session`, async (req, res) => {

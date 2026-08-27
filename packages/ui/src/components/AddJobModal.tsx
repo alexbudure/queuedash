@@ -1,10 +1,16 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { JSONEditorValidationState } from "../utils/jsonEditor";
 import { normalizeJSONEditorValue } from "../utils/jsonEditor";
 import type { Queue, Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import {
+  getInitialSchedulerTimezone,
+  getSchedulerScheduleError,
+  getSchedulerTimezoneInput,
+  getSchedulerTimezoneOptions,
+} from "../utils/viewState";
 import { Button } from "./Button";
 import { JSONEditor } from "./JSONEditor";
 import { SidePanelDialog } from "./SidePanelDialog";
@@ -48,29 +54,80 @@ const getInitialValidationState = (
   });
 };
 
-const getSchedulerScheduleError = (
-  patternValue: string,
-  everyValue: string,
-) => {
-  const trimmedPattern = patternValue.trim();
-  const trimmedEvery = everyValue.trim();
+export const SchedulerScheduleInputs = ({
+  descriptionId,
+  everyId,
+  everyValue,
+  onEveryValueChange,
+  onPatternValueChange,
+  patternId,
+  patternValue,
+  scheduleError,
+}: {
+  descriptionId: string;
+  everyId: string;
+  everyValue: string;
+  onEveryValueChange: (value: string) => void;
+  onPatternValueChange: (value: string) => void;
+  patternId: string;
+  patternValue: string;
+  scheduleError: string | null;
+}) => (
+  <>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div>
+        <label
+          htmlFor={patternId}
+          className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+        >
+          Cron pattern
+        </label>
+        <input
+          id={patternId}
+          value={patternValue}
+          onChange={(event) => onPatternValueChange(event.target.value)}
+          aria-describedby={descriptionId}
+          aria-invalid={scheduleError ? true : undefined}
+          className={`${inputClassName} font-mono text-xs`}
+          placeholder="0 * * * *"
+        />
+      </div>
 
-  if (!trimmedPattern && !trimmedEvery) {
-    return "Provide either a cron pattern or an interval.";
-  }
+      <div>
+        <label
+          htmlFor={everyId}
+          className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
+        >
+          Interval (ms)
+        </label>
+        <input
+          id={everyId}
+          value={everyValue}
+          onChange={(event) => onEveryValueChange(event.target.value)}
+          aria-describedby={descriptionId}
+          aria-invalid={scheduleError ? true : undefined}
+          className={`${inputClassName} font-mono text-xs`}
+          placeholder="60000"
+        />
+      </div>
+    </div>
 
-  if (!trimmedEvery) {
-    return null;
-  }
-
-  const parsedEvery = Number(trimmedEvery);
-
-  if (!Number.isFinite(parsedEvery) || parsedEvery <= 0) {
-    return "Interval must be a positive number.";
-  }
-
-  return null;
-};
+    <p
+      id={descriptionId}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className={
+        scheduleError
+          ? errorTextClassName
+          : "text-xs text-gray-500 dark:text-slate-400"
+      }
+    >
+      {scheduleError ??
+        "Provide exactly one: a cron pattern or an interval in milliseconds."}
+    </p>
+  </>
+);
 
 export const AddJobModal = ({
   queue,
@@ -79,6 +136,11 @@ export const AddJobModal = ({
   scheduler,
   variant = "job",
 }: JobModalProps) => {
+  const schedulerScheduleDescriptionId = useId();
+  const schedulerEveryId = useId();
+  const schedulerNameId = useId();
+  const schedulerPatternId = useId();
+  const schedulerTimezoneId = useId();
   const { mutate: addJob, status: addJobStatus } =
     trpc.queue.addJob.useMutation({
       onSuccess() {
@@ -131,18 +193,15 @@ export const AddJobModal = ({
   );
   const [templateDataValue, setTemplateDataValue] = useState(
     JSON.stringify(
-      scheduler?.template?.data ?? {
-        message: "Scheduled from Queuedash",
-      },
+      scheduler?.template?.data ??
+        (scheduler ? {} : { message: "Scheduled from Queuedash" }),
       null,
       2,
     ),
   );
   const [templateOptsValue, setTemplateOptsValue] = useState(
     JSON.stringify(
-      scheduler?.template?.opts ?? {
-        attempts: 1,
-      },
+      scheduler?.template?.opts ?? (scheduler ? {} : { attempts: 1 }),
       null,
       2,
     ),
@@ -154,7 +213,11 @@ export const AddJobModal = ({
     scheduler?.every ? String(scheduler.every) : "",
   );
   const [timezoneValue, setTimezoneValue] = useState(
-    scheduler?.tz ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    getInitialSchedulerTimezone({
+      browserTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      isEditing: !!scheduler,
+      schedulerTimezone: scheduler?.tz,
+    }),
   );
   const [schedulerOptionsValue, setSchedulerOptionsValue] = useState(
     JSON.stringify(
@@ -193,6 +256,10 @@ export const AddJobModal = ({
   const schedulerScheduleError = useMemo(() => {
     return getSchedulerScheduleError(patternValue, everyValue);
   }, [everyValue, patternValue]);
+  const timezoneOptions = useMemo(
+    () => getSchedulerTimezoneOptions(TIMEZONES, timezoneValue),
+    [timezoneValue],
+  );
 
   const isJobFormInvalid =
     !jobDataValidation.isValid ||
@@ -317,7 +384,7 @@ export const AddJobModal = ({
         ...schedulerOpts,
         pattern: patternValue.trim() || undefined,
         every: parsedEvery,
-        tz: timezoneValue.trim() || undefined,
+        tz: getSchedulerTimezoneInput(timezoneValue),
       },
     };
 
@@ -384,13 +451,13 @@ export const AddJobModal = ({
             <>
               <div>
                 <label
-                  htmlFor="queuedash-scheduler-name"
+                  htmlFor={schedulerNameId}
                   className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
                 >
                   Scheduler name
                 </label>
                 <input
-                  id="queuedash-scheduler-name"
+                  id={schedulerNameId}
                   value={schedulerName}
                   onChange={(e) => setSchedulerName(e.target.value)}
                   className={inputClassName}
@@ -400,62 +467,32 @@ export const AddJobModal = ({
 
               <SectionHeader>Schedule</SectionHeader>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="queuedash-scheduler-pattern"
-                    className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
-                  >
-                    Cron pattern
-                  </label>
-                  <input
-                    id="queuedash-scheduler-pattern"
-                    value={patternValue}
-                    onChange={(e) => setPatternValue(e.target.value)}
-                    className={`${inputClassName} font-mono text-xs`}
-                    placeholder="0 * * * *"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="queuedash-scheduler-every"
-                    className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
-                  >
-                    Interval (ms)
-                  </label>
-                  <input
-                    id="queuedash-scheduler-every"
-                    value={everyValue}
-                    onChange={(e) => setEveryValue(e.target.value)}
-                    className={`${inputClassName} font-mono text-xs`}
-                    placeholder="60000"
-                  />
-                </div>
-              </div>
-
-              {schedulerScheduleError ? (
-                <p className={errorTextClassName}>{schedulerScheduleError}</p>
-              ) : (
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  Provide a cron pattern, an interval in milliseconds, or both.
-                </p>
-              )}
+              <SchedulerScheduleInputs
+                descriptionId={schedulerScheduleDescriptionId}
+                everyId={schedulerEveryId}
+                everyValue={everyValue}
+                onEveryValueChange={setEveryValue}
+                onPatternValueChange={setPatternValue}
+                patternId={schedulerPatternId}
+                patternValue={patternValue}
+                scheduleError={schedulerScheduleError}
+              />
 
               <div>
                 <label
-                  htmlFor="queuedash-scheduler-timezone"
+                  htmlFor={schedulerTimezoneId}
                   className="mb-1.5 block text-xs text-gray-500 dark:text-slate-400"
                 >
                   Timezone
                 </label>
                 <select
-                  id="queuedash-scheduler-timezone"
+                  id={schedulerTimezoneId}
                   value={timezoneValue}
                   onChange={(e) => setTimezoneValue(e.target.value)}
                   className={`${inputClassName} font-mono text-xs`}
                 >
-                  {TIMEZONES.map((tz) => (
+                  <option value="">No timezone override</option>
+                  {timezoneOptions.map((tz) => (
                     <option key={tz} value={tz}>
                       {tz}
                     </option>

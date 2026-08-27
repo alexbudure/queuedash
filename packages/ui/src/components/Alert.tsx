@@ -13,19 +13,28 @@ import { useQueuedash } from "./QueuedashProvider";
 type AlertProps = {
   title: string;
   description: string;
-  action: ReactElement<{ onClick?: () => void }>;
+  action: ReactElement<{
+    disabled?: boolean;
+    isLoading?: boolean;
+    onClick?: () => void;
+  }>;
+  isPending?: boolean;
 };
 export const Alert = ({
   title,
   description,
   action,
+  isPending = false,
   children,
 }: PropsWithChildren<AlertProps>) => {
   const { portalContainer } = useQueuedash();
 
   return (
     <DialogTrigger>
-      <AriaButton className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900">
+      <AriaButton
+        isDisabled={isPending}
+        className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900"
+      >
         {children}
       </AriaButton>
       <Modal
@@ -40,7 +49,10 @@ export const Alert = ({
           {({ close }) => {
             const originalOnClick = action.props.onClick;
             const actionWithClose = cloneElement(action, {
+              disabled: isPending,
+              isLoading: isPending,
               onClick: () => {
+                if (isPending) return;
                 originalOnClick?.();
                 close();
               },

@@ -35,8 +35,8 @@ export const supportsFeature = (feature: keyof typeof featureSupport) => {
 const featureSupport = {
   pause: type !== "bee",
   resume: type !== "bee",
-  clean: type !== "bee",
-  retry: type !== "bee",
+  clean: type !== "bee" && type !== "groupmq",
+  retry: type !== "bee" && type !== "groupmq",
   promote: type === "bullmq" || type === "groupmq",
   logs: type === "bullmq",
   schedulers: type === "bullmq",

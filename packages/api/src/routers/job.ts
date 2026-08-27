@@ -2,8 +2,18 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { assertQueueActionAllowed } from "../access";
-import { presentErrorMessage, presentJob, presentLogs } from "../presentation";
-import type { AdaptedJob } from "../queue-adapters/base.adapter";
+import {
+  presentErrorMessage,
+  presentJob,
+  presentLogs,
+  privacyRedactsGroupIdentity,
+  privacyRedactsJobIdentity,
+} from "../presentation";
+import type {
+  AdaptedJob,
+  JobPageMeta,
+  JobScanToken,
+} from "../queue-adapters/base.adapter";
 import type { InternalContext } from "../trpc";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
@@ -21,67 +31,73 @@ const JOB_STATUSES = [
 
 type JobListStatus = (typeof JOB_STATUSES)[number];
 
-const JOB_SCAN_BATCH_SIZE = 1000;
 const JOB_SEARCH_BATCH_SIZE = 100;
 const MAX_JOB_SCAN_LIMIT = 5_000;
+const MAX_ADAPTER_PAGE_CURSOR = 5_000;
 const BULK_ACTION_CONCURRENCY = 25;
 
 const getJobsPage = async (
   adapter: {
-    getJobs: (status: never, start: number, end: number) => Promise<unknown[]>;
+    getJobs: (
+      status: never,
+      start: number,
+      end: number,
+      scanLimit?: number,
+      scanToken?: JobScanToken,
+    ) => Promise<unknown[]>;
+    getJobPageMeta?: (jobs: AdaptedJob[]) => JobPageMeta | undefined;
+    beginJobScan?: (
+      status: never,
+      scanLimit?: number,
+    ) => JobScanToken | undefined;
+    endJobScan?: (scanToken: JobScanToken) => void;
   },
   status: JobListStatus,
   start: number,
   end: number,
+  scanLimit?: number,
+  scanToken?: JobScanToken,
 ): Promise<AdaptedJob[]> => {
-  const jobs = await adapter.getJobs(status as never, start, end);
+  const jobs = await adapter.getJobs(
+    status as never,
+    start,
+    end,
+    scanLimit,
+    scanToken,
+  );
   return jobs as AdaptedJob[];
-};
-
-const getAllJobsForStatus = async (
-  adapter: {
-    getJobs: (status: never, start: number, end: number) => Promise<unknown[]>;
-  },
-  status: JobListStatus,
-): Promise<AdaptedJob[]> => {
-  const jobs: AdaptedJob[] = [];
-  let start = 0;
-
-  while (true) {
-    const chunk = await getJobsPage(
-      adapter,
-      status,
-      start,
-      start + JOB_SCAN_BATCH_SIZE - 1,
-    );
-
-    if (chunk.length === 0) {
-      break;
-    }
-
-    jobs.push(...chunk);
-
-    if (chunk.length < JOB_SCAN_BATCH_SIZE) {
-      break;
-    }
-
-    start += JOB_SCAN_BATCH_SIZE;
-  }
-
-  return jobs;
 };
 
 const getEffectiveScanLimit = (
   ctx: InternalContext,
   requestedLimit: number,
-): number =>
-  Math.min(
-    requestedLimit,
+): number => {
+  const configuredLimit = Math.floor(
+    ctx.search?.maxScanned ?? MAX_JOB_SCAN_LIMIT,
+  );
+  return Math.min(
+    Math.floor(requestedLimit),
     Math.min(
-      Math.max(ctx.search?.maxScanned ?? MAX_JOB_SCAN_LIMIT, 25),
+      Math.max(
+        Number.isFinite(configuredLimit) ? configuredLimit : MAX_JOB_SCAN_LIMIT,
+        25,
+      ),
       MAX_JOB_SCAN_LIMIT,
     ),
   );
+};
+
+const assertGroupFilterAllowed = (
+  groupId: string | undefined,
+  privacy: InternalContext["privacy"],
+): void => {
+  if (!groupId || !privacyRedactsGroupIdentity(privacy)) return;
+
+  throw new TRPCError({
+    code: "FORBIDDEN",
+    message: "Group filtering is disabled when group identifiers are redacted",
+  });
+};
 
 const getSearchText = (
   job: AdaptedJob,
@@ -135,51 +151,165 @@ const scanJobsForStatus = async ({
   const normalizedQuery = query?.trim().toLocaleLowerCase();
   const jobs: FilteredJob[] = [];
   let scanned = 0;
+  let slotsScanned = 0;
   let start = 0;
   let exhausted = false;
+  let scanLimitReached = false;
+  let adapterScanned = 0;
+  const scanToken = adapter.beginJobScan?.(status as never, maxScanned);
 
-  while (scanned < maxScanned) {
-    const batchSize = Math.min(JOB_SEARCH_BATCH_SIZE, maxScanned - scanned);
-    const page = await getJobsPage(
-      adapter,
-      status,
-      start,
-      start + batchSize - 1,
-    );
+  try {
+    while (slotsScanned < maxScanned) {
+      const batchSize = Math.min(
+        JOB_SEARCH_BATCH_SIZE,
+        maxScanned - slotsScanned,
+      );
+      const page = await getJobsPage(
+        adapter,
+        status,
+        start,
+        start + batchSize - 1,
+        maxScanned,
+        scanToken,
+      );
+      const pageMeta = adapter.getJobPageMeta?.(page);
+      if (pageMeta?.capped) scanLimitReached = true;
 
-    if (page.length === 0) {
-      exhausted = true;
-      break;
-    }
-
-    scanned += page.length;
-    start += page.length;
-
-    for (const raw of page) {
-      if (groupId && raw.groupId !== groupId) continue;
-      const presented = presentJob(raw, privacy);
-      if (
-        normalizedQuery &&
-        !getSearchText(presented, searchInData).includes(normalizedQuery)
-      ) {
+      const pageScanned = pageMeta
+        ? Math.max(0, pageMeta.scanned - adapterScanned)
+        : page.length;
+      slotsScanned += pageScanned;
+      start += pageMeta?.cursorAdvance ?? batchSize;
+      scanned += pageScanned;
+      if (pageMeta) adapterScanned = Math.max(adapterScanned, pageMeta.scanned);
+      if (page.length === 0) {
+        exhausted = pageMeta?.exhausted ?? !pageMeta?.capped;
+        if (exhausted || pageMeta?.capped || pageScanned === 0) break;
         continue;
       }
-      jobs.push({ presented, raw });
+
+      for (const raw of page) {
+        if (groupId && raw.groupId !== groupId) continue;
+        const presented = presentJob(raw, privacy);
+        if (
+          normalizedQuery &&
+          !getSearchText(presented, searchInData).includes(normalizedQuery)
+        ) {
+          continue;
+        }
+        jobs.push({ presented, raw });
+      }
+      if (pageMeta?.exhausted) exhausted = true;
+      if (!pageMeta && page.length < batchSize) exhausted = true;
+      if (exhausted) break;
+      if (pageMeta?.capped) break;
     }
 
-    if (page.length < batchSize) {
-      exhausted = true;
-      break;
-    }
-  }
-
-  let scanLimitReached = false;
-  if (!exhausted && scanned >= maxScanned) {
     scanLimitReached =
-      (await getJobsPage(adapter, status, start, start)).length > 0;
-  }
+      scanLimitReached || (!exhausted && slotsScanned >= maxScanned);
 
-  return { jobs, scanned, scanLimitReached };
+    return { jobs, scanned, scanLimitReached };
+  } finally {
+    if (scanToken) adapter.endJobScan?.(scanToken);
+  }
+};
+
+const scanJobsAcrossStatuses = async ({
+  adapter,
+  groupId,
+  maxScanned,
+  statuses,
+}: {
+  adapter: Parameters<typeof getJobsPage>[0];
+  groupId: string;
+  maxScanned: number;
+  statuses: JobListStatus[];
+}): Promise<{
+  jobs: AdaptedJob[];
+  scanned: number;
+  scanLimitReached: boolean;
+}> => {
+  const jobs = new Map<string, AdaptedJob>();
+  const statusScans = statuses.map((status) => ({
+    adapterScanLimit: 0,
+    adapterScanned: 0,
+    exhausted: false,
+    start: 0,
+    status,
+    scanToken: adapter.beginJobScan?.(status as never, maxScanned),
+  }));
+  let scanned = 0;
+  let slotsScanned = 0;
+  let scanLimitReached = false;
+
+  try {
+    while (slotsScanned < maxScanned) {
+      const activeScans = statusScans.filter(({ exhausted }) => !exhausted);
+      if (activeScans.length === 0) break;
+      let madeProgress = false;
+
+      for (let index = 0; index < activeScans.length; index += 1) {
+        if (slotsScanned >= maxScanned) break;
+
+        const scan = activeScans[index];
+        const remainingBudget = maxScanned - slotsScanned;
+        const statusesRemainingThisRound = activeScans.length - index;
+        const fairShare = Math.max(
+          1,
+          Math.floor(remainingBudget / statusesRemainingThisRound),
+        );
+        const batchSize = Math.min(JOB_SEARCH_BATCH_SIZE, fairShare);
+        scan.adapterScanLimit += batchSize;
+        const page = await getJobsPage(
+          adapter,
+          scan.status,
+          scan.start,
+          scan.start + batchSize - 1,
+          scan.adapterScanLimit,
+          scan.scanToken,
+        );
+        const pageMeta = adapter.getJobPageMeta?.(page);
+        const pageScanned = pageMeta
+          ? Math.max(0, pageMeta.scanned - scan.adapterScanned)
+          : page.length;
+        slotsScanned += pageScanned;
+        scan.start += pageMeta?.cursorAdvance ?? batchSize;
+        scanned += pageScanned;
+        if (pageMeta) {
+          scan.adapterScanned = Math.max(scan.adapterScanned, pageMeta.scanned);
+        }
+        if (page.length === 0) {
+          scan.exhausted = pageMeta?.exhausted ?? !pageMeta?.capped;
+          madeProgress ||= pageScanned > 0;
+          continue;
+        }
+
+        madeProgress = true;
+        for (const job of page) {
+          if (job.groupId === groupId) jobs.set(job.id, job);
+        }
+        if (!pageMeta && page.length < batchSize) scan.exhausted = true;
+        if (pageMeta?.exhausted) scan.exhausted = true;
+      }
+
+      if (!madeProgress) break;
+    }
+
+    scanLimitReached =
+      scanLimitReached ||
+      (slotsScanned >= maxScanned &&
+        statusScans.some(({ exhausted }) => !exhausted));
+
+    return {
+      jobs: Array.from(jobs.values()),
+      scanned,
+      scanLimitReached,
+    };
+  } finally {
+    for (const { scanToken } of statusScans) {
+      if (scanToken) adapter.endJobScan?.(scanToken);
+    }
+  }
 };
 
 const runFilteredJobAction = async ({
@@ -292,6 +422,21 @@ export const jobRouter = router({
         queueName,
       });
 
+      if (!queueInCtx.adapter.supports.discard) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support discarding jobs`,
+        });
+      }
+
+      const job = await queueInCtx.adapter.getJob(jobId);
+      if (!job) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job not found",
+        });
+      }
+
       try {
         await queueInCtx.adapter.discardJob(jobId);
       } catch (e) {
@@ -305,13 +450,6 @@ export const jobRouter = router({
         }
       }
 
-      const job = await queueInCtx.adapter.getJob(jobId);
-      if (!job) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Job not found",
-        });
-      }
       return presentJob(job, internalCtx.privacy);
     }),
   rerun: procedure
@@ -422,9 +560,14 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         status: z.literal("delayed"),
-        groupId: z.string().optional(),
+        groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
-        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+        maxScanned: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(5_000),
       }),
     )
     .mutation(
@@ -433,6 +576,7 @@ export const jobRouter = router({
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
+        assertGroupFilterAllowed(groupId, internalCtx.privacy);
         assertQueueActionAllowed(internalCtx, queueName, "job.promote");
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
@@ -451,7 +595,6 @@ export const jobRouter = router({
             message: `${queueInCtx.adapter.getType()} does not support delayed jobs`,
           });
         }
-
         try {
           return await runFilteredJobAction({
             action: (jobId) => queueInCtx.adapter.promoteJob(jobId),
@@ -558,9 +701,14 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         status: z.enum(JOB_STATUSES),
-        groupId: z.string().optional(),
+        groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
-        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+        maxScanned: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(5_000),
       }),
     )
     .mutation(
@@ -569,6 +717,7 @@ export const jobRouter = router({
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
+        assertGroupFilterAllowed(groupId, internalCtx.privacy);
         assertQueueActionAllowed(internalCtx, queueName, "job.remove");
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
@@ -653,9 +802,14 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         status: z.literal("failed"),
-        groupId: z.string().optional(),
+        groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
-        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
+        maxScanned: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(5_000),
       }),
     )
     .mutation(
@@ -664,6 +818,7 @@ export const jobRouter = router({
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
+        assertGroupFilterAllowed(groupId, internalCtx.privacy);
         assertQueueActionAllowed(internalCtx, queueName, "job.retry");
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
@@ -704,11 +859,18 @@ export const jobRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-        groupId: z.string(),
+        groupId: z.string().min(1),
+        maxScanned: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(MAX_JOB_SCAN_LIMIT),
       }),
     )
-    .mutation(async ({ input: { queueName, groupId }, ctx }) => {
+    .mutation(async ({ input: { queueName, groupId, maxScanned }, ctx }) => {
       const internalCtx = await transformContext(ctx);
+      assertGroupFilterAllowed(groupId, internalCtx.privacy);
       assertQueueActionAllowed(internalCtx, queueName, "job.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
@@ -716,32 +878,37 @@ export const jobRouter = router({
       });
 
       try {
-        const uniqueJobIds = new Set<string>();
-
-        for (const status of queueInCtx.adapter.supports
-          .statuses as JobListStatus[]) {
-          const jobs = await getAllJobsForStatus(queueInCtx.adapter, status);
-          for (const job of jobs) {
-            if (job.groupId === groupId) {
-              uniqueJobIds.add(job.id);
-            }
-          }
+        const scan = await scanJobsAcrossStatuses({
+          adapter: queueInCtx.adapter,
+          groupId,
+          maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
+          statuses: queueInCtx.adapter.supports.statuses.filter((status) =>
+            JOB_STATUSES.includes(status as JobListStatus),
+          ) as JobListStatus[],
+        });
+        let succeeded = 0;
+        for (
+          let index = 0;
+          index < scan.jobs.length;
+          index += BULK_ACTION_CONCURRENCY
+        ) {
+          const batch = scan.jobs.slice(index, index + BULK_ACTION_CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map((job) => queueInCtx.adapter.removeJob(job.id)),
+          );
+          succeeded += results.filter(
+            (result) => result.status === "fulfilled",
+          ).length;
         }
 
-        const jobIds = Array.from(uniqueJobIds);
-        const results = await Promise.allSettled(
-          jobIds.map(async (jobId) => {
-            await queueInCtx.adapter.removeJob(jobId);
-            return jobId;
-          }),
-        );
-
-        const succeeded = results.filter(
-          (r) => r.status === "fulfilled",
-        ).length;
-        const failed = results.filter((r) => r.status === "rejected").length;
-
-        return { total: jobIds.length, succeeded, failed };
+        return {
+          total: scan.jobs.length,
+          succeeded,
+          failed: scan.jobs.length - succeeded,
+          scanned: scan.scanned,
+          partial: scan.scanLimitReached,
+          scanLimitReached: scan.scanLimitReached,
+        };
       } catch (e) {
         if (e instanceof TRPCError) {
           throw e;
@@ -762,6 +929,12 @@ export const jobRouter = router({
     )
     .query(async ({ input: { queueName, jobId }, ctx }) => {
       const internalCtx = await transformContext(ctx);
+      if (privacyRedactsJobIdentity(internalCtx.privacy)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Job lookup is disabled when job identifiers are redacted",
+        });
+      }
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -786,6 +959,12 @@ export const jobRouter = router({
     )
     .query(async ({ input: { queueName, jobId }, ctx }) => {
       const internalCtx = await transformContext(ctx);
+      if (privacyRedactsJobIdentity(internalCtx.privacy)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Job logs are disabled when job identifiers are redacted",
+        });
+      }
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -805,9 +984,17 @@ export const jobRouter = router({
       z.object({
         queueName: z.string(),
         query: z.string().trim().min(1).max(200),
-        statuses: z.array(z.enum(JOB_STATUSES)).optional(),
-        limit: z.number().min(1).max(50).default(25),
-        maxScanned: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(500),
+        statuses: z
+          .array(z.enum(JOB_STATUSES))
+          .max(JOB_STATUSES.length)
+          .optional(),
+        limit: z.number().int().min(1).max(50).default(25),
+        maxScanned: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(500),
       }),
     )
     .query(
@@ -825,7 +1012,9 @@ export const jobRouter = router({
           queueName,
         });
         const normalizedQuery = query.toLocaleLowerCase();
-        const requestedStatuses = (statuses ?? JOB_STATUSES).filter((status) =>
+        const requestedStatuses = Array.from(
+          new Set(statuses ?? JOB_STATUSES),
+        ).filter((status) =>
           queueInCtx.adapter.supports.statuses.includes(status),
         );
         const results: Array<{
@@ -833,61 +1022,143 @@ export const jobRouter = router({
           status: JobListStatus | null;
         }> = [];
         const seen = new Set<string>();
+        const statusScans = requestedStatuses.map((status) => ({
+          adapterScanLimit: 0,
+          adapterScanned: 0,
+          exhausted: false,
+          start: 0,
+          status,
+          scanToken: queueInCtx.adapter.beginJobScan(
+            status as never,
+            effectiveMaxScanned,
+          ),
+        }));
         let scanned = 0;
+        let slotsScanned = 0;
         let scanLimitReached = false;
         let resultLimitReached = false;
 
         try {
           const exactJob = await queueInCtx.adapter.getJob(query);
           if (exactJob) {
-            const presented = presentJob(exactJob, internalCtx.privacy);
             const exactStatus = await queueInCtx.adapter.getJobStatus(query);
-            results.push({
-              job: presented,
-              status: JOB_STATUSES.includes(exactStatus as JobListStatus)
-                ? (exactStatus as JobListStatus)
-                : null,
-            });
-            seen.add(presented.id);
+            const normalizedExactStatus = JOB_STATUSES.includes(
+              exactStatus as JobListStatus,
+            )
+              ? (exactStatus as JobListStatus)
+              : null;
+            if (
+              (normalizedExactStatus &&
+                requestedStatuses.includes(normalizedExactStatus)) ||
+              (!normalizedExactStatus && statuses === undefined)
+            ) {
+              const presented = presentJob(exactJob, internalCtx.privacy);
+              if (getSearchText(presented).includes(normalizedQuery)) {
+                results.push({
+                  job: presented,
+                  status: normalizedExactStatus,
+                });
+                seen.add(exactJob.id);
+              }
+            }
           }
 
-          for (const status of requestedStatuses) {
-            let start = 0;
+          while (slotsScanned < effectiveMaxScanned && results.length < limit) {
+            const activeScans = statusScans.filter(
+              ({ exhausted }) => !exhausted,
+            );
+            if (activeScans.length === 0) break;
+            let madeProgress = false;
+            const roundMatches = activeScans.map(
+              () =>
+                [] as Array<{
+                  job: AdaptedJob;
+                  rawId: string;
+                  status: JobListStatus;
+                }>,
+            );
+            const roundSeen = new Set(seen);
 
-            while (scanned < effectiveMaxScanned && results.length < limit) {
-              const batchSize = Math.min(
-                JOB_SEARCH_BATCH_SIZE,
-                effectiveMaxScanned - scanned,
+            for (let index = 0; index < activeScans.length; index += 1) {
+              if (slotsScanned >= effectiveMaxScanned) break;
+
+              const scan = activeScans[index];
+              const remainingBudget = effectiveMaxScanned - slotsScanned;
+              const statusesRemainingThisRound = activeScans.length - index;
+              const fairShare = Math.max(
+                1,
+                Math.floor(remainingBudget / statusesRemainingThisRound),
               );
+              const batchSize = Math.min(JOB_SEARCH_BATCH_SIZE, fairShare);
+              scan.adapterScanLimit += batchSize;
               const jobs = await getJobsPage(
                 queueInCtx.adapter,
-                status,
-                start,
-                start + batchSize - 1,
+                scan.status,
+                scan.start,
+                scan.start + batchSize - 1,
+                scan.adapterScanLimit,
+                scan.scanToken,
               );
-              if (jobs.length === 0) break;
+              const pageMeta = queueInCtx.adapter.getJobPageMeta?.(jobs);
+              const pageScanned = pageMeta
+                ? Math.max(0, pageMeta.scanned - scan.adapterScanned)
+                : jobs.length;
+              slotsScanned += pageScanned;
+              scan.start += pageMeta?.cursorAdvance ?? batchSize;
+              scanned += pageScanned;
+              if (pageMeta) {
+                scan.adapterScanned = Math.max(
+                  scan.adapterScanned,
+                  pageMeta.scanned,
+                );
+              }
+              if (jobs.length === 0) {
+                scan.exhausted = pageMeta?.exhausted ?? !pageMeta?.capped;
+                madeProgress ||= pageScanned > 0;
+                continue;
+              }
 
-              scanned += jobs.length;
+              madeProgress = true;
+
               for (const rawJob of jobs) {
-                if (seen.has(rawJob.id)) continue;
+                if (roundSeen.has(rawJob.id)) continue;
 
                 const job = presentJob(rawJob, internalCtx.privacy);
                 if (!getSearchText(job).includes(normalizedQuery)) continue;
 
-                results.push({ job, status });
-                seen.add(job.id);
-                if (results.length >= limit) break;
+                roundMatches[index]?.push({
+                  job,
+                  rawId: rawJob.id,
+                  status: scan.status,
+                });
+                roundSeen.add(rawJob.id);
               }
-
-              if (jobs.length < batchSize) break;
-              start += jobs.length;
+              if (!pageMeta && jobs.length < batchSize) {
+                scan.exhausted = true;
+              }
+              if (pageMeta?.exhausted) scan.exhausted = true;
             }
 
-            if (scanned >= effectiveMaxScanned || results.length >= limit)
-              break;
+            for (let matchIndex = 0; results.length < limit; matchIndex += 1) {
+              let addedMatch = false;
+              for (const matches of roundMatches) {
+                const match = matches[matchIndex];
+                if (!match) continue;
+                results.push({ job: match.job, status: match.status });
+                seen.add(match.rawId);
+                addedMatch = true;
+                if (results.length >= limit) break;
+              }
+              if (!addedMatch) break;
+            }
+
+            if (!madeProgress) break;
           }
 
-          scanLimitReached = scanned >= effectiveMaxScanned;
+          scanLimitReached =
+            scanLimitReached ||
+            (slotsScanned >= effectiveMaxScanned &&
+              statusScans.some(({ exhausted }) => !exhausted));
           resultLimitReached = results.length >= limit;
 
           return {
@@ -902,6 +1173,10 @@ export const jobRouter = router({
             code: "INTERNAL_SERVER_ERROR",
             message: presentErrorMessage(e, internalCtx.privacy),
           });
+        } finally {
+          for (const { scanToken } of statusScans) {
+            if (scanToken) queueInCtx.adapter.endJobScan(scanToken);
+          }
         }
       },
     ),
@@ -909,14 +1184,19 @@ export const jobRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-        cursor: z.number().min(0).optional().default(0),
-        limit: z.number().min(1).max(100),
+        cursor: z.number().int().min(0).optional().default(0),
+        limit: z.number().int().min(1).max(100),
         status: z.enum(JOB_STATUSES),
-        groupId: z.string().optional(),
+        groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
         searchInData: z.boolean().default(true),
-        scanLimit: z.number().min(25).max(MAX_JOB_SCAN_LIMIT).default(5_000),
-        sort: z.enum(["newest", "oldest"]).default("newest"),
+        scanLimit: z
+          .number()
+          .int()
+          .min(25)
+          .max(MAX_JOB_SCAN_LIMIT)
+          .default(5_000),
+        sort: z.enum(["queue", "newest", "oldest"]).default("queue"),
       }),
     )
     .query(
@@ -946,13 +1226,37 @@ export const jobRouter = router({
             message: `${queueInCtx.adapter.getType()} does not support the ${status} job status`,
           });
         }
+        assertGroupFilterAllowed(groupId, internalCtx.privacy);
+
+        const effectiveScanLimit = getEffectiveScanLimit(
+          internalCtx,
+          scanLimit,
+        );
+        const adapterType = queueInCtx.adapter.getType();
+        const boundedPageLabel =
+          adapterType === "groupmq" && status === "waiting"
+            ? "GroupMQ waiting-job"
+            : adapterType === "bee" &&
+                (status === "completed" || status === "failed")
+              ? "Bee-Queue completed/failed"
+              : undefined;
+        const usesBoundedScan = Boolean(
+          groupId || query || sort === "newest" || sort === "oldest",
+        );
+        const pageLimit = usesBoundedScan
+          ? effectiveScanLimit
+          : boundedPageLabel
+            ? MAX_ADAPTER_PAGE_CURSOR
+            : undefined;
+        if (pageLimit !== undefined && cursor + limit > pageLimit) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `${boundedPageLabel ?? "Job"} pagination is limited to the first ${pageLimit.toLocaleString()} jobs`,
+          });
+        }
 
         try {
-          if (groupId || query || sort === "oldest") {
-            const effectiveScanLimit = getEffectiveScanLimit(
-              internalCtx,
-              scanLimit,
-            );
+          if (usesBoundedScan) {
             const scan = await scanJobsForStatus({
               adapter: queueInCtx.adapter,
               groupId,
@@ -962,14 +1266,14 @@ export const jobRouter = router({
               searchInData,
               status,
             });
-            const filteredJobs = scan.jobs
-              .map(({ presented }) => presented)
-              .sort((left, right) => {
+            const filteredJobs = scan.jobs.map(({ presented }) => presented);
+            if (sort !== "queue") {
+              filteredJobs.sort((left, right) => {
                 const difference =
                   left.createdAt.getTime() - right.createdAt.getTime();
                 return sort === "oldest" ? difference : -difference;
               });
-
+            }
             const jobs = filteredJobs.slice(cursor, cursor + limit);
             const totalCount = filteredJobs.length;
             const hasNextPage = cursor + limit < totalCount;
@@ -992,17 +1296,32 @@ export const jobRouter = router({
             cursor,
             cursor + limit - 1,
           );
+          const adapterPageMeta = queueInCtx.adapter.getJobPageMeta?.(jobs);
           const counts = await queueInCtx.adapter.getJobCounts();
-          const totalCount = counts[status] || 0;
-
+          const uncappedTotalCount = counts[status] || 0;
+          const totalCount = boundedPageLabel
+            ? Math.min(uncappedTotalCount, MAX_ADAPTER_PAGE_CURSOR)
+            : uncappedTotalCount;
           const hasNextPage = cursor + limit < totalCount;
+          const totalCapReached =
+            boundedPageLabel && uncappedTotalCount > MAX_ADAPTER_PAGE_CURSOR;
+          const searchMeta = totalCapReached
+            ? {
+                scanned: Math.max(
+                  adapterPageMeta?.scanned ?? 0,
+                  MAX_ADAPTER_PAGE_CURSOR,
+                ),
+                capped: true,
+                scanLimit: MAX_ADAPTER_PAGE_CURSOR,
+              }
+            : adapterPageMeta;
 
           return {
             totalCount,
             numOfPages: Math.ceil(totalCount / limit),
             nextCursor: hasNextPage ? cursor + limit : undefined,
             jobs: jobs.map((job) => presentJob(job, internalCtx.privacy)),
-            searchMeta: undefined,
+            searchMeta,
           };
         } catch (e) {
           throw new TRPCError({

@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Search, X, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
@@ -30,7 +31,18 @@ export const GroupsSection = ({
   );
 
   const { mutate: bulkRemove, isPending: isDeleting } =
-    trpc.job.bulkRemoveByGroup.useMutation();
+    trpc.job.bulkRemoveByGroup.useMutation({
+      onSuccess(data) {
+        toast.success(
+          `Removed ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${
+            data.failed > 0 ? `, ${data.failed} failed` : ""
+          }${data.partial ? "; more jobs may remain in this group" : ""}`,
+        );
+      },
+      onError(error) {
+        toast.error(error.message || "Failed to remove jobs from the group");
+      },
+    });
 
   if (isLoading && !selectedGroupId) {
     return (
@@ -78,13 +90,14 @@ export const GroupsSection = ({
           <div className="flex items-center gap-1.5">
             {selectedGroupId && canRemoveJobs ? (
               <Alert
-                title="Delete all jobs in this group?"
-                description={`This action cannot be undone. This will permanently remove all jobs from group "${selectedGroupId}".`}
+                isPending={isDeleting}
+                title="Delete eligible jobs in this group?"
+                description={`This action cannot be undone. It will permanently remove eligible jobs from group "${selectedGroupId}" found within the server scan limit.`}
                 action={
                   <Button
                     variant="filled"
                     colorScheme="red"
-                    label="Yes, delete all"
+                    label="Yes, delete eligible"
                     onClick={() =>
                       bulkRemove({ queueName, groupId: selectedGroupId })
                     }
@@ -95,7 +108,7 @@ export const GroupsSection = ({
                   as="span"
                   colorScheme="red"
                   icon={<Trash2 className="size-3" />}
-                  label={isDeleting ? "Deleting..." : "Delete all"}
+                  label={isDeleting ? "Deleting..." : "Delete eligible"}
                   size="sm"
                   isLoading={isDeleting}
                 />

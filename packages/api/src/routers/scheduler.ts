@@ -1,9 +1,16 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { assertQueueActionAllowed } from "../access";
-import { presentErrorMessage, presentScheduler } from "../presentation";
+import {
+  presentErrorMessage,
+  presentScheduler,
+  resolvePrivacyExposure,
+} from "../presentation";
 import type { SchedulerInfo } from "../queue-adapters/base.adapter";
+import { UnsupportedSchedulerUpdateError } from "../queue-adapters/base.adapter";
 import {
   schedulerOptionsSchema,
   schedulerTemplateSchema,
@@ -51,10 +58,10 @@ export const schedulerRouter = router({
     .mutation(async ({ input, ctx }) => {
       const { queueName, jobName, data, pattern, every, tz } = input;
 
-      if (!pattern && !every) {
+      if ((pattern === undefined) === (every === undefined)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "You must provide either `pattern` or `every`",
+          message: "You must provide exactly one of `pattern` or `every`",
         });
       }
 
@@ -79,7 +86,7 @@ export const schedulerRouter = router({
       }
 
       await queueInCtx.adapter.addScheduler(
-        `scheduler-${Date.now()}`,
+        `scheduler-${randomUUID()}`,
         { pattern, every, tz },
         { name: jobName, data },
       );
@@ -105,6 +112,17 @@ export const schedulerRouter = router({
       });
 
       if (
+        !resolvePrivacyExposure(internalCtx.privacy).schedulerData ||
+        internalCtx.privacy?.redact
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Scheduler editing is disabled when template data is hidden or redacted",
+        });
+      }
+
+      if (
         !queueInCtx.adapter.supports.schedulerUpdate ||
         !queueInCtx.adapter.updateScheduler
       ) {
@@ -115,17 +133,26 @@ export const schedulerRouter = router({
       }
 
       try {
-        const schedulers = await queueInCtx.adapter.getSchedulers?.();
-        if (!schedulers?.some((scheduler) => scheduler.key === key)) {
+        const updated = await queueInCtx.adapter.updateScheduler(
+          key,
+          opts,
+          template,
+        );
+        if (!updated) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Job scheduler not found",
           });
         }
-        await queueInCtx.adapter.updateScheduler(key, opts, template);
         return { success: true };
       } catch (e) {
         if (e instanceof TRPCError) throw e;
+        if (e instanceof UnsupportedSchedulerUpdateError) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: presentErrorMessage(e, internalCtx.privacy),
+          });
+        }
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: presentErrorMessage(e, internalCtx.privacy),

@@ -1,3 +1,4 @@
+import * as trpcNodeHttp from "@trpc/server/adapters/node-http";
 import type {
   NextFunction,
   Request,
@@ -22,6 +23,10 @@ import { createQueuedashExpressMiddleware } from "../server-adapters/express";
 import { fastifyQueuedashPlugin } from "../server-adapters/fastify";
 import { createHonoAdapter } from "../server-adapters/hono";
 import type { Context } from "../trpc";
+
+vi.mock("@trpc/server/adapters/node-http", () => ({
+  nodeHTTPRequestHandler: vi.fn().mockResolvedValue(undefined),
+}));
 
 const auth = {
   username: "queuedash-admin",
@@ -244,6 +249,25 @@ describe("Express adapter auth", () => {
     );
   });
 
+  it("marks successful tRPC responses private and non-cacheable", async () => {
+    const handler = createQueuedashExpressMiddleware({ ctx });
+    const result = createResponse();
+
+    await handler(
+      createRequest({ path: "/trpc/queue.list" }),
+      result.response,
+      vi.fn() as NextFunction,
+    );
+
+    expect(result.spies.set).toHaveBeenCalledWith(
+      "Cache-Control",
+      "private, no-store",
+    );
+    expect(
+      vi.mocked(trpcNodeHttp.nodeHTTPRequestHandler),
+    ).toHaveBeenCalledOnce();
+  });
+
   it("retains browser challenge mode as an explicit option", async () => {
     const handler = createQueuedashExpressMiddleware({
       auth: basicAuth,
@@ -284,6 +308,13 @@ describe("Fastify adapter auth", () => {
       expect(api.statusCode).toBe(401);
       expect(api.headers["www-authenticate"]).toBeUndefined();
 
+      const encodedApi = await app.inject({
+        method: "GET",
+        url: "/queuedash/%74rpc/queue.list",
+      });
+      expect(encodedApi.statusCode).toBe(401);
+      expect(encodedApi.headers["www-authenticate"]).toBeUndefined();
+
       const login = await app.inject({
         method: "POST",
         url: "/queuedash/auth/login",
@@ -301,6 +332,14 @@ describe("Fastify adapter auth", () => {
         headers: { cookie },
       });
       expect(session.statusCode).toBe(204);
+
+      const authorizedApi = await app.inject({
+        method: "GET",
+        url: "/queuedash/trpc/queue.list",
+        headers: { cookie },
+      });
+      expect(authorizedApi.statusCode).toBe(200);
+      expect(authorizedApi.headers["cache-control"]).toBe("private, no-store");
     } finally {
       await app.close();
     }
@@ -332,6 +371,14 @@ describe("Hono adapter auth", () => {
         })
       ).status,
     ).toBe(204);
+
+    const authorizedApi = await app.request("/queuedash/trpc/queue.list", {
+      headers: { cookie },
+    });
+    expect(authorizedApi.status).toBe(200);
+    expect(authorizedApi.headers.get("cache-control")).toBe(
+      "private, no-store",
+    );
   });
 });
 
@@ -341,6 +388,40 @@ describe("Elysia adapter auth", () => {
     const ui = await app.handle(new Request("http://localhost/queuedash"));
     expect(ui.status).toBe(200);
     expect(await ui.text()).toContain('"baseUrl":"/queuedash/auth"');
+
+    for (const path of ["settings", "email-delivery"]) {
+      const deepLink = await app.handle(
+        new Request(`http://localhost/queuedash/${path}`),
+      );
+      expect(deepLink.status).toBe(200);
+      expect(await deepLink.text()).toContain('"baseUrl":"/queuedash/auth"');
+
+      const head = await app.handle(
+        new Request(`http://localhost/queuedash/${path}`, {
+          method: "HEAD",
+        }),
+      );
+      expect(head.status).toBe(200);
+      expect(head.headers.get("content-type")).toContain("text/html");
+      expect(await head.text()).toBe("");
+    }
+
+    expect(
+      (
+        await app.handle(
+          new Request("http://localhost/queuedash/settings", {
+            method: "POST",
+          }),
+        )
+      ).status,
+    ).toBe(404);
+    expectSessionUnauthorized(
+      await app.handle(
+        new Request("http://localhost/queuedash/auth/session", {
+          method: "HEAD",
+        }),
+      ),
+    );
 
     expectSessionUnauthorized(
       await app.handle(
@@ -365,12 +446,36 @@ describe("Elysia adapter auth", () => {
         )
       ).status,
     ).toBe(204);
+
+    const api = await app.handle(
+      new Request("http://localhost/queuedash/trpc/queue.list", {
+        headers: { cookie },
+      }),
+    );
+    expect(api.status).toBe(200);
+    expect(api.headers.get("cache-control")).toBe("private, no-store");
+    expect(await api.json()).toMatchObject({ result: { data: [] } });
   });
 
   it("retains the browser challenge when basic mode is selected", async () => {
     const app = queuedash({ auth: basicAuth, baseUrl: "/queuedash", ctx });
     expectBasicChallenge(
       await app.handle(new Request("http://localhost/queuedash")),
+    );
+    expectBasicChallenge(
+      await app.handle(new Request("http://localhost/queuedash/settings")),
+    );
+    expectBasicChallenge(
+      await app.handle(
+        new Request("http://localhost/queuedash/settings", {
+          method: "HEAD",
+        }),
+      ),
+    );
+    expectBasicChallenge(
+      await app.handle(
+        new Request("http://localhost/queuedash/email-delivery"),
+      ),
     );
   });
 });

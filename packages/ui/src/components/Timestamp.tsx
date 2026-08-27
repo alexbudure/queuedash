@@ -76,9 +76,10 @@ export const formatAbsoluteTimestamp = (
   return date.toLocaleString("en-US", {
     month: variant === "full" ? "short" : "numeric",
     day: "numeric",
+    year: "numeric",
     hour: "numeric",
     minute: "numeric",
-    ...(variant === "full" ? { second: "numeric" } : {}),
+    ...(variant === "full" ? { second: "numeric", timeZoneName: "short" } : {}),
   });
 };
 

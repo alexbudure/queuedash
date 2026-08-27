@@ -120,7 +120,8 @@ export const QueueStatusTabs = ({
       name: "Active",
       status: "active",
     },
-    ...(queue?.supports.priorities
+    ...(queue?.supports.priorities &&
+    queue.supports.statuses.includes("prioritized")
       ? [{ name: "Prioritized", status: "prioritized" as const }]
       : []),
     {
@@ -134,7 +135,7 @@ export const QueueStatusTabs = ({
       name: "Delayed",
       status: "delayed",
     },
-    ...(queue?.supports.pause
+    ...(queue?.supports.statuses.includes("paused")
       ? [{ name: "Paused", status: "paused" as const }]
       : []),
   ];

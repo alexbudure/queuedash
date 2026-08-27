@@ -36,12 +36,23 @@ export type AdaptedJob = {
 
 export type JobCounts = Partial<Record<string, number>>;
 
+export type JobPageMeta = {
+  capped: boolean;
+  cursorAdvance?: number;
+  exhausted?: boolean;
+  scanned: number;
+  scanLimit: number;
+};
+
+export type JobScanToken = symbol;
+
 // Per-operation feature support with details
 export type FeatureSupport<SupportedStatus extends string = string> = {
   addJobOptions: boolean;
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
+  discard: boolean;
   retry: boolean;
   promote: boolean;
   logs: boolean;
@@ -75,6 +86,13 @@ export type SchedulerInfo = {
     opts?: Record<string, unknown>;
   };
 };
+
+export class UnsupportedSchedulerUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedSchedulerUpdateError";
+  }
+}
 
 export type QueueMetrics = {
   data: number[]; // Array of job counts per minute
@@ -139,7 +157,21 @@ export abstract class QueueAdapter<
     status: SupportedStatus,
     start: number,
     end: number,
+    scanLimit?: number,
+    scanToken?: JobScanToken,
   ): Promise<AdaptedJob[]>;
+  beginJobScan(
+    _status: SupportedStatus,
+    _scanLimit?: number,
+  ): JobScanToken | undefined {
+    return undefined;
+  }
+  endJobScan(_scanToken: JobScanToken): void {
+    // Stateful adapters can eagerly release per-request snapshots here.
+  }
+  getJobPageMeta(_jobs: AdaptedJob[]): JobPageMeta | undefined {
+    return undefined;
+  }
   abstract getJob(jobId: string): Promise<AdaptedJob | null>;
   async getJobStatus(jobId: string): Promise<SupportedStatus | null> {
     void jobId;
@@ -166,7 +198,7 @@ export abstract class QueueAdapter<
     key: string,
     opts: Record<string, unknown>,
     template: Record<string, unknown>,
-  ): Promise<void>;
+  ): Promise<boolean>;
   removeScheduler?(key: string): Promise<void>;
 
   // Metrics operations (optional - only for queues that support it)

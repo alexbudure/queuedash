@@ -18,6 +18,13 @@ import { WorkersSection } from "../components/WorkersSection";
 import { NUM_OF_RETRIES } from "../utils/config";
 import type { Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import {
+  getJobListRefetchInterval,
+  type JobSort,
+  shouldWriteEffectiveStatus,
+  updateJobQueryParams,
+  updateJobSortParams,
+} from "../utils/viewState";
 
 export const { format: numberFormat } = new Intl.NumberFormat("en-US");
 const VALID_STATUSES: Status[] = [
@@ -39,8 +46,13 @@ export const QueuePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const requestedSchedulersView = searchParams.get("view") === "schedulers";
-  const query = searchParams.get("q")?.trim() ?? "";
-  const sort = searchParams.get("sort") === "oldest" ? "oldest" : "newest";
+  const rawQuery = searchParams.get("q")?.trim() ?? "";
+  const query = rawQuery.slice(0, 200);
+  const requestedSort = searchParams.get("sort");
+  const sort: JobSort =
+    requestedSort === "newest" || requestedSort === "oldest"
+      ? requestedSort
+      : "queue";
   const preferredStatus =
     preferences.defaultJobStatus === "remember"
       ? preferences.lastJobStatus
@@ -51,6 +63,18 @@ export const QueuePage = () => {
       ? (initialStatus as Status)
       : preferredStatus,
   );
+
+  useEffect(() => {
+    if (rawQuery.length <= 200) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set("q", query);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [query, rawQuery.length, setSearchParams]);
 
   const handleTabChange = useCallback(
     (key: Key) => {
@@ -109,7 +133,12 @@ export const QueuePage = () => {
         !isSchedulersView &&
         !!queueReq.data &&
         queueReq.data.supports.statuses.includes(status),
-      refetchInterval: preferences.refreshIntervalMs,
+      refetchInterval: (queryState) =>
+        getJobListRefetchInterval(
+          (queryState.state.data as { pages?: readonly unknown[] } | undefined)
+            ?.pages?.length ?? 0,
+          preferences.refreshIntervalMs,
+        ),
       retry: NUM_OF_RETRIES,
     },
   );
@@ -134,10 +163,12 @@ export const QueuePage = () => {
     }
 
     if (
-      !isSchedulersView &&
-      searchStatus &&
-      searchStatus !== nextStatus &&
-      supportedStatuses
+      supportedStatuses &&
+      shouldWriteEffectiveStatus({
+        effectiveStatus: nextStatus,
+        isSchedulersView,
+        params: searchParams,
+      })
     ) {
       setSearchParams(
         (current) => {
@@ -259,8 +290,6 @@ export const QueuePage = () => {
               : "Could not fetch queue"
           }
         />
-      ) : !isSchedulersView && isError ? (
-        <ErrorCard message="Could not fetch jobs" />
       ) : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -358,20 +387,14 @@ export const QueuePage = () => {
                 searchMeta={searchMeta}
                 isLoading={isLoading}
                 onQueryChange={(nextQuery) => {
-                  setSearchParams((current) => {
-                    const next = new URLSearchParams(current);
-                    if (nextQuery) next.set("q", nextQuery);
-                    else next.delete("q");
-                    return next;
-                  });
+                  setSearchParams((current) =>
+                    updateJobQueryParams(current, status, nextQuery),
+                  );
                 }}
                 onSortChange={(nextSort) => {
-                  setSearchParams((current) => {
-                    const next = new URLSearchParams(current);
-                    if (nextSort === "oldest") next.set("sort", nextSort);
-                    else next.delete("sort");
-                    return next;
-                  });
+                  setSearchParams((current) =>
+                    updateJobSortParams(current, status, nextSort),
+                  );
                 }}
               />
             ) : null}
@@ -383,6 +406,8 @@ export const QueuePage = () => {
                 queue={queueReq.data}
                 queueName={queueName}
               />
+            ) : isError ? (
+              <ErrorCard message="Could not fetch jobs" />
             ) : (
               <JobTable
                 onBottomInView={() => {

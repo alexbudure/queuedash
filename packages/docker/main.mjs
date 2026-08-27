@@ -310,8 +310,24 @@ const getAuthFromEnvironment = () => {
   };
 };
 
+const getTrustProxyFromEnvironment = () => {
+  const value = process.env.QUEUEDASH_TRUST_PROXY;
+  if (value === undefined || value === "false") return false;
+  if (value === "true") return 1;
+
+  const hops = Number(value);
+  if (!Number.isInteger(hops) || hops < 1 || hops > 10) {
+    throw new Error(
+      'QUEUEDASH_TRUST_PROXY must be "true", "false", or an integer from 1 to 10',
+    );
+  }
+  return hops;
+};
+
 const app = express();
 const config = queueConfigSchema.parse(JSON.parse(getConfigJson()));
+const trustProxy = getTrustProxyFromEnvironment();
+if (trustProxy !== false) app.set("trust proxy", trustProxy);
 
 app.use(
   "/",

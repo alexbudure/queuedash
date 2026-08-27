@@ -17,21 +17,15 @@ import {
 import { Select, type SelectOption } from "../components/Select";
 import { Timestamp } from "../components/Timestamp";
 import { trpc } from "../utils/trpc";
+import {
+  formatRefreshIntervalLabel,
+  getRefreshIntervalOptions,
+} from "../utils/viewState";
 
 const THEME_OPTIONS: Array<SelectOption<QueuedashTheme>> = [
   { label: "System", value: "system" },
   { label: "Light", value: "light" },
   { label: "Dark", value: "dark" },
-];
-
-const REFRESH_OPTIONS = [
-  { label: "Off", value: "off" },
-  { label: "1 second", value: "1000" },
-  { label: "2 seconds", value: "2000" },
-  { label: "5 seconds", value: "5000" },
-  { label: "10 seconds", value: "10000" },
-  { label: "30 seconds", value: "30000" },
-  { label: "1 minute", value: "60000" },
 ];
 
 const JOBS_PER_PAGE_OPTIONS = [20, 30, 50, 100].map((value) => ({
@@ -69,8 +63,25 @@ const JOB_STATUS_OPTIONS: Array<{
   { label: "Paused", value: "paused" },
 ];
 
-const formatRefreshInterval = (value: number | false): string =>
-  value === false ? "off" : `${value / 1_000}s`;
+const ACCESS_MODE_LABELS = {
+  full: "Full access",
+  hidden: "Hidden",
+  "read-only": "Read-only",
+} as const;
+
+const PRIVACY_EXPOSURE_LABELS = {
+  jobData: "Job data",
+  jobOptions: "Job options",
+  logs: "Logs",
+  returnValues: "Return values",
+  schedulerData: "Scheduler data",
+  stacktraces: "Stack traces",
+} as const;
+
+const getOptionLabel = (
+  options: ReadonlyArray<{ label: string; value: string }>,
+  value: string,
+) => options.find((option) => option.value === value)?.label ?? value;
 
 const SettingRow = ({
   description,
@@ -152,7 +163,10 @@ export const SettingsPage = () => {
           <div className="mt-2 rounded-xl border border-gray-100 px-4 dark:border-slate-800">
             <SettingRow
               label="Appearance"
-              description={`Server default: ${defaultPreferences.theme}`}
+              description={`Server default: ${getOptionLabel(
+                THEME_OPTIONS,
+                defaultPreferences.theme,
+              )}`}
             >
               <Select
                 ariaLabel="Appearance"
@@ -164,13 +178,16 @@ export const SettingsPage = () => {
 
             <SettingRow
               label="Auto-refresh"
-              description={`Server default: ${formatRefreshInterval(
+              description={`Server default: ${formatRefreshIntervalLabel(
                 defaultPreferences.refreshIntervalMs,
               )}`}
             >
               <Select
                 ariaLabel="Auto-refresh"
-                options={REFRESH_OPTIONS}
+                options={getRefreshIntervalOptions(
+                  preferences.refreshIntervalMs,
+                  defaultPreferences.refreshIntervalMs,
+                )}
                 value={
                   preferences.refreshIntervalMs === false
                     ? "off"
@@ -200,7 +217,10 @@ export const SettingsPage = () => {
 
             <SettingRow
               label="Default job tab"
-              description={`Server default: ${defaultPreferences.defaultJobStatus}`}
+              description={`Server default: ${getOptionLabel(
+                JOB_STATUS_OPTIONS,
+                defaultPreferences.defaultJobStatus,
+              )}`}
             >
               <Select
                 ariaLabel="Default job tab"
@@ -212,7 +232,10 @@ export const SettingsPage = () => {
 
             <SettingRow
               label="Table density"
-              description={`Server default: ${defaultPreferences.density}`}
+              description={`Server default: ${getOptionLabel(
+                DENSITY_OPTIONS,
+                defaultPreferences.density,
+              )}`}
             >
               <Select
                 ariaLabel="Table density"
@@ -224,7 +247,10 @@ export const SettingsPage = () => {
 
             <SettingRow
               label="Timestamps"
-              description={`Server default: ${defaultPreferences.timestamps}`}
+              description={`Server default: ${getOptionLabel(
+                TIMESTAMP_OPTIONS,
+                defaultPreferences.timestamps,
+              )}`}
             >
               <Select
                 ariaLabel="Timestamps"
@@ -286,7 +312,9 @@ export const SettingsPage = () => {
               >
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-slate-800 dark:text-slate-300">
                   <Shield className="size-3" />
-                  {server.data?.access.default ?? "Loading…"}
+                  {server.data
+                    ? ACCESS_MODE_LABELS[server.data.access.default]
+                    : "Loading…"}
                 </span>
               </SettingRow>
 
@@ -308,7 +336,7 @@ export const SettingsPage = () => {
                     {rule.queues.join(", ")}
                   </div>
                   <div className="mt-1 text-gray-500 dark:text-slate-500">
-                    {rule.mode ?? "inherit"}
+                    {rule.mode ? ACCESS_MODE_LABELS[rule.mode] : "Inherit"}
                     {rule.deny.length > 0
                       ? ` · denies ${rule.deny.join(", ")}`
                       : ""}
@@ -338,7 +366,11 @@ export const SettingsPage = () => {
                     ([category, exposed]) => (
                       <SettingRow
                         key={category}
-                        label={category.replaceAll(/([A-Z])/g, " $1")}
+                        label={
+                          PRIVACY_EXPOSURE_LABELS[
+                            category as keyof typeof PRIVACY_EXPOSURE_LABELS
+                          ] ?? category
+                        }
                         description="Server-controlled data exposure"
                       >
                         <BooleanState enabled={exposed} />
@@ -374,16 +406,20 @@ export const SettingsPage = () => {
                   className={`text-sm ${
                     !server.data
                       ? "text-gray-400 dark:text-slate-500"
-                      : server.data.discovery.healthy === false
-                        ? "text-red-600 dark:text-red-400"
-                        : "text-green-700 dark:text-green-400"
+                      : !server.data.discovery.enabled
+                        ? "text-gray-500 dark:text-slate-400"
+                        : server.data.discovery.healthy === false
+                          ? "text-red-600 dark:text-red-400"
+                          : "text-green-700 dark:text-green-400"
                   }`}
                 >
                   {!server.data
                     ? "Loading…"
-                    : server.data.discovery.healthy === false
-                      ? "Stale"
-                      : "Healthy"}
+                    : !server.data.discovery.enabled
+                      ? "Disabled"
+                      : server.data.discovery.healthy === false
+                        ? "Stale"
+                        : "Healthy"}
                 </span>
               </SettingRow>
 

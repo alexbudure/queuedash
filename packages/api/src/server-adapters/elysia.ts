@@ -1,6 +1,7 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Elysia } from "elysia";
 
+import { closeQueuedashContext } from "../queue-registry";
 import type { Context } from "../routers/_app";
 import { appRouter } from "../routers/_app";
 import {
@@ -47,6 +48,9 @@ export function queuedash({
   return new Elysia({
     name: "queuedash",
   })
+    .onStop(async () => {
+      await closeQueuedashContext(ctx);
+    })
     .get(`${baseUrl}/auth/session`, async ({ request }) => {
       if (
         authMode !== "session" ||
@@ -108,12 +112,39 @@ export function queuedash({
         return createQueuedashUnauthorizedResponse();
       }
 
-      return fetchRequestHandler({
+      const response = await fetchRequestHandler({
         endpoint: `${baseUrl}/trpc`,
         router: appRouter,
         req: request,
         createContext: () => ctx,
       });
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "private, no-store");
+      return new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
     })
-    .get(baseUrl, async ({ request }) => createHtmlResponse(request));
+    .get(baseUrl, async ({ request }) => createHtmlResponse(request))
+    .all(`${baseUrl}/*`, async ({ request }) => {
+      const pathname = new URL(request.url).pathname;
+      const isReservedPath = [`${baseUrl}/auth`, `${baseUrl}/trpc`].some(
+        (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+      );
+      if (
+        isReservedPath ||
+        (request.method !== "GET" && request.method !== "HEAD")
+      ) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      const response = createHtmlResponse(request);
+      return request.method === "HEAD"
+        ? new Response(null, {
+            status: response.status,
+            headers: response.headers,
+          })
+        : response;
+    });
 }

@@ -33,7 +33,7 @@ where the dashboard runs or which data and actions it exposes.
 - Server-provided defaults with instance-scoped browser preferences
 - Custom product name, logo, and accessible logo text
 - Express, Fastify, Hono, Elysia, Next.js, direct React, and Docker integrations
-- Scoped, specificity-hardened styles that do not leak into the host application
+- Scoped, specificity-hardened styles designed for embedded host applications
 
 ## Quick start
 
@@ -101,8 +101,9 @@ Queuedash detects adapter capabilities and hides unsupported controls.
 | GroupMQ   | Yes                  | No              | No      | No         | No     |
 
 BullMQ also provides the broadest metrics, logs, flow, priority, and scheduler
-support. GroupMQ exposes its native groups. Bee-Queue remains intentionally
-limited to operations supported safely by its API.
+support, and Queuedash requires BullMQ 5.60 or newer for safe scheduler editing.
+GroupMQ exposes its native groups. Bee-Queue remains intentionally limited to
+operations supported safely by its API.
 
 ## Configuration
 
@@ -263,6 +264,17 @@ and keeps a cached registry. It currently supports a single Redis URL for Bull
 or BullMQ. Use explicit static queues for Bee-Queue, GroupMQ, and Redis Cluster.
 Static and discovered queues can be combined.
 
+Create and reuse one server-side context per dashboard mount. Registry identity
+follows that context, keeping separate mounts and their access/privacy policies
+isolated while reusing discovery connections across requests.
+
+Fastify awaits cleanup of discovery-owned Redis connections during shutdown.
+Elysia starts cleanup from its stop hook, but deterministic Elysia shutdowns
+should await `closeQueuedashContext(ctx)` before `app.stop()`. Express, Hono,
+and custom tRPC integrations should also await the helper when their dashboard
+mount shuts down. Queuedash never closes static queue instances supplied by the
+host application.
+
 Programmatic configuration can also provide `include(queueName)` and
 `displayName(queueName)` functions.
 
@@ -331,6 +343,12 @@ Authentication environment variables:
 - `QUEUEDASH_AUTH_SESSION_SECRET` shares session signing across restarts and replicas.
 - `QUEUEDASH_AUTH_SESSION_TTL_SECONDS` sets a session lifetime from 60 seconds to 30 days.
 - `QUEUEDASH_AUTH_COOKIE_SECURE` explicitly selects `true` or `false` for the `Secure` cookie attribute.
+- `QUEUEDASH_TRUST_PROXY` accepts `true`, `false`, or a proxy-hop count from 1 to 10. Set it to `true` for a typical single reverse proxy so session cookies automatically detect forwarded HTTPS.
+
+When TLS terminates at a reverse proxy, either enable `QUEUEDASH_TRUST_PROXY`
+or set `QUEUEDASH_AUTH_COOKIE_SECURE=true`. Without one of those settings,
+Express sees the container connection as HTTP and cannot automatically add the
+`Secure` cookie attribute.
 
 ## Security
 

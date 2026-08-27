@@ -11,8 +11,15 @@ import { useEffect, useRef, useState } from "react";
 import { NUM_OF_RETRIES } from "../utils/config";
 import type { Queue, Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import {
+  getRowRangeSelection,
+  getSchedulerRowAriaLabel,
+  getSchedulerRowId,
+  getSchedulerSelectionAriaLabel,
+  getTableGridClassName,
+} from "../utils/viewState";
 import { Button } from "./Button";
-import { Checkbox } from "./Checkbox";
+import { Checkbox, ROW_SELECTION_CHECKBOX_CLASS_NAME } from "./Checkbox";
 import { ErrorCard } from "./ErrorCard";
 import { JobTableSkeleton } from "./JobTableSkeleton";
 import { useQueuedash } from "./QueuedashProvider";
@@ -24,21 +31,34 @@ import { Tooltip } from "./Tooltip";
 const columnHelper = createColumnHelper<Scheduler>();
 
 function getTimezoneAbbreviation(timeZone: string, date: Date = new Date()) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "short",
-  });
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "short",
+    });
 
-  const parts = formatter.formatToParts(date);
-  const tzPart = parts.find((part) => part.type === "timeZoneName");
-  return tzPart?.value || "";
+    const parts = formatter.formatToParts(date);
+    const tzPart = parts.find((part) => part.type === "timeZoneName");
+    return tzPart?.value || timeZone;
+  } catch {
+    return timeZone;
+  }
 }
 
-const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
+const describeCronPattern = (pattern: string): string => {
+  try {
+    return cronstrue.toString(pattern, { verbose: true });
+  } catch {
+    return pattern;
+  }
+};
+
+const createColumns = (onCheckboxClick: (schedulerKey: string) => void) => [
   columnHelper.display({
     id: "select",
     header: ({ table }) => (
       <Checkbox
+        aria-label="Select all schedulers"
         {...{
           checked: table.getIsSomeRowsSelected()
             ? "indeterminate"
@@ -51,10 +71,11 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
     ),
     cell: ({ row, table }) => (
       <Checkbox
+        aria-label={getSchedulerSelectionAriaLabel(row.original)}
         className={
           table.getIsSomeRowsSelected() || table.getIsAllRowsSelected()
             ? ""
-            : "opacity-0 transition group-hover:opacity-100"
+            : ROW_SELECTION_CHECKBOX_CLASS_NAME
         }
         {...{
           checked: row.getIsSomeSelected()
@@ -62,7 +83,7 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
             : row.getIsSelected(),
           onCheckedChange: (checked) => {
             row.getToggleSelectedHandler()(checked);
-            onCheckboxClick(row.index);
+            onCheckboxClick(row.original.key);
           },
         }}
       />
@@ -82,14 +103,17 @@ const createColumns = (onCheckboxClick: (rowIndex: number) => void) => [
     cell: (props) => {
       const scheduler = props.cell.row.original;
       const patternDescription = scheduler.pattern
-        ? cronstrue.toString(scheduler.pattern, {
-            verbose: true,
-          })
+        ? describeCronPattern(scheduler.pattern)
         : scheduler.every
           ? `Every ${scheduler.every}`
           : "";
       const patternLabel = `${patternDescription}${
-        scheduler.tz ? ` (${getTimezoneAbbreviation(scheduler.tz)})` : ""
+        scheduler.tz
+          ? ` (${getTimezoneAbbreviation(
+              scheduler.tz,
+              scheduler.next ? new Date(scheduler.next) : new Date(),
+            )})`
+          : ""
       }`;
 
       return (
@@ -148,7 +172,7 @@ export const SchedulerTable = ({
 }: SchedulerTableProps) => {
   const { preferences } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
-  const lastClickedIndexRef = useRef<number | null>(null);
+  const lastClickedSchedulerKeyRef = useRef<string | null>(null);
   const { data, isError, isLoading } = trpc.scheduler.list.useQuery(
     {
       queueName,
@@ -162,15 +186,18 @@ export const SchedulerTable = ({
 
   const isEmpty = data?.length === 0;
 
-  const handleCheckboxClick = (rowIndex: number) => {
-    lastClickedIndexRef.current = rowIndex;
+  const handleCheckboxClick = (schedulerKey: string) => {
+    lastClickedSchedulerKeyRef.current = schedulerKey;
   };
 
-  const columns = createColumns(handleCheckboxClick);
+  const schedulerColumns = createColumns(handleCheckboxClick);
+  const columns = canRemove ? schedulerColumns : schedulerColumns.slice(1);
 
   const table = useReactTable({
     data: data || [],
     columns,
+    enableRowSelection: canRemove,
+    getRowId: getSchedulerRowId,
     getCoreRowModel: getCoreRowModel(),
     state: {
       rowSelection,
@@ -185,8 +212,15 @@ export const SchedulerTable = ({
   useEffect(() => {
     setRowSelection({});
     setSelectedScheduler(null);
-    lastClickedIndexRef.current = null;
+    lastClickedSchedulerKeyRef.current = null;
   }, [queueName]);
+
+  useEffect(() => {
+    if (!canRemove) {
+      setRowSelection({});
+      lastClickedSchedulerKeyRef.current = null;
+    }
+  }, [canRemove]);
 
   useEffect(() => {
     if (
@@ -196,6 +230,15 @@ export const SchedulerTable = ({
     ) {
       setSelectedScheduler(null);
     }
+    if (
+      data &&
+      lastClickedSchedulerKeyRef.current &&
+      !data.some(
+        (scheduler) => scheduler.key === lastClickedSchedulerKeyRef.current,
+      )
+    ) {
+      lastClickedSchedulerKeyRef.current = null;
+    }
   }, [data, selectedScheduler]);
 
   const { mutate: bulkRemove } = trpc.scheduler.bulkRemove.useMutation();
@@ -204,22 +247,25 @@ export const SchedulerTable = ({
     e: React.MouseEvent<HTMLDivElement>,
     rowIndex: number,
   ) => {
-    if (e.shiftKey && lastClickedIndexRef.current !== null) {
+    const rows = table.getRowModel().rows;
+    const anchorIndex = rows.findIndex(
+      (row) => row.original.key === lastClickedSchedulerKeyRef.current,
+    );
+    if (canRemove && e.shiftKey && anchorIndex >= 0) {
       // Shift-click: select range
       e.preventDefault();
-      const start = Math.min(lastClickedIndexRef.current, rowIndex);
-      const end = Math.max(lastClickedIndexRef.current, rowIndex);
-      const newSelection: Record<string, boolean> = { ...rowSelection };
-
-      for (let i = start; i <= end; i++) {
-        newSelection[i] = true;
-      }
+      const start = Math.min(anchorIndex, rowIndex);
+      const end = Math.max(anchorIndex, rowIndex);
+      const newSelection: Record<string, boolean> = {
+        ...rowSelection,
+        ...getRowRangeSelection(table.getRowModel().rows, start, end),
+      };
 
       setRowSelection(newSelection);
     } else {
       // Regular click: open modal
-      setSelectedScheduler(table.getRowModel().rows[rowIndex].original);
-      lastClickedIndexRef.current = rowIndex;
+      setSelectedScheduler(rows[rowIndex].original);
+      lastClickedSchedulerKeyRef.current = rows[rowIndex].original.key;
     }
   };
 
@@ -235,6 +281,7 @@ export const SchedulerTable = ({
           canUpdate={
             queue.supports.schedulerUpdate &&
             queue.access.actions["scheduler.update"] &&
+            selectedScheduler.id === undefined &&
             selectedScheduler.template?.data !== undefined
           }
           scheduler={selectedScheduler}
@@ -244,12 +291,16 @@ export const SchedulerTable = ({
       ) : null}
       <div className="overflow-hidden rounded-xl border border-gray-100/60 dark:border-slate-800/60">
         {isLoading ? (
-          <JobTableSkeleton rows={Math.min(preferences.jobsPerPage, 10)} />
+          <JobTableSkeleton
+            layoutVariant="scheduler"
+            rows={Math.min(preferences.jobsPerPage, 10)}
+            selectable={canRemove}
+          />
         ) : (
           <div>
             {table.getHeaderGroups().map((headerGroup) => (
               <div
-                className={`sticky top-0 z-10 grid grid-cols-[36px_minmax(0,30%)_1fr_1fr] border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
+                className={`sticky top-0 z-10 grid ${getTableGridClassName("scheduler", canRemove)} border-b border-gray-100/60 bg-gray-50/80 px-2 backdrop-blur dark:border-slate-800/60 dark:bg-slate-900/80 ${
                   preferences.density === "compact" ? "py-1" : "py-2"
                 }`}
                 key={headerGroup.id}
@@ -271,12 +322,14 @@ export const SchedulerTable = ({
             ))}
             {table.getRowModel().rows.map((row, rowIndex) => (
               <TableRow
+                ariaLabel={getSchedulerRowAriaLabel(row.original)}
                 isLastRow={table.getRowModel().rows.length !== rowIndex + 1}
                 key={row.id}
-                isSelected={row.getIsSelected()}
+                isSelected={canRemove && row.getIsSelected()}
                 onClick={(e) => handleRowClick(e, rowIndex)}
                 onKeyboardActivate={() => setSelectedScheduler(row.original)}
                 layoutVariant="scheduler"
+                selectable={canRemove}
               >
                 {row.getVisibleCells().map((cell) => (
                   <div

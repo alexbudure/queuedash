@@ -1,5 +1,10 @@
 import { TRPCError } from "@trpc/server";
 
+import {
+  privacyRedactsGroupIdentity,
+  privacyRedactsJobIdentity,
+  privacyRedactsPath,
+} from "./presentation";
 import type {
   InternalContext,
   QueuedashAccessConfig,
@@ -43,6 +48,7 @@ const matchesQueuePattern = (queueName: string, pattern: string): boolean => {
 export const resolveQueueAccess = (
   queueName: string,
   access?: QueuedashAccessConfig,
+  privacy?: InternalContext["privacy"],
 ): ResolvedQueueAccess => {
   let mode: QueuedashAccessMode = access?.default ?? "full";
   const denied = new Set<QueuedashAction>();
@@ -56,6 +62,25 @@ export const resolveQueueAccess = (
 
     if (rule.mode) mode = rule.mode;
     for (const action of rule.deny ?? []) denied.add(action);
+  }
+
+  if (
+    privacyRedactsJobIdentity(privacy) ||
+    privacyRedactsGroupIdentity(privacy)
+  ) {
+    for (const action of [
+      "job.retry",
+      "job.promote",
+      "job.discard",
+      "job.rerun",
+      "job.remove",
+    ] as const) {
+      denied.add(action);
+    }
+  }
+  if (privacyRedactsPath(privacy, ["key"])) {
+    denied.add("scheduler.update");
+    denied.add("scheduler.remove");
   }
 
   const actions = Object.fromEntries(
@@ -84,7 +109,7 @@ export const assertQueueActionAllowed = (
     });
   }
 
-  const access = resolveQueueAccess(queueName, ctx.access);
+  const access = resolveQueueAccess(queueName, ctx.access, ctx.privacy);
   if (access.actions[action]) return;
 
   throw new TRPCError({

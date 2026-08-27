@@ -89,6 +89,7 @@ export function createQueuedashExpressMiddleware({
     }
 
     if (req.path.startsWith("/trpc")) {
+      res.set("Cache-Control", "private, no-store");
       if (
         authMode === "session" &&
         !isQueuedashSessionAuthorized(req.headers.cookie, auth)

@@ -17,6 +17,7 @@ import {
 import { NavLink } from "react-router";
 
 import { trpc } from "../utils/trpc";
+import { getQueuePath } from "../utils/viewState";
 import { ErrorCard } from "./ErrorCard";
 import { useQueuedashAuth } from "./QueuedashAuthProvider";
 import { useQueuedash } from "./QueuedashProvider";
@@ -58,6 +59,7 @@ type QueueNavLinkProps = {
   isReadOnly: boolean;
   onTogglePinned: () => void;
   onClick?: () => void;
+  alwaysShowPin?: boolean;
 };
 const QueueNavLink = ({
   to,
@@ -66,6 +68,7 @@ const QueueNavLink = ({
   isReadOnly,
   onTogglePinned,
   onClick,
+  alwaysShowPin = false,
 }: QueueNavLinkProps) => {
   return (
     <div className="group/queue flex items-center gap-1">
@@ -99,7 +102,9 @@ const QueueNavLink = ({
           "flex size-6 shrink-0 items-center justify-center rounded text-gray-300 transition hover:text-amber-500 dark:text-slate-700 dark:hover:text-amber-400",
           isPinned
             ? "text-amber-500 opacity-100 dark:text-amber-400"
-            : "opacity-0 group-hover/queue:opacity-100 focus:opacity-100",
+            : alwaysShowPin
+              ? "opacity-100"
+              : "opacity-0 group-hover/queue:opacity-100 focus:opacity-100",
         )}
       >
         <Star className="size-3" fill={isPinned ? "currentColor" : "none"} />
@@ -171,7 +176,10 @@ const SidebarContent = ({
           ) : null}
         </div>
 
-        {!isLoading && !isError && data && data.length > 5 ? (
+        {!isLoading &&
+        !isError &&
+        data &&
+        (data.length > 5 || queueFilter.length > 0) ? (
           <label className="relative mb-2 block">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
             <input
@@ -196,12 +204,13 @@ const SidebarContent = ({
               return (
                 <QueueNavLink
                   key={queue.name}
-                  to={`../${encodeURIComponent(queue.name)}`}
+                  to={getQueuePath(queue.name)}
                   label={queue.displayName}
                   isPinned={preferences.pinnedQueues.includes(queue.name)}
                   isReadOnly={queue.access.mode === "read-only"}
                   onTogglePinned={() => togglePinnedQueue(queue.name)}
                   onClick={onNavClick}
+                  alwaysShowPin={!showHeader}
                 />
               );
             })

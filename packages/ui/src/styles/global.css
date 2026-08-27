@@ -2,7 +2,8 @@
 
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark
+  (&:where([data-queuedash-root].dark, [data-queuedash-root].dark *));
 
 @theme {
   --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
@@ -181,7 +182,7 @@
   backdrop-filter: blur(2px);
 }
 
-.dark .side-panel-overlay {
+[data-queuedash-root].dark .side-panel-overlay {
   background: rgb(0 0 0 / 42%);
 }
 

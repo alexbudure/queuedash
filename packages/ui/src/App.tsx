@@ -59,6 +59,7 @@ const QueuedashApplication = ({
           fetch: async (input, init) => {
             const response = await fetch(input, {
               ...init,
+              cache: "no-store",
               credentials: "same-origin",
             });
             if (response.status === 401) onUnauthorized?.();
@@ -77,6 +78,8 @@ const QueuedashApplication = ({
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/queues/:id" element={<QueuePage />} />
+            {/* Keep non-reserved v3 queue bookmarks working. */}
             <Route path="/:id" element={<QueuePage />} />
           </Routes>
         </BrowserRouter>

@@ -1,15 +1,94 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import type { RedisInfo } from "redis-info";
 import { z } from "zod";
 
 import { assertQueueActionAllowed, resolveQueueAccess } from "../access";
-import { presentErrorMessage } from "../presentation";
+import {
+  presentErrorMessage,
+  privacyRedactsGroupIdentity,
+  privacyRedactsJobIdentity,
+  privacyRedactsPath,
+  redactValue,
+  resolvePrivacyExposure,
+} from "../presentation";
 import {
   schedulerOptionsSchema,
   schedulerTemplateSchema,
 } from "../scheduler.schemas";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
+
+const SAFE_ADD_JOB_OPTION_KEYS: Record<
+  "bee" | "bull" | "bullmq" | "groupmq",
+  ReadonlySet<string>
+> = {
+  bee: new Set(),
+  bull: new Set([
+    "attempts",
+    "backoff",
+    "delay",
+    "lifo",
+    "priority",
+    "removeOnComplete",
+    "removeOnFail",
+    "timeout",
+  ]),
+  bullmq: new Set([
+    "attempts",
+    "backoff",
+    "delay",
+    "keepLogs",
+    "lifo",
+    "priority",
+    "removeOnComplete",
+    "removeOnFail",
+    "sizeLimit",
+    "stackTraceLimit",
+  ]),
+  groupmq: new Set([
+    "delay",
+    "groupId",
+    "jobId",
+    "maxAttempts",
+    "orderMs",
+    "runAt",
+  ]),
+};
+
+const MAX_GROUPMQ_GROUP_ID_LENGTH = 256;
+const UNSAFE_GROUPMQ_GROUP_ID_CHARACTERS = /[:\p{Cc}]/u;
+
+const assertSafeAddJobOptions = (
+  queueType: keyof typeof SAFE_ADD_JOB_OPTION_KEYS,
+  opts?: Record<string, unknown>,
+): void => {
+  if (!opts) return;
+  const allowed = SAFE_ADD_JOB_OPTION_KEYS[queueType];
+  const unsupported = Object.keys(opts).filter((key) => !allowed.has(key));
+  if (unsupported.length > 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `${queueType} does not support these manual job options: ${unsupported.sort().join(", ")}`,
+    });
+  }
+
+  const groupId = opts.groupId;
+  if (queueType !== "groupmq" || groupId === undefined) return;
+  if (
+    typeof groupId !== "string" ||
+    groupId.length === 0 ||
+    groupId.length > MAX_GROUPMQ_GROUP_ID_LENGTH ||
+    UNSAFE_GROUPMQ_GROUP_ID_CHARACTERS.test(groupId)
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "GroupMQ groupId must be a non-empty string of at most 256 characters without colons or control characters",
+    });
+  }
+};
 
 export const queueRouter = router({
   clean: procedure
@@ -68,6 +147,13 @@ export const queueRouter = router({
         queueName,
       });
 
+      if (!queueInCtx.adapter.supports.empty) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support emptying queues`,
+        });
+      }
+
       try {
         await queueInCtx.adapter.empty();
       } catch (e) {
@@ -125,26 +211,27 @@ export const queueRouter = router({
     }),
   pauseAll: procedure.mutation(async ({ ctx }) => {
     const internalCtx = await transformContext(ctx);
-    const queues = internalCtx.queues.filter(
+    const authorizedQueues = internalCtx.queues.filter(
       ({ adapter }) =>
-        resolveQueueAccess(adapter.getName(), internalCtx.access).actions[
-          "queue.pause"
-        ],
+        resolveQueueAccess(
+          adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ).actions["queue.pause"],
+    );
+    const queues = authorizedQueues.filter(({ adapter }) =>
+      Boolean(adapter.supports.pause),
     );
     if (queues.length === 0) {
       throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "No queues allow pausing",
+        code: authorizedQueues.length === 0 ? "FORBIDDEN" : "BAD_REQUEST",
+        message:
+          authorizedQueues.length === 0
+            ? "No queues allow pausing"
+            : "No queues support pausing",
       });
     }
-    await Promise.all(
-      queues.map((q) => {
-        if (q.adapter.supports.pause) {
-          return q.adapter.pause();
-        }
-        return null;
-      }),
-    );
+    await Promise.all(queues.map((q) => q.adapter.pause()));
     return "ok";
   }),
   resume: procedure
@@ -187,26 +274,27 @@ export const queueRouter = router({
     }),
   resumeAll: procedure.mutation(async ({ ctx }) => {
     const internalCtx = await transformContext(ctx);
-    const queues = internalCtx.queues.filter(
+    const authorizedQueues = internalCtx.queues.filter(
       ({ adapter }) =>
-        resolveQueueAccess(adapter.getName(), internalCtx.access).actions[
-          "queue.resume"
-        ],
+        resolveQueueAccess(
+          adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ).actions["queue.resume"],
+    );
+    const queues = authorizedQueues.filter(({ adapter }) =>
+      Boolean(adapter.supports.resume),
     );
     if (queues.length === 0) {
       throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "No queues allow resuming",
+        code: authorizedQueues.length === 0 ? "FORBIDDEN" : "BAD_REQUEST",
+        message:
+          authorizedQueues.length === 0
+            ? "No queues allow resuming"
+            : "No queues support resuming",
       });
     }
-    await Promise.all(
-      queues.map((q) => {
-        if (q.adapter.supports.resume) {
-          return q.adapter.resume();
-        }
-        return null;
-      }),
-    );
+    await Promise.all(queues.map((q) => q.adapter.resume()));
     return "ok";
   }),
   addJob: procedure
@@ -235,6 +323,7 @@ export const queueRouter = router({
           message: `${queueInCtx.adapter.getType()} does not support job options`,
         });
       }
+      assertSafeAddJobOptions(queueInCtx.adapter.getType(), opts);
 
       try {
         await queueInCtx.adapter.addJob(data, opts);
@@ -281,7 +370,7 @@ export const queueRouter = router({
 
       try {
         await queueInCtx.adapter.addScheduler(
-          `scheduler-${Date.now()}`,
+          `scheduler-${randomUUID()}`,
           opts,
           template,
         );
@@ -327,8 +416,24 @@ export const queueRouter = router({
           name: queueInCtx.adapter.getName(),
           paused: isPaused,
           type: queueInCtx.adapter.getType(),
-          supports: queueInCtx.adapter.supports,
-          access: resolveQueueAccess(queueName, internalCtx.access),
+          supports: {
+            ...queueInCtx.adapter.supports,
+            groups:
+              queueInCtx.adapter.supports.groups &&
+              !privacyRedactsGroupIdentity(internalCtx.privacy),
+            logs:
+              queueInCtx.adapter.supports.logs &&
+              !privacyRedactsJobIdentity(internalCtx.privacy),
+            schedulerUpdate:
+              queueInCtx.adapter.supports.schedulerUpdate &&
+              resolvePrivacyExposure(internalCtx.privacy).schedulerData &&
+              !internalCtx.privacy?.redact,
+          },
+          access: resolveQueueAccess(
+            queueName,
+            internalCtx.access,
+            internalCtx.privacy,
+          ),
           counts: {
             active: counts.active || 0,
             completed: counts.completed || 0,
@@ -364,7 +469,15 @@ export const queueRouter = router({
       return {
         displayName: q.adapter.getDisplayName(),
         name: q.adapter.getName(),
-        access: resolveQueueAccess(q.adapter.getName(), internalCtx.access),
+        supports: {
+          pause: q.adapter.supports.pause,
+          resume: q.adapter.supports.resume,
+        },
+        access: resolveQueueAccess(
+          q.adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ),
       };
     });
   }),
@@ -423,9 +536,19 @@ export const queueRouter = router({
       if (!queueInCtx.adapter.supports.groups) {
         return [];
       }
+      if (privacyRedactsGroupIdentity(internalCtx.privacy)) return [];
 
       try {
-        return await queueInCtx.adapter.getGroups();
+        const groups = await queueInCtx.adapter.getGroups();
+        const redacted = redactValue(groups, internalCtx.privacy) as Awaited<
+          ReturnType<typeof queueInCtx.adapter.getGroups>
+        >;
+        return redacted.map((group, index) => ({
+          ...group,
+          id: privacyRedactsPath(internalCtx.privacy, [String(index), "id"])
+            ? group.id
+            : (groups[index]?.id ?? group.id),
+        }));
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -451,7 +574,16 @@ export const queueRouter = router({
       }
 
       try {
-        return await queueInCtx.adapter.getWorkers();
+        const workers = await queueInCtx.adapter.getWorkers();
+        const redacted = redactValue(workers, internalCtx.privacy) as Awaited<
+          ReturnType<typeof queueInCtx.adapter.getWorkers>
+        >;
+        return redacted.map((worker, index) => ({
+          ...worker,
+          id: privacyRedactsPath(internalCtx.privacy, [String(index), "id"])
+            ? worker.id
+            : (workers[index]?.id ?? worker.id),
+        }));
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",

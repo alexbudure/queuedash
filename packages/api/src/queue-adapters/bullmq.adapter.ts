@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from "node:crypto";
+
 import type { Queue as BullMQQueue, Job as BullMQJob } from "bullmq";
 import { parse } from "redis-info";
 
@@ -7,7 +9,9 @@ import {
   type JobCounts,
   type FeatureSupport,
   type GroupInfo,
+  type JobPageMeta,
   type SchedulerInfo,
+  UnsupportedSchedulerUpdateError,
   type WorkerInfo,
 } from "./base.adapter";
 
@@ -29,11 +33,32 @@ type BullMQProQueueLike = {
   getGroupJobCount?: (groupId: string) => Promise<number>;
 };
 
+const SCHEDULER_LOCK_TTL_MS = 30_000;
+const SCHEDULER_LOCK_RENEW_MS = Math.floor(SCHEDULER_LOCK_TTL_MS / 3);
+const SCHEDULER_LOCK_WAIT_MS = 5_000;
+const SCHEDULER_LOCK_RETRY_MS = 25;
+const RELEASE_SCHEDULER_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`;
+const EXTEND_SCHEDULER_LOCK_SCRIPT = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("PEXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+`;
+
+const isLegacyRepeatable = (scheduler: SchedulerInfo): boolean =>
+  Object.prototype.hasOwnProperty.call(scheduler, "id");
+
 export class BullMQAdapter extends QueueAdapter<
   BullMQStatus,
   BullMQCleanableStatus
 > {
   private queue: BullMQQueue;
+  private pageMeta = new WeakMap<AdaptedJob[], JobPageMeta>();
 
   supports: FeatureSupport<BullMQStatus> = {
     addJobOptions: true,
@@ -50,6 +75,7 @@ export class BullMQAdapter extends QueueAdapter<
         "prioritized",
       ],
     },
+    discard: false,
     retry: true,
     promote: true,
     logs: true,
@@ -118,7 +144,7 @@ export class BullMQAdapter extends QueueAdapter<
   }
 
   async empty(): Promise<void> {
-    await this.queue.drain();
+    await this.queue.drain(true);
   }
 
   async clean(status: BullMQCleanableStatus, graceMs: number): Promise<void> {
@@ -140,7 +166,22 @@ export class BullMQAdapter extends QueueAdapter<
     end: number,
   ): Promise<AdaptedJob[]> {
     const jobs = await this.queue.getJobs([status], start, end);
-    return jobs.map((job) => this.adaptJob(job));
+    const adapted = jobs
+      .filter((job): job is BullMQJob => job != null)
+      .map((job) => this.adaptJob(job));
+    const requested = end - start + 1;
+    this.pageMeta.set(adapted, {
+      capped: false,
+      cursorAdvance: requested,
+      exhausted: jobs.length < requested,
+      scanned: start + jobs.length,
+      scanLimit: Math.max(end + 1, 1),
+    });
+    return adapted;
+  }
+
+  getJobPageMeta(jobs: AdaptedJob[]): JobPageMeta | undefined {
+    return this.pageMeta.get(jobs);
   }
 
   async getJob(jobId: string): Promise<AdaptedJob | null> {
@@ -185,9 +226,8 @@ export class BullMQAdapter extends QueueAdapter<
   }
 
   async discardJob(jobId: string): Promise<void> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) throw new Error("Job not found");
-    await job.discard();
+    void jobId;
+    throw new Error("BullMQ does not support persistent job discarding");
   }
 
   async getJobLogs(jobId: string): Promise<string[] | null> {
@@ -197,19 +237,25 @@ export class BullMQAdapter extends QueueAdapter<
 
   async getWorkers(): Promise<WorkerInfo[]> {
     const workers = (await this.queue.getWorkers()) as Record<string, string>[];
-    return workers.map((worker, index) => {
-      const rawName = worker.rawname;
-      const configuredName = rawName?.includes(":w:")
-        ? rawName.slice(rawName.indexOf(":w:") + 3)
-        : undefined;
+    return workers
+      .filter(
+        (worker) =>
+          worker.name !== "GCP does not support client list" &&
+          Boolean(worker.id || worker.rawname),
+      )
+      .map((worker, index) => {
+        const rawName = worker.rawname;
+        const configuredName = rawName?.includes(":w:")
+          ? rawName.slice(rawName.indexOf(":w:") + 3)
+          : undefined;
 
-      return {
-        id: worker.id || `worker-${index + 1}`,
-        name: configuredName || undefined,
-        ageSeconds: toNumber(worker.age),
-        idleSeconds: toNumber(worker.idle),
-      };
-    });
+        return {
+          id: worker.id || `worker-${index + 1}`,
+          name: configuredName || undefined,
+          ageSeconds: toNumber(worker.age),
+          idleSeconds: toNumber(worker.idle),
+        };
+      });
   }
 
   async getSchedulers(): Promise<SchedulerInfo[]> {
@@ -243,12 +289,34 @@ export class BullMQAdapter extends QueueAdapter<
     key: string,
     opts: Record<string, unknown>,
     template: Record<string, unknown>,
-  ): Promise<void> {
-    await this.queue.upsertJobScheduler(key, opts, template);
+  ): Promise<boolean> {
+    return this.withSchedulerMutationLock(key, async () => {
+      const scheduler = (await this.queue.getJobSchedulers()).find(
+        (candidate) => candidate.key === key,
+      );
+      if (!scheduler) return false;
+      if (isLegacyRepeatable(scheduler)) {
+        throw new UnsupportedSchedulerUpdateError(
+          "Legacy BullMQ repeatable jobs cannot be updated; remove and recreate this schedule instead",
+        );
+      }
+
+      await this.queue.upsertJobScheduler(key, opts, template);
+      return true;
+    });
   }
 
   async removeScheduler(key: string): Promise<void> {
-    await this.queue.removeJobScheduler(key);
+    await this.withSchedulerMutationLock(key, async () => {
+      const scheduler = (await this.queue.getJobSchedulers()).find(
+        (candidate) => candidate.key === key,
+      );
+      if (scheduler && isLegacyRepeatable(scheduler)) {
+        await this.queue.removeRepeatableByKey(key);
+        return;
+      }
+      await this.queue.removeJobScheduler(key);
+    });
   }
 
   async getMetrics(type: "completed" | "failed", start: number, end: number) {
@@ -277,42 +345,44 @@ export class BullMQAdapter extends QueueAdapter<
       return [];
     }
 
-    const groups = await queueWithGroups.getGroups(0, 1000);
+    const groups = await queueWithGroups.getGroups(0, 999);
     const getGroupCount =
       queueWithGroups.getGroupJobsCount || queueWithGroups.getGroupJobCount;
 
-    const groupIds = groups
-      .map((group) => {
-        if (typeof group === "string") {
-          return group;
-        }
-        if (
-          group &&
-          typeof group === "object" &&
-          "id" in group &&
-          typeof (group as { id?: unknown }).id === "string"
-        ) {
-          return (group as { id: string }).id;
-        }
-        return null;
-      })
-      .filter((id): id is string => Boolean(id));
-
-    const uniqueGroupIds = Array.from(new Set(groupIds));
+    const normalizedGroups = new Map<string, GroupInfo["status"]>();
+    for (const group of groups) {
+      if (typeof group === "string") {
+        normalizedGroups.set(group, "active");
+        continue;
+      }
+      if (!group || typeof group !== "object" || !("id" in group)) continue;
+      const { id, status } = group as { id?: unknown; status?: unknown };
+      if (typeof id !== "string" || !id) continue;
+      normalizedGroups.set(
+        id,
+        status === "paused"
+          ? "paused"
+          : status === "limited" ||
+              status === "maxed" ||
+              status === "rate-limited"
+            ? "rate-limited"
+            : "active",
+      );
+    }
 
     if (!getGroupCount) {
-      return uniqueGroupIds.map((id) => ({
+      return Array.from(normalizedGroups, ([id, status]) => ({
         id,
         count: 0,
-        status: "active",
+        status,
       }));
     }
 
     return Promise.all(
-      uniqueGroupIds.map(async (id) => ({
+      Array.from(normalizedGroups, async ([id, status]) => ({
         id,
         count: await getGroupCount.call(queueWithGroups, id),
-        status: "active" as const,
+        status,
       })),
     );
   }
@@ -353,9 +423,91 @@ export class BullMQAdapter extends QueueAdapter<
         typeof queueWithGroups.getGroupJobCount === "function")
     );
   }
+
+  private async withSchedulerMutationLock<T>(
+    schedulerKey: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const client = await this.queue.client;
+    const schedulerKeyHash = createHash("sha256")
+      .update(schedulerKey)
+      .digest("hex");
+    const lockKey = this.queue.toKey(
+      `queuedash:scheduler-lock:${schedulerKeyHash}`,
+    );
+    const token = randomUUID();
+    const deadline = Date.now() + SCHEDULER_LOCK_WAIT_MS;
+
+    while (
+      (await client.set(lockKey, token, "PX", SCHEDULER_LOCK_TTL_MS, "NX")) !==
+      "OK"
+    ) {
+      if (Date.now() >= deadline) {
+        throw new Error("Timed out waiting to update the job scheduler");
+      }
+      await delay(SCHEDULER_LOCK_RETRY_MS);
+    }
+
+    let renewalError: unknown;
+    let renewalChain = Promise.resolve();
+    const renewalTimer = setInterval(() => {
+      renewalChain = renewalChain.then(async () => {
+        if (renewalError) return;
+        try {
+          const renewed = await client.eval(
+            EXTEND_SCHEDULER_LOCK_SCRIPT,
+            1,
+            lockKey,
+            token,
+            SCHEDULER_LOCK_TTL_MS,
+          );
+          if (renewed !== 1) {
+            throw new Error("Lost the job scheduler mutation lock");
+          }
+        } catch (error) {
+          renewalError = error;
+        }
+      });
+    }, SCHEDULER_LOCK_RENEW_MS);
+    renewalTimer.unref?.();
+
+    let result: T | undefined;
+    let operationError: unknown;
+    try {
+      result = await operation();
+    } catch (error) {
+      operationError = error;
+    }
+
+    clearInterval(renewalTimer);
+    await renewalChain;
+
+    let releaseError: unknown;
+    try {
+      const released = await client.eval(
+        RELEASE_SCHEDULER_LOCK_SCRIPT,
+        1,
+        lockKey,
+        token,
+      );
+      if (released !== 1) {
+        releaseError = new Error("Lost the job scheduler mutation lock");
+      }
+    } catch (error) {
+      releaseError = error;
+    }
+
+    if (operationError) throw operationError;
+    if (renewalError) throw renewalError;
+    if (releaseError) throw releaseError;
+    return result as T;
+  }
 }
 
 const toNumber = (value: string | undefined): number | undefined => {
   const number = value === undefined ? Number.NaN : Number(value);
   return Number.isFinite(number) ? number : undefined;
 };
+
+const delay = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
