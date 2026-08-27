@@ -36,21 +36,35 @@ export type AdaptedJob = {
 
 export type JobCounts = Partial<Record<string, number>>;
 
+export type JobPageMeta = {
+  capped: boolean;
+  cursorAdvance?: number;
+  exhausted?: boolean;
+  scanned: number;
+  scanLimit: number;
+};
+
+export type JobScanToken = symbol;
+
 // Per-operation feature support with details
 export type FeatureSupport<SupportedStatus extends string = string> = {
+  addJobOptions: boolean;
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
+  discard: boolean;
   retry: boolean;
   promote: boolean;
   logs: boolean;
   schedulers: boolean;
+  schedulerUpdate: boolean;
   flows: boolean;
   priorities: boolean;
   empty: boolean; // Whether queue can be completely emptied
   metrics: boolean; // Whether queue supports time-based metrics (completed/failed counts)
   statuses: SupportedStatus[]; // Which statuses this queue actually supports
   groups: boolean; // Whether queue supports job groups (GroupMQ, BullMQ Pro)
+  workers: boolean; // Whether active queue workers can be inspected
 };
 
 export type SchedulerInfo = {
@@ -59,15 +73,26 @@ export type SchedulerInfo = {
   id?: string | null;
   iterationCount?: number;
   limit?: number;
+  startDate?: number;
   endDate?: number;
   tz?: string;
   pattern?: string;
   every?: number;
   next?: number;
+  offset?: number;
   template?: {
+    name?: string;
     data?: Record<string, unknown>;
+    opts?: Record<string, unknown>;
   };
 };
+
+export class UnsupportedSchedulerUpdateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnsupportedSchedulerUpdateError";
+  }
+}
 
 export type QueueMetrics = {
   data: number[]; // Array of job counts per minute
@@ -83,6 +108,13 @@ export type GroupInfo = {
   id: string;
   count: number;
   status: "active" | "paused" | "rate-limited";
+};
+
+export type WorkerInfo = {
+  id: string;
+  name?: string;
+  ageSeconds?: number;
+  idleSeconds?: number;
 };
 
 export abstract class QueueAdapter<
@@ -125,8 +157,26 @@ export abstract class QueueAdapter<
     status: SupportedStatus,
     start: number,
     end: number,
+    scanLimit?: number,
+    scanToken?: JobScanToken,
   ): Promise<AdaptedJob[]>;
+  beginJobScan(
+    _status: SupportedStatus,
+    _scanLimit?: number,
+  ): JobScanToken | undefined {
+    return undefined;
+  }
+  endJobScan(_scanToken: JobScanToken): void {
+    // Stateful adapters can eagerly release per-request snapshots here.
+  }
+  getJobPageMeta(_jobs: AdaptedJob[]): JobPageMeta | undefined {
+    return undefined;
+  }
   abstract getJob(jobId: string): Promise<AdaptedJob | null>;
+  async getJobStatus(jobId: string): Promise<SupportedStatus | null> {
+    void jobId;
+    return null;
+  }
   abstract addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
@@ -144,6 +194,11 @@ export abstract class QueueAdapter<
     opts: Record<string, unknown>,
     template: Record<string, unknown>,
   ): Promise<void>;
+  updateScheduler?(
+    key: string,
+    opts: Record<string, unknown>,
+    template: Record<string, unknown>,
+  ): Promise<boolean>;
   removeScheduler?(key: string): Promise<void>;
 
   // Metrics operations (optional - only for queues that support it)
@@ -156,6 +211,11 @@ export abstract class QueueAdapter<
   // Group operations (optional - only for queues that support it)
   async getGroups(): Promise<GroupInfo[]> {
     return []; // Default: no groups
+  }
+
+  // Worker inspection (optional - normalized to avoid returning raw Redis data)
+  async getWorkers(): Promise<WorkerInfo[]> {
+    return [];
   }
 
   // Helper methods

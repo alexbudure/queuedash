@@ -24,24 +24,19 @@ export function detectQueueType(
     return "groupmq";
   }
 
-  // BullMQ: has queue.getWorkers method
-  if ("getWorkers" in queue) {
-    return "bullmq";
-  }
-
   // Bee-Queue: has queue.settings.redis and queue.checkHealth
   if ("settings" in queue && "checkHealth" in queue) {
     return "bee";
   }
 
-  // Bull: has queue.client and queue.add and queue.process but not getWorkers
-  if (
-    "client" in queue &&
-    "add" in queue &&
-    "process" in queue &&
-    !("getWorkers" in queue)
-  ) {
+  // Bull exposes process() on Queue; BullMQ intentionally does not.
+  if ("client" in queue && "add" in queue && "process" in queue) {
     return "bull";
+  }
+
+  // BullMQ Queue exposes worker inspection but no process() method.
+  if ("getWorkers" in queue) {
+    return "bullmq";
   }
 
   throw new Error(

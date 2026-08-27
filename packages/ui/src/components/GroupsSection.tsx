@@ -1,38 +1,53 @@
 import { clsx } from "clsx";
 import { Search, X, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
-import { REFETCH_INTERVAL } from "../utils/config";
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
+import { useQueuedash } from "./QueuedashProvider";
 import { Skeleton } from "./Skeleton";
 
 type GroupsSectionProps = {
+  canRemoveJobs: boolean;
   queueName: string;
   selectedGroupId: string | null;
   onSelectGroup: (groupId: string | null) => void;
 };
 
 export const GroupsSection = ({
+  canRemoveJobs,
   queueName,
   selectedGroupId,
   onSelectGroup,
 }: GroupsSectionProps) => {
+  const { preferences } = useQueuedash();
   const { data: groups, isLoading } = trpc.queue.groups.useQuery(
     { queueName },
     {
       enabled: !!queueName,
-      refetchInterval: REFETCH_INTERVAL,
+      refetchInterval: preferences.refreshIntervalMs,
     },
   );
 
   const { mutate: bulkRemove, isPending: isDeleting } =
-    trpc.job.bulkRemoveByGroup.useMutation();
+    trpc.job.bulkRemoveByGroup.useMutation({
+      onSuccess(data) {
+        toast.success(
+          `Removed ${data.succeeded} job${data.succeeded !== 1 ? "s" : ""}${
+            data.failed > 0 ? `, ${data.failed} failed` : ""
+          }${data.partial ? "; more jobs may remain in this group" : ""}`,
+        );
+      },
+      onError(error) {
+        toast.error(error.message || "Failed to remove jobs from the group");
+      },
+    });
 
   if (isLoading && !selectedGroupId) {
     return (
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+        <h2 className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
           Groups
         </h2>
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
@@ -53,7 +68,7 @@ export const GroupsSection = ({
 
   return (
     <div className="space-y-3">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+      <h2 className="text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
         Groups
       </h2>
 
@@ -73,15 +88,16 @@ export const GroupsSection = ({
             ) : null}
           </div>
           <div className="flex items-center gap-1.5">
-            {selectedGroupId ? (
+            {selectedGroupId && canRemoveJobs ? (
               <Alert
-                title="Delete all jobs in this group?"
-                description={`This action cannot be undone. This will permanently remove all jobs from group "${selectedGroupId}".`}
+                isPending={isDeleting}
+                title="Delete eligible jobs in this group?"
+                description={`This action cannot be undone. It will permanently remove eligible jobs from group "${selectedGroupId}" found within the server scan limit.`}
                 action={
                   <Button
                     variant="filled"
                     colorScheme="red"
-                    label="Yes, delete all"
+                    label="Yes, delete eligible"
                     onClick={() =>
                       bulkRemove({ queueName, groupId: selectedGroupId })
                     }
@@ -92,7 +108,7 @@ export const GroupsSection = ({
                   as="span"
                   colorScheme="red"
                   icon={<Trash2 className="size-3" />}
-                  label={isDeleting ? "Deleting..." : "Delete all"}
+                  label={isDeleting ? "Deleting..." : "Delete eligible"}
                   size="sm"
                   isLoading={isDeleting}
                 />

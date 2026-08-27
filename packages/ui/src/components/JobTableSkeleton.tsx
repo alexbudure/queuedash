@@ -1,14 +1,29 @@
 import { clsx } from "clsx";
 
-import { JOBS_PER_PAGE } from "../utils/config";
+import {
+  getTableGridClassName,
+  type TableLayoutVariant,
+} from "../utils/viewState";
 import { Skeleton } from "./Skeleton";
 
-export const JobTableSkeleton = () => {
+export const JobTableSkeleton = ({
+  layoutVariant = "job",
+  rows = 30,
+  selectable = true,
+}: {
+  layoutVariant?: TableLayoutVariant;
+  rows?: number;
+  selectable?: boolean;
+}) => {
+  const gridClassName = getTableGridClassName(layoutVariant, selectable);
+
   return (
     <div className="min-w-max">
       {/* Header */}
-      <div className="grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] border-b border-gray-100/60 bg-gray-50/80 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-900/80">
-        <div />
+      <div
+        className={`grid ${gridClassName} border-b border-gray-100/60 bg-gray-50/80 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-900/80`}
+      >
+        {selectable ? <div /> : null}
         <div className="px-1.5">
           <Skeleton className="h-3.5 w-8 rounded" />
         </div>
@@ -18,20 +33,23 @@ export const JobTableSkeleton = () => {
         <div />
       </div>
       {/* Rows */}
-      {new Array(JOBS_PER_PAGE).fill(0).map((_, i) => (
+      {Array.from({ length: rows }, (_, i) => (
         <div
           key={i}
           className={clsx(
-            "grid grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px] px-2 py-2.5",
-            JOBS_PER_PAGE !== i + 1
+            "grid px-2 py-2.5",
+            gridClassName,
+            rows !== i + 1
               ? "border-b border-gray-100/60 dark:border-slate-800/60"
               : "",
           )}
         >
           {/* Checkbox */}
-          <div className="flex items-center px-1.5">
-            <Skeleton className="size-4 rounded" />
-          </div>
+          {selectable ? (
+            <div className="flex items-center px-1.5">
+              <Skeleton className="size-4 rounded" />
+            </div>
+          ) : null}
           {/* Job name */}
           <div className="flex items-center gap-2 px-1.5">
             <Skeleton className="h-4 w-24 rounded" />

@@ -6,6 +6,8 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type JobPageMeta,
+  type WorkerInfo,
 } from "./base.adapter";
 
 type BullStatus =
@@ -20,8 +22,10 @@ type BullCleanableStatus = BullStatus;
 
 export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   private queue: Bull.Queue;
+  private pageMeta = new WeakMap<AdaptedJob[], JobPageMeta>();
 
   supports: FeatureSupport<BullStatus> = {
+    addJobOptions: true,
     pause: true,
     resume: true,
     clean: {
@@ -34,16 +38,19 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         "paused",
       ],
     },
+    discard: false,
     retry: true,
     promote: true,
     logs: false,
     schedulers: false,
+    schedulerUpdate: false,
     flows: false,
     priorities: true,
     empty: true,
     metrics: false,
     statuses: ["completed", "failed", "delayed", "active", "waiting", "paused"],
     groups: false,
+    workers: true,
   };
 
   constructor(
@@ -118,13 +125,37 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     end: number,
   ): Promise<AdaptedJob[]> {
     const jobs = await this.queue.getJobs([status], start, end);
-    return jobs.map((job) => this.adaptJob(job));
+    const adapted = jobs
+      .filter((job): job is Bull.Job => job != null)
+      .map((job) => this.adaptJob(job));
+    const requested = end - start + 1;
+    this.pageMeta.set(adapted, {
+      capped: false,
+      cursorAdvance: requested,
+      exhausted: jobs.length < requested,
+      scanned: start + jobs.length,
+      scanLimit: Math.max(end + 1, 1),
+    });
+    return adapted;
+  }
+
+  getJobPageMeta(jobs: AdaptedJob[]): JobPageMeta | undefined {
+    return this.pageMeta.get(jobs);
   }
 
   async getJob(jobId: string): Promise<AdaptedJob | null> {
     const job = await this.queue.getJob(jobId);
     if (!job) return null;
     return this.adaptJob(job);
+  }
+
+  async getJobStatus(jobId: string): Promise<BullStatus | null> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return null;
+    const status = await job.getState();
+    return this.supportsStatus(status as BullStatus)
+      ? (status as BullStatus)
+      : null;
   }
 
   async addJob(
@@ -157,13 +188,21 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   }
 
   async discardJob(jobId: string): Promise<void> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) throw new Error("Job not found");
-    await job.discard();
+    void jobId;
+    throw new Error("Bull does not support persistent job discarding");
   }
 
   async getJobLogs(): Promise<string[] | null> {
     return null; // Bull doesn't support job logs
+  }
+
+  async getWorkers(): Promise<WorkerInfo[]> {
+    const workers = await this.queue.getWorkers();
+    return (workers ?? []).map((worker, index) => ({
+      id: worker.id || `worker-${index + 1}`,
+      ageSeconds: toNumber(worker.age),
+      idleSeconds: toNumber(worker.idle),
+    }));
   }
 
   private adaptJob(job: Bull.Job): AdaptedJob {
@@ -198,3 +237,8 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     };
   }
 }
+
+const toNumber = (value: string | undefined): number | undefined => {
+  const number = value === undefined ? Number.NaN : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+};

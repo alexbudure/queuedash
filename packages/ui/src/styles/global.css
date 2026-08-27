@@ -2,12 +2,14 @@
 
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark
+  (&:where([data-queuedash-root].dark, [data-queuedash-root].dark *));
 
 @theme {
   --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono:
+    "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
   --color-brand-50: #f0f7ff;
   --color-brand-100: #e0effe;
@@ -19,6 +21,7 @@
   --color-brand-700: #0159a2;
   --color-brand-800: #064c85;
   --color-brand-900: #0b406f;
+  --color-brand-950: #062b4d;
 
   --color-slate-50: #f8f8f8;
   --color-slate-100: #f0f0f0;
@@ -153,16 +156,14 @@
 }
 
 @layer base {
-  :root {
+  [data-queuedash-root] {
     color-scheme: light;
-  }
-
-  :root.dark {
-    color-scheme: dark;
-  }
-
-  body {
     @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white;
+    min-height: 100vh;
+  }
+
+  [data-queuedash-root].dark {
+    color-scheme: dark;
   }
 }
 
@@ -181,7 +182,7 @@
   backdrop-filter: blur(2px);
 }
 
-.dark .side-panel-overlay {
+[data-queuedash-root].dark .side-panel-overlay {
   background: rgb(0 0 0 / 42%);
 }
 

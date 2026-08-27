@@ -1,16 +1,20 @@
 import cronstrue from "cronstrue";
-import { formatDistanceToNow } from "date-fns";
 import { AlertTriangle, Calendar, Clock, Info } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { JSONTree } from "react-json-tree";
 
-import type { Scheduler } from "../utils/trpc";
+import type { Queue, Scheduler } from "../utils/trpc";
+import { AddJobModal } from "./AddJobModal";
+import { useQueuedash } from "./QueuedashProvider";
 import { SchedulerActionMenu } from "./SchedulerActionMenu";
 import { SidePanelDialog } from "./SidePanelDialog";
+import { Timestamp } from "./Timestamp";
 
 type SchedulerModalProps = {
+  canRemove: boolean;
+  canUpdate: boolean;
   scheduler: Scheduler;
-  queueName: string;
+  queue: Queue;
   onDismiss: () => void;
 };
 
@@ -56,27 +60,6 @@ const jsonTreeDarkTheme = {
   base0F: "#f472b6",
 };
 
-const useDarkMode = () => {
-  const [isDark, setIsDark] = useState(() =>
-    typeof document !== "undefined"
-      ? document.documentElement.classList.contains("dark")
-      : false,
-  );
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return isDark;
-};
-
 const parseUnknownJson = (value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (typeof value === "object") return value;
@@ -117,11 +100,6 @@ const getScheduleLabel = (scheduler: Scheduler) => {
   return "No schedule configured";
 };
 
-const formatDate = (value?: number | null) => {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-};
-
 const formatEvery = (every?: number) => {
   if (!every) return "-";
   const seconds = every / 1000;
@@ -132,12 +110,15 @@ const formatEvery = (every?: number) => {
 };
 
 export const SchedulerModal = ({
+  canRemove,
+  canUpdate,
   scheduler,
-  queueName,
+  queue,
   onDismiss,
 }: SchedulerModalProps) => {
   const [showRawDetails, setShowRawDetails] = useState(false);
-  const isDark = useDarkMode();
+  const [showEdit, setShowEdit] = useState(false);
+  const { isDark } = useQueuedash();
   const jsonTreeTheme = isDark ? jsonTreeDarkTheme : jsonTreeLightTheme;
 
   const scheduleLabel = useMemo(() => getScheduleLabel(scheduler), [scheduler]);
@@ -163,6 +144,18 @@ export const SchedulerModal = ({
 
   const nextRunDate = scheduler.next ? new Date(scheduler.next) : null;
 
+  if (showEdit) {
+    return (
+      <AddJobModal
+        queue={queue}
+        scheduler={scheduler}
+        variant="scheduler"
+        onDismiss={() => setShowEdit(false)}
+        onSuccess={onDismiss}
+      />
+    );
+  }
+
   return (
     <SidePanelDialog
       title={scheduler.name}
@@ -175,9 +168,12 @@ export const SchedulerModal = ({
       }}
       headerActions={
         <SchedulerActionMenu
-          queueName={queueName}
+          canRemove={canRemove}
+          canUpdate={canUpdate}
+          queueName={queue.name}
           scheduler={scheduler}
           onRemove={onDismiss}
+          onUpdate={() => setShowEdit(true)}
         />
       }
     >
@@ -185,7 +181,7 @@ export const SchedulerModal = ({
         <div className="rounded-lg bg-gray-50/80 p-3.5 dark:bg-slate-800/40">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+              <p className="inline-flex items-center gap-1.5 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
                 <Clock className="size-3" />
                 Schedule
               </p>
@@ -226,10 +222,7 @@ export const SchedulerModal = ({
             <Calendar className="size-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
             <div className="min-w-0 flex-1 text-xs">
               <span className="font-medium text-blue-800 dark:text-blue-300">
-                Next run {formatDistanceToNow(nextRunDate, { addSuffix: true })}
-              </span>
-              <span className="ml-1.5 text-blue-600/70 dark:text-blue-400/60">
-                · {formatDate(scheduler.next)}
+                Next run <Timestamp value={nextRunDate} variant="full" />
               </span>
             </div>
           </div>
@@ -243,11 +236,11 @@ export const SchedulerModal = ({
         )}
 
         <div>
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+          <h3 className="mb-3 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
             Details
           </h3>
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <DetailItem label="Queue" value={queueName} />
+            <DetailItem label="Queue" value={queue.name} />
             <DetailItem label="Key" value={scheduler.key} mono />
             <DetailItem label="ID" value={scheduler.id ?? "-"} mono />
             <DetailItem
@@ -270,14 +263,14 @@ export const SchedulerModal = ({
             />
             <DetailItem
               label="End Date"
-              value={formatDate(scheduler.endDate)}
+              value={<Timestamp value={scheduler.endDate} variant="full" />}
             />
           </div>
         </div>
 
         {templateData ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Job Data
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -294,7 +287,7 @@ export const SchedulerModal = ({
 
         {templateOpts ? (
           <div>
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
               Job Options
             </h3>
             <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
@@ -343,13 +336,13 @@ const DetailItem = ({
   mono,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   mono?: boolean;
 }) => (
   <div>
     <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">{label}</p>
     <p
-      className={`break-all text-sm text-gray-900 dark:text-white ${mono ? "font-mono" : ""}`}
+      className={`text-sm break-all text-gray-900 dark:text-white ${mono ? "font-mono" : ""}`}
     >
       {value}
     </p>

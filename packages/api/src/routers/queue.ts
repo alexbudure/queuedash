@@ -1,9 +1,94 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import type { RedisInfo } from "redis-info";
 import { z } from "zod";
 
+import { assertQueueActionAllowed, resolveQueueAccess } from "../access";
+import {
+  presentErrorMessage,
+  privacyRedactsGroupIdentity,
+  privacyRedactsJobIdentity,
+  privacyRedactsPath,
+  redactValue,
+  resolvePrivacyExposure,
+} from "../presentation";
+import {
+  schedulerOptionsSchema,
+  schedulerTemplateSchema,
+} from "../scheduler.schemas";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
+
+const SAFE_ADD_JOB_OPTION_KEYS: Record<
+  "bee" | "bull" | "bullmq" | "groupmq",
+  ReadonlySet<string>
+> = {
+  bee: new Set(),
+  bull: new Set([
+    "attempts",
+    "backoff",
+    "delay",
+    "lifo",
+    "priority",
+    "removeOnComplete",
+    "removeOnFail",
+    "timeout",
+  ]),
+  bullmq: new Set([
+    "attempts",
+    "backoff",
+    "delay",
+    "keepLogs",
+    "lifo",
+    "priority",
+    "removeOnComplete",
+    "removeOnFail",
+    "sizeLimit",
+    "stackTraceLimit",
+  ]),
+  groupmq: new Set([
+    "delay",
+    "groupId",
+    "jobId",
+    "maxAttempts",
+    "orderMs",
+    "runAt",
+  ]),
+};
+
+const MAX_GROUPMQ_GROUP_ID_LENGTH = 256;
+const UNSAFE_GROUPMQ_GROUP_ID_CHARACTERS = /[:\p{Cc}]/u;
+
+const assertSafeAddJobOptions = (
+  queueType: keyof typeof SAFE_ADD_JOB_OPTION_KEYS,
+  opts?: Record<string, unknown>,
+): void => {
+  if (!opts) return;
+  const allowed = SAFE_ADD_JOB_OPTION_KEYS[queueType];
+  const unsupported = Object.keys(opts).filter((key) => !allowed.has(key));
+  if (unsupported.length > 0) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `${queueType} does not support these manual job options: ${unsupported.sort().join(", ")}`,
+    });
+  }
+
+  const groupId = opts.groupId;
+  if (queueType !== "groupmq" || groupId === undefined) return;
+  if (
+    typeof groupId !== "string" ||
+    groupId.length === 0 ||
+    groupId.length > MAX_GROUPMQ_GROUP_ID_LENGTH ||
+    UNSAFE_GROUPMQ_GROUP_ID_CHARACTERS.test(groupId)
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "GroupMQ groupId must be a non-empty string of at most 256 characters without colons or control characters",
+    });
+  }
+};
 
 export const queueRouter = router({
   clean: procedure
@@ -14,7 +99,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, status }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.clean");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -39,7 +125,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -54,11 +140,19 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.empty");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
       });
+
+      if (!queueInCtx.adapter.supports.empty) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support emptying queues`,
+        });
+      }
 
       try {
         await queueInCtx.adapter.empty();
@@ -68,7 +162,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -84,7 +178,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.pause");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -105,7 +200,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -115,15 +210,28 @@ export const queueRouter = router({
       };
     }),
   pauseAll: procedure.mutation(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
-    await Promise.all(
-      internalCtx.queues.map((q) => {
-        if (q.adapter.supports.pause) {
-          return q.adapter.pause();
-        }
-        return null;
-      }),
+    const internalCtx = await transformContext(ctx);
+    const authorizedQueues = internalCtx.queues.filter(
+      ({ adapter }) =>
+        resolveQueueAccess(
+          adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ).actions["queue.pause"],
     );
+    const queues = authorizedQueues.filter(({ adapter }) =>
+      Boolean(adapter.supports.pause),
+    );
+    if (queues.length === 0) {
+      throw new TRPCError({
+        code: authorizedQueues.length === 0 ? "FORBIDDEN" : "BAD_REQUEST",
+        message:
+          authorizedQueues.length === 0
+            ? "No queues allow pausing"
+            : "No queues support pausing",
+      });
+    }
+    await Promise.all(queues.map((q) => q.adapter.pause()));
     return "ok";
   }),
   resume: procedure
@@ -133,7 +241,8 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.resume");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -154,7 +263,7 @@ export const queueRouter = router({
         } else {
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: e instanceof Error ? e.message : undefined,
+            message: presentErrorMessage(e, internalCtx.privacy),
           });
         }
       }
@@ -164,15 +273,28 @@ export const queueRouter = router({
       };
     }),
   resumeAll: procedure.mutation(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
-    await Promise.all(
-      internalCtx.queues.map((q) => {
-        if (q.adapter.supports.resume) {
-          return q.adapter.resume();
-        }
-        return null;
-      }),
+    const internalCtx = await transformContext(ctx);
+    const authorizedQueues = internalCtx.queues.filter(
+      ({ adapter }) =>
+        resolveQueueAccess(
+          adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ).actions["queue.resume"],
     );
+    const queues = authorizedQueues.filter(({ adapter }) =>
+      Boolean(adapter.supports.resume),
+    );
+    if (queues.length === 0) {
+      throw new TRPCError({
+        code: authorizedQueues.length === 0 ? "FORBIDDEN" : "BAD_REQUEST",
+        message:
+          authorizedQueues.length === 0
+            ? "No queues allow resuming"
+            : "No queues support resuming",
+      });
+    }
+    await Promise.all(queues.map((q) => q.adapter.resume()));
     return "ok";
   }),
   addJob: procedure
@@ -184,18 +306,31 @@ export const queueRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, data, opts }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "job.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
       });
+
+      if (
+        opts &&
+        Object.keys(opts).length > 0 &&
+        !queueInCtx.adapter.supports.addJobOptions
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support job options`,
+        });
+      }
+      assertSafeAddJobOptions(queueInCtx.adapter.getType(), opts);
 
       try {
         await queueInCtx.adapter.addJob(data, opts);
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -208,22 +343,13 @@ export const queueRouter = router({
     .input(
       z.object({
         queueName: z.string(),
-        template: z.object({
-          name: z.string().optional(),
-          data: z.any(),
-          opts: z.any().optional(),
-        }),
-        opts: z
-          .object({
-            every: z.number().optional(),
-            pattern: z.string().optional(),
-            tz: z.string().optional(),
-          })
-          .optional(),
+        template: schedulerTemplateSchema,
+        opts: schedulerOptionsSchema,
       }),
     )
     .mutation(async ({ input: { queueName, template, opts }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -235,17 +361,23 @@ export const queueRouter = router({
           message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
       }
+      if (!queueInCtx.adapter.addScheduler) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Scheduler support is not implemented for this queue",
+        });
+      }
 
       try {
-        await queueInCtx.adapter.addScheduler?.(
-          `scheduler-${Date.now()}`,
-          opts || {},
+        await queueInCtx.adapter.addScheduler(
+          `scheduler-${randomUUID()}`,
+          opts,
           template,
         );
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
 
@@ -261,7 +393,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -284,7 +416,24 @@ export const queueRouter = router({
           name: queueInCtx.adapter.getName(),
           paused: isPaused,
           type: queueInCtx.adapter.getType(),
-          supports: queueInCtx.adapter.supports,
+          supports: {
+            ...queueInCtx.adapter.supports,
+            groups:
+              queueInCtx.adapter.supports.groups &&
+              !privacyRedactsGroupIdentity(internalCtx.privacy),
+            logs:
+              queueInCtx.adapter.supports.logs &&
+              !privacyRedactsJobIdentity(internalCtx.privacy),
+            schedulerUpdate:
+              queueInCtx.adapter.supports.schedulerUpdate &&
+              resolvePrivacyExposure(internalCtx.privacy).schedulerData &&
+              !internalCtx.privacy?.redact,
+          },
+          access: resolveQueueAccess(
+            queueName,
+            internalCtx.access,
+            internalCtx.privacy,
+          ),
           counts: {
             active: counts.active || 0,
             completed: counts.completed || 0,
@@ -310,16 +459,25 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
   list: procedure.query(async ({ ctx }) => {
-    const internalCtx = transformContext(ctx);
+    const internalCtx = await transformContext(ctx);
     return internalCtx.queues.map((q) => {
       return {
         displayName: q.adapter.getDisplayName(),
         name: q.adapter.getName(),
+        supports: {
+          pause: q.adapter.supports.pause,
+          resume: q.adapter.supports.resume,
+        },
+        access: resolveQueueAccess(
+          q.adapter.getName(),
+          internalCtx.access,
+          internalCtx.privacy,
+        ),
       };
     });
   }),
@@ -333,7 +491,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName, type, start, end }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -358,7 +516,7 @@ export const queueRouter = router({
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),
@@ -369,7 +527,7 @@ export const queueRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -378,13 +536,58 @@ export const queueRouter = router({
       if (!queueInCtx.adapter.supports.groups) {
         return [];
       }
+      if (privacyRedactsGroupIdentity(internalCtx.privacy)) return [];
 
       try {
-        return await queueInCtx.adapter.getGroups();
+        const groups = await queueInCtx.adapter.getGroups();
+        const redacted = redactValue(groups, internalCtx.privacy) as Awaited<
+          ReturnType<typeof queueInCtx.adapter.getGroups>
+        >;
+        return redacted.map((group, index) => ({
+          ...group,
+          id: privacyRedactsPath(internalCtx.privacy, [String(index), "id"])
+            ? group.id
+            : (groups[index]?.id ?? group.id),
+        }));
       } catch (e) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
+          message: presentErrorMessage(e, internalCtx.privacy),
+        });
+      }
+    }),
+  workers: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+      }),
+    )
+    .query(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (!queueInCtx.adapter.supports.workers) {
+        return [];
+      }
+
+      try {
+        const workers = await queueInCtx.adapter.getWorkers();
+        const redacted = redactValue(workers, internalCtx.privacy) as Awaited<
+          ReturnType<typeof queueInCtx.adapter.getWorkers>
+        >;
+        return redacted.map((worker, index) => ({
+          ...worker,
+          id: privacyRedactsPath(internalCtx.privacy, [String(index), "id"])
+            ? worker.id
+            : (workers[index]?.id ?? worker.id),
+        }));
+      } catch (e) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: presentErrorMessage(e, internalCtx.privacy),
         });
       }
     }),

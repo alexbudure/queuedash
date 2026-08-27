@@ -1,8 +1,52 @@
 import { TRPCError } from "@trpc/server";
-import { expect, test } from "vitest";
+import type { Queue as BullMQQueue } from "bullmq";
+import { expect, test, vi } from "vitest";
 
+import { BullMQAdapter } from "../queue-adapters/bullmq.adapter";
 import { appRouter } from "../routers/_app";
-import { initRedisInstance, NUM_OF_SCHEDULERS } from "./test.utils";
+import {
+  expectTRPCError,
+  initRedisInstance,
+  NUM_OF_SCHEDULERS,
+} from "./test.utils";
+
+test("read-only queues can list schedulers but cannot add them", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller({
+    ...ctx,
+    access: {
+      rules: [{ queues: [firstQueue.queue.name], mode: "read-only" }],
+    },
+  });
+
+  if (firstQueue.type === "bullmq") {
+    const schedulers = await caller.scheduler.list({
+      queueName: firstQueue.queue.name,
+    });
+    expect(schedulers.length).toBe(NUM_OF_SCHEDULERS);
+  }
+
+  await expectTRPCError(
+    () =>
+      caller.scheduler.add({
+        queueName: firstQueue.queue.name,
+        jobName: "blocked-scheduler",
+        data: {},
+        pattern: "0 0 * * *",
+      }),
+    "FORBIDDEN",
+  );
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: firstQueue.queue.name,
+        key: "blocked-scheduler",
+        template: { data: {} },
+        opts: { every: 60_000 },
+      }),
+    "FORBIDDEN",
+  );
+});
 
 test("list schedulers", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
@@ -159,6 +203,310 @@ test("add scheduler with interval", async () => {
   }
 });
 
+test("update scheduler uses BullMQ upsert semantics", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bullmq") {
+    await expectTRPCError(
+      () =>
+        caller.scheduler.update({
+          queueName: firstQueue.queue.name,
+          key: "unsupported",
+          template: { data: {} },
+          opts: { every: 120_000 },
+        }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
+
+  const schedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  const scheduler = schedulers[0];
+  const result = await caller.scheduler.update({
+    queueName: firstQueue.queue.name,
+    key: scheduler.key,
+    template: {
+      name: "updated-job",
+      data: { updated: true },
+      opts: { attempts: 2 },
+    },
+    opts: { every: 120_000, tz: "UTC", limit: 5 },
+  });
+
+  expect(result).toEqual({ success: true });
+  const updatedSchedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  const updated = updatedSchedulers.find((item) => item.key === scheduler.key);
+  expect(updated).toMatchObject({
+    every: 120_000,
+    tz: "UTC",
+    limit: 5,
+    template: {
+      data: { updated: true },
+      opts: { attempts: 2 },
+    },
+  });
+});
+
+test("update scheduler does not create a missing scheduler", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  if (firstQueue.type !== "bullmq") return;
+
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: firstQueue.queue.name,
+        key: "missing-scheduler",
+        template: { data: { shouldNotExist: true } },
+        opts: { every: 60_000 },
+      }),
+    "NOT_FOUND",
+  );
+
+  const schedulers = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  expect(
+    schedulers.some((scheduler) => scheduler.key === "missing-scheduler"),
+  ).toBe(false);
+});
+
+test("legacy BullMQ repeatables reject updates and use legacy removal", async () => {
+  const legacyKey = "legacy-job::1735689600000:UTC:0 0 * * *";
+  const upsertJobScheduler = vi.fn();
+  const removeJobScheduler = vi.fn();
+  const removeRepeatableByKey = vi.fn().mockResolvedValue(true);
+  const queue = {
+    name: "legacy-repeatable",
+    client: Promise.resolve({
+      set: vi.fn().mockResolvedValue("OK"),
+      eval: vi.fn().mockResolvedValue(1),
+    }),
+    toKey: (key: string) => `bull:legacy-repeatable:${key}`,
+    getJobSchedulers: vi.fn().mockResolvedValue([
+      {
+        key: legacyKey,
+        name: "legacy-job",
+        id: null,
+        pattern: "0 0 * * *",
+      },
+    ]),
+    upsertJobScheduler,
+    removeJobScheduler,
+    removeRepeatableByKey,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Legacy repeatable",
+        type: "bullmq",
+      },
+    ],
+  });
+
+  await expect(
+    caller.scheduler.update({
+      queueName: queue.name,
+      key: legacyKey,
+      template: { data: {} },
+      opts: { every: 60_000 },
+    }),
+  ).rejects.toMatchObject({
+    code: "BAD_REQUEST",
+    message: expect.stringContaining("Legacy BullMQ repeatable jobs"),
+  });
+  expect(upsertJobScheduler).not.toHaveBeenCalled();
+
+  await expect(
+    caller.scheduler.remove({
+      queueName: queue.name,
+      jobSchedulerId: legacyKey,
+    }),
+  ).resolves.toEqual({ success: true });
+  expect(removeRepeatableByKey).toHaveBeenCalledWith(legacyKey);
+  expect(removeJobScheduler).not.toHaveBeenCalled();
+});
+
+test("concurrent fixed-time scheduler adds use distinct identifiers", async () => {
+  const upsertJobScheduler = vi.fn().mockResolvedValue({});
+  const queue = {
+    name: "concurrent-scheduler-add",
+    upsertJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Concurrent scheduler add",
+        type: "bullmq",
+      },
+    ],
+  });
+
+  await Promise.all([
+    caller.scheduler.add({
+      queueName: queue.name,
+      jobName: "first",
+      data: {},
+      every: 60_000,
+    }),
+    caller.scheduler.add({
+      queueName: queue.name,
+      jobName: "second",
+      data: {},
+      every: 60_000,
+    }),
+  ]);
+
+  const schedulerIds = upsertJobScheduler.mock.calls.map(([id]) => id);
+  expect(schedulerIds).toHaveLength(2);
+  expect(new Set(schedulerIds).size).toBe(2);
+  expect(
+    schedulerIds.every((id) => /^scheduler-[0-9a-f-]{36}$/u.test(id)),
+  ).toBe(true);
+});
+
+test("scheduler editing stays disabled when presentation would redact data", async () => {
+  const upsertJobScheduler = vi.fn();
+  const queue = {
+    name: "redacted-scheduler-update",
+    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    upsertJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Redacted scheduler update",
+        type: "bullmq",
+      },
+    ],
+    privacy: { redact: true },
+  });
+
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: queue.name,
+        key: "daily",
+        template: { data: { authorization: "secret" } },
+        opts: { every: 60_000 },
+      }),
+    "BAD_REQUEST",
+  );
+  expect(upsertJobScheduler).not.toHaveBeenCalled();
+});
+
+test("long scheduler mutations renew their Redis lock", async () => {
+  vi.useFakeTimers();
+  const continueUpsert = deferred();
+  const evalCommand = vi.fn(async (...args: unknown[]) =>
+    args.length === 5 ? 1 : 1,
+  );
+  const queue = {
+    name: "scheduler-lock-renewal",
+    client: Promise.resolve({
+      set: vi.fn().mockResolvedValue("OK"),
+      eval: evalCommand,
+    }),
+    toKey: (key: string) => `bull:scheduler-lock-renewal:${key}`,
+    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    upsertJobScheduler: vi.fn(async () => continueUpsert.promise),
+  } as unknown as BullMQQueue;
+  const adapter = new BullMQAdapter(queue, "Lock renewal");
+
+  try {
+    const update = adapter.updateScheduler(
+      "daily",
+      { every: 60_000 },
+      { data: {} },
+    );
+    await vi.waitFor(() => {
+      expect(queue.upsertJobScheduler).toHaveBeenCalled();
+    });
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(evalCommand.mock.calls.some((args) => args.length === 5)).toBe(true);
+    continueUpsert.resolve();
+    await expect(update).resolves.toBe(true);
+    expect(evalCommand.mock.calls.some((args) => args.length === 4)).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("scheduler removal cannot race an in-flight scheduler update", async () => {
+  const upsertStarted = deferred();
+  const continueUpsert = deferred();
+  const removalWaitingForLock = deferred();
+  let schedulerExists = true;
+  let heldLockToken: string | undefined;
+  let removeCalls = 0;
+
+  const client = {
+    set: async (...args: unknown[]) => {
+      const token = String(args[1]);
+      if (heldLockToken) {
+        removalWaitingForLock.resolve();
+        return null;
+      }
+      heldLockToken = token;
+      return "OK";
+    },
+    eval: async (...args: unknown[]) => {
+      const token = String(args[3]);
+      if (heldLockToken === token) {
+        heldLockToken = undefined;
+        return 1;
+      }
+      return 0;
+    },
+  };
+  const queue = {
+    name: "scheduler-race",
+    client: Promise.resolve(client),
+    toKey: (key: string) => `bull:scheduler-race:${key}`,
+    getJobSchedulers: async () =>
+      schedulerExists ? [{ key: "daily-report" }] : [],
+    upsertJobScheduler: async () => {
+      upsertStarted.resolve();
+      await continueUpsert.promise;
+      schedulerExists = true;
+      return {};
+    },
+    removeJobScheduler: async () => {
+      removeCalls += 1;
+      schedulerExists = false;
+      return true;
+    },
+  } as unknown as BullMQQueue;
+  const adapter = new BullMQAdapter(queue, "Scheduler race");
+
+  const updatePromise = adapter.updateScheduler(
+    "daily-report",
+    { every: 60_000 },
+    { name: "daily-report", data: {} },
+  );
+  await upsertStarted.promise;
+
+  const removePromise = adapter.removeScheduler("daily-report");
+  await removalWaitingForLock.promise;
+  expect(removeCalls).toBe(0);
+
+  continueUpsert.resolve();
+  await expect(updatePromise).resolves.toBe(true);
+  await removePromise;
+
+  expect(removeCalls).toBe(1);
+  expect(schedulerExists).toBe(false);
+});
+
 test("add scheduler validation - requires pattern or every", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -180,6 +528,143 @@ test("add scheduler validation - requires pattern or every", async () => {
       }
     }
   }
+});
+
+test("scheduler validation rejects pattern and every together", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  if (firstQueue.type !== "bullmq") return;
+  const caller = appRouter.createCaller(ctx);
+
+  const addError = await expectTRPCError(
+    () =>
+      caller.scheduler.add({
+        queueName: firstQueue.queue.name,
+        jobName: "ambiguous-scheduler",
+        data: { type: "test" },
+        pattern: "0 0 * * *",
+        every: 60_000,
+      }),
+    "BAD_REQUEST",
+  );
+  expect(addError.message).toContain("exactly one");
+
+  const scheduler = (
+    await caller.scheduler.list({ queueName: firstQueue.queue.name })
+  )[0];
+  expect(scheduler).toBeDefined();
+  if (!scheduler) return;
+
+  const updateError = await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: firstQueue.queue.name,
+        key: scheduler.key,
+        template: {
+          name: scheduler.template?.name,
+          data: scheduler.template?.data ?? {},
+          opts: scheduler.template?.opts,
+        },
+        opts: {
+          pattern: "0 0 * * *",
+          every: 60_000,
+        },
+      }),
+    "BAD_REQUEST",
+  );
+  expect(updateError.message).toContain("exactly one");
+});
+
+test("scheduler validation rejects cross-queue and internal options", async () => {
+  const upsertJobScheduler = vi.fn();
+  const queue = {
+    name: "scheduler-option-policy",
+    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    upsertJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Scheduler option policy",
+        type: "bullmq",
+      },
+    ],
+  });
+  const parent = {
+    id: "parent-job",
+    queue: "bull:hidden-queue",
+  };
+
+  await expectTRPCError(
+    () =>
+      caller.queue.addJobScheduler({
+        queueName: queue.name,
+        template: { data: {}, opts: { parent } },
+        opts: { every: 60_000 },
+      } as never),
+    "BAD_REQUEST",
+  );
+  await expectTRPCError(
+    () =>
+      caller.scheduler.update({
+        queueName: queue.name,
+        key: "daily",
+        template: { data: {}, opts: { parent } },
+        opts: { every: 60_000 },
+      } as never),
+    "BAD_REQUEST",
+  );
+  await expectTRPCError(
+    () =>
+      caller.queue.addJobScheduler({
+        queueName: queue.name,
+        template: { data: {}, opts: { repeatJobKey: "internal" } },
+        opts: { every: 60_000, prevMillis: Date.now() },
+      } as never),
+    "BAD_REQUEST",
+  );
+
+  expect(upsertJobScheduler).not.toHaveBeenCalled();
+});
+
+test("scheduler validation preserves safe BullMQ template options", async () => {
+  const upsertJobScheduler = vi.fn();
+  const queue = {
+    name: "scheduler-template-compatibility",
+    upsertJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Scheduler template compatibility",
+        type: "bullmq",
+      },
+    ],
+  });
+  const template = {
+    data: { source: "existing-scheduler" },
+    opts: {
+      timestamp: 1_700_000_000_000,
+      failParentOnFailure: true,
+      continueParentOnFailure: false,
+      ignoreDependencyOnFailure: true,
+      removeDependencyOnFailure: false,
+      telemetry: { metadata: "trace-context", omitContext: false },
+    },
+  };
+
+  await caller.queue.addJobScheduler({
+    queueName: queue.name,
+    template,
+    opts: { every: 60_000 },
+  });
+
+  expect(upsertJobScheduler).toHaveBeenCalledWith(
+    expect.any(String),
+    { every: 60_000 },
+    template,
+  );
 });
 
 // ============================================================================
@@ -331,3 +816,11 @@ test("scheduler template contains job data", async () => {
     }
   }
 });
+
+const deferred = () => {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};

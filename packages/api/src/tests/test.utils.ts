@@ -35,8 +35,8 @@ export const supportsFeature = (feature: keyof typeof featureSupport) => {
 const featureSupport = {
   pause: type !== "bee",
   resume: type !== "bee",
-  clean: type !== "bee",
-  retry: type !== "bee",
+  clean: type !== "bee" && type !== "groupmq",
+  retry: type !== "bee" && type !== "groupmq",
   promote: type === "bullmq" || type === "groupmq",
   logs: type === "bullmq",
   schedulers: type === "bullmq",
@@ -64,7 +64,7 @@ export const initMultipleQueues = async (count: number = 2) => {
 // Helper to expect TRPC error
 export const expectTRPCError = async (
   fn: () => Promise<unknown>,
-  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
+  code?: "BAD_REQUEST" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
 ) => {
   const { TRPCError } = await import("@trpc/server");
   try {

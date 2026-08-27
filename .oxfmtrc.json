@@ -4,7 +4,7 @@
   "sortImports": {},
   "sortPackageJson": false,
   "sortTailwindcss": {
-    "config": "packages/ui/tailwind.config.js",
+    "stylesheet": "packages/ui/src/styles/global.css",
     "functions": ["clsx"]
   },
   "ignorePatterns": [

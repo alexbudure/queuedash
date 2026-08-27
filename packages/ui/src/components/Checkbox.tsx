@@ -7,6 +7,9 @@ import {
 
 type CheckedState = boolean | "indeterminate";
 
+export const ROW_SELECTION_CHECKBOX_CLASS_NAME =
+  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[focus-visible]:opacity-100";
+
 type CheckboxProps = Omit<
   AriaCheckboxProps,
   "className" | "isSelected" | "isIndeterminate" | "onChange"
@@ -26,7 +29,7 @@ export const Checkbox = ({
     <AriaCheckbox
       className={({ isSelected, isIndeterminate }) =>
         clsx(
-          "flex size-4 cursor-pointer items-center justify-center rounded border",
+          "flex size-4 cursor-pointer items-center justify-center rounded border outline-none data-[focus-visible]:opacity-100 data-[focus-visible]:ring-2 data-[focus-visible]:ring-brand-400 data-[focus-visible]:ring-offset-2 dark:data-[focus-visible]:ring-brand-600 dark:data-[focus-visible]:ring-offset-slate-900",
           className,
           {
             "border-gray-300 hover:border-gray-400 dark:border-slate-600 dark:hover:border-slate-500":

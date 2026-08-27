@@ -5,22 +5,30 @@ import type {
   preHandlerHookHandler,
 } from "fastify";
 
+import { closeQueuedashContext } from "../queue-registry";
 import { appRouter } from "../routers/_app";
 import type { Context } from "../trpc";
 import {
-  isQueueDashAuthorized,
+  createQueuedashExpiredSessionCookie,
+  createQueuedashSessionCookie,
+  getQueuedashAuthMode,
+  isQueuedashBasicAuthorized,
+  isQueuedashSessionAuthorized,
   QUEUEDASH_AUTH_CHALLENGE,
   QUEUEDASH_AUTH_REQUIRED_MESSAGE,
-  type QueueDashAuthOptions,
+  type QueuedashAuthOptions,
 } from "./auth";
 import { createQueuedashHtml } from "./utils";
 
-export type FastifyQueueDashHooksOptions = Partial<{
+export type FastifyQueuedashHooksOptions = Partial<{
   onRequest?: onRequestHookHandler;
   preHandler?: preHandlerHookHandler;
 }>;
 
-export function fastifyQueueDashPlugin(
+/** @deprecated Use FastifyQueuedashHooksOptions instead. */
+export type FastifyQueueDashHooksOptions = FastifyQueuedashHooksOptions;
+
+export function fastifyQueuedashPlugin(
   fastify: FastifyInstance,
   {
     baseUrl,
@@ -30,28 +38,108 @@ export function fastifyQueueDashPlugin(
   }: {
     ctx: Context;
     baseUrl: string;
-    uiHooks?: FastifyQueueDashHooksOptions;
-    auth?: QueueDashAuthOptions;
+    uiHooks?: FastifyQueuedashHooksOptions;
+    auth?: QueuedashAuthOptions;
   },
   done: () => void,
 ): void {
-  if (auth) {
-    fastify.addHook("onRequest", async (req, res) => {
-      if (!isQueueDashAuthorized(req.headers.authorization, auth)) {
-        await res
-          .header("WWW-Authenticate", QUEUEDASH_AUTH_CHALLENGE)
-          .header("Cache-Control", "no-store")
-          .code(401)
-          .send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
+  const authMode = getQueuedashAuthMode(auth);
+  const sendUnauthorized = (
+    res: Parameters<onRequestHookHandler>[1],
+    challenge = false,
+  ) => {
+    res.header("Cache-Control", "no-store");
+    if (challenge) {
+      res.header("WWW-Authenticate", QUEUEDASH_AUTH_CHALLENGE);
+    }
+    return res.code(401).send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
+  };
+
+  fastify.addHook("onRequest", async (req, res) => {
+    const registeredRoute = req.routeOptions.url ?? "";
+    const trpcRoute = `${baseUrl}/trpc`;
+    const isTrpcRoute =
+      registeredRoute === trpcRoute ||
+      registeredRoute.startsWith(`${trpcRoute}/`);
+    if (isTrpcRoute) {
+      res.header("Cache-Control", "private, no-store");
+    }
+
+    if (
+      authMode === "basic" &&
+      !isQueuedashBasicAuthorized(req.headers.authorization, auth)
+    ) {
+      return sendUnauthorized(res, true);
+    }
+
+    if (
+      authMode === "session" &&
+      isTrpcRoute &&
+      !isQueuedashSessionAuthorized(req.headers.cookie, auth)
+    ) {
+      return sendUnauthorized(res);
+    }
+  });
+  fastify.addHook("onClose", async () => {
+    await closeQueuedashContext(ctx);
+  });
+
+  if (authMode === "session" && auth) {
+    fastify.get(`${baseUrl}/auth/session`, async (req, res) => {
+      if (!isQueuedashSessionAuthorized(req.headers.cookie, auth)) {
+        return sendUnauthorized(res);
       }
+
+      return res.header("Cache-Control", "no-store").code(204).send();
+    });
+    fastify.post(`${baseUrl}/auth/login`, async (req, res) => {
+      if (!isQueuedashBasicAuthorized(req.headers.authorization, auth)) {
+        return sendUnauthorized(res);
+      }
+
+      return res
+        .header("Cache-Control", "no-store")
+        .header(
+          "Set-Cookie",
+          createQueuedashSessionCookie({
+            auth,
+            baseUrl,
+            requestIsSecure: req.protocol === "https",
+          }),
+        )
+        .code(204)
+        .send();
+    });
+    fastify.post(`${baseUrl}/auth/logout`, async (_, res) => {
+      return res
+        .header("Cache-Control", "no-store")
+        .header("Set-Cookie", createQueuedashExpiredSessionCookie(baseUrl))
+        .code(204)
+        .send();
     });
   }
 
   fastify.get(`${baseUrl}/*`, { ...uiHooks }, (_, res) => {
-    res.type("text/html").send(createQueuedashHtml(baseUrl));
+    res
+      .type("text/html")
+      .send(
+        createQueuedashHtml(
+          baseUrl,
+          ctx.ui,
+          authMode === "session" ? { baseUrl: `${baseUrl}/auth` } : undefined,
+        ),
+      );
   });
   fastify.get(baseUrl, { ...uiHooks }, (_, res) => {
-    res.type("text/html").send(createQueuedashHtml(baseUrl));
+    res
+      .type("text/html")
+      .send(
+        createQueuedashHtml(
+          baseUrl,
+          ctx.ui,
+          authMode === "session" ? { baseUrl: `${baseUrl}/auth` } : undefined,
+        ),
+      );
   });
   fastify.register(trpcFastify.fastifyTRPCPlugin, {
     prefix: `${baseUrl}/trpc`,
@@ -60,3 +148,6 @@ export function fastifyQueueDashPlugin(
 
   done();
 }
+
+/** @deprecated Use fastifyQueuedashPlugin instead. */
+export const fastifyQueueDashPlugin = fastifyQueuedashPlugin;

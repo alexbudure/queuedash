@@ -8,6 +8,7 @@ import {
   type JSONEditorRootType,
   type JSONEditorValidationState,
 } from "../utils/jsonEditor";
+import { useQueuedash } from "./QueuedashProvider";
 
 type JSONEditorProps = {
   value: string;
@@ -98,6 +99,7 @@ export const JSONEditor = ({
   onValidationChange,
   onNormalizedValue,
 }: JSONEditorProps) => {
+  const { isDark } = useQueuedash();
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const normalizeValueRef = useRef<() => void>(() => undefined);
@@ -206,32 +208,12 @@ export const JSONEditor = ({
   ]);
 
   useEffect(() => {
-    if (
-      !isEditorReady ||
-      !monacoRef.current ||
-      typeof document === "undefined"
-    ) {
+    if (!isEditorReady || !monacoRef.current) {
       return;
     }
 
-    const applyTheme = () => {
-      monacoRef.current?.editor.setTheme(
-        document.documentElement.classList.contains("dark")
-          ? DARK_THEME
-          : LIGHT_THEME,
-      );
-    };
-
-    applyTheme();
-
-    const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    return () => observer.disconnect();
-  }, [isEditorReady]);
+    monacoRef.current.editor.setTheme(isDark ? DARK_THEME : LIGHT_THEME);
+  }, [isDark, isEditorReady]);
 
   return (
     <div className={clsx("space-y-1.5", className)}>
@@ -259,77 +241,73 @@ export const JSONEditor = ({
             ) : null}
           </label>
 
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-gray-400 dark:bg-slate-800 dark:text-slate-500">
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[11px] tracking-[0.18em] text-gray-400 uppercase dark:bg-slate-800 dark:text-slate-500">
             JSON
           </span>
         </div>
 
         <div className="bg-white/80 dark:bg-slate-900/80">
-        <MonacoEditor
-          height={height}
-          language="json"
-          value={value}
-          options={{
-            ariaLabel: required
-              ? `${label}. Required JSON editor.`
-              : `${label}. JSON editor.`,
-            minimap: {
-              enabled: false,
-            },
-            formatOnPaste: true,
-            formatOnType: true,
-            scrollBeyondLastLine: false,
-            scrollbar: {
-              alwaysConsumeMouseWheel: false,
-            },
-            wordWrap: "on",
-            tabSize: 2,
-            lineNumbersMinChars: 3,
-            glyphMargin: false,
-            folding: false,
-            overviewRulerBorder: false,
-            hideCursorInOverviewRuler: true,
-            bracketPairColorization: {
-              enabled: true,
-            },
-            guides: {
-              indentation: false,
-            },
-            padding: {
-              top: 12,
-              bottom: 12,
-            },
-          }}
-          onChange={(nextValue) => {
-            onChange(nextValue || "");
-          }}
-          onValidate={(markers) => {
-            setSyntaxError(getSyntaxErrorMessage(markers));
-          }}
-          onMount={(editorInstance, monaco) => {
-            editorRef.current = editorInstance;
-            monacoRef.current = monaco;
-            defineEditorThemes(monaco);
-            setIsEditorReady(true);
-
-            editorInstance.onDidBlurEditorText(() => {
-              normalizeValueRef.current();
-            });
-
-            editorInstance.addCommand(
-              monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
-              () => {
-                normalizeValueRef.current();
+          <MonacoEditor
+            height={height}
+            language="json"
+            value={value}
+            options={{
+              ariaLabel: required
+                ? `${label}. Required JSON editor.`
+                : `${label}. JSON editor.`,
+              minimap: {
+                enabled: false,
               },
-            );
+              formatOnPaste: true,
+              formatOnType: true,
+              scrollBeyondLastLine: false,
+              scrollbar: {
+                alwaysConsumeMouseWheel: false,
+              },
+              wordWrap: "on",
+              tabSize: 2,
+              lineNumbersMinChars: 3,
+              glyphMargin: false,
+              folding: false,
+              overviewRulerBorder: false,
+              hideCursorInOverviewRuler: true,
+              bracketPairColorization: {
+                enabled: true,
+              },
+              guides: {
+                indentation: false,
+              },
+              padding: {
+                top: 12,
+                bottom: 12,
+              },
+            }}
+            onChange={(nextValue) => {
+              onChange(nextValue || "");
+            }}
+            onValidate={(markers) => {
+              setSyntaxError(getSyntaxErrorMessage(markers));
+            }}
+            onMount={(editorInstance, monaco) => {
+              editorRef.current = editorInstance;
+              monacoRef.current = monaco;
+              defineEditorThemes(monaco);
+              setIsEditorReady(true);
 
-            monaco.editor.setTheme(
-              document.documentElement.classList.contains("dark")
-                ? DARK_THEME
-                : LIGHT_THEME,
-            );
-          }}
-        />
+              editorInstance.onDidBlurEditorText(() => {
+                normalizeValueRef.current();
+              });
+
+              editorInstance.addCommand(
+                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS,
+                () => {
+                  normalizeValueRef.current();
+                },
+              );
+
+              monaco.editor.setTheme(isDark ? DARK_THEME : LIGHT_THEME);
+            }}
+          />
         </div>
       </div>
 

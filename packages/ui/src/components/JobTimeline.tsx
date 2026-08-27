@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import { CheckCircle, Clock, Rocket } from "lucide-react";
 
 import type { Job } from "../utils/trpc";
+import { Timestamp } from "./Timestamp";
 
 type JobTimelineProps = {
   job: Job;
@@ -65,7 +66,7 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
               Waiting
             </span>
             {waitDuration ? (
-              <span className="text-xs tabular-nums text-gray-400 dark:text-slate-500">
+              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
                 {formatDuration(waitDuration)}
               </span>
             ) : null}
@@ -110,7 +111,7 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
               Processing
             </span>
             {processDuration ? (
-              <span className="text-xs tabular-nums text-gray-400 dark:text-slate-500">
+              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
                 {formatDuration(processDuration)}
               </span>
             ) : null}
@@ -151,11 +152,8 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
               {hasFailed ? "Failed" : "Complete"}
             </span>
             {finishedAt ? (
-              <span className="text-xs tabular-nums text-gray-400 dark:text-slate-500">
-                {finishedAt.toLocaleTimeString("en-US", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
+                <Timestamp value={finishedAt} variant="time" />
               </span>
             ) : null}
           </div>
