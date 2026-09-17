@@ -1,7 +1,7 @@
 {
   "name": "with-hono",
   "version": "1.0.0",
-  "description": "Example of using QueueDash with Hono",
+  "description": "Example of using Queuedash with Hono",
   "author": "Lukáš Huvar",
   "license": "MIT",
   "scripts": {

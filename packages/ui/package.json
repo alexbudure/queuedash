@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/ui",
   "version": "3.20.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "The beautiful Queuedash React dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ",
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",
   "types": "./dist/src/main.d.ts",
@@ -13,11 +13,12 @@
     "bee-queue",
     "queue",
     "bullmq",
+    "groupmq",
     "dashboard"
   ],
   "scripts": {
-    "build": "tsc && vite build && npx @tailwindcss/cli -i src/styles/global.css -o ./dist/styles.css",
-    "dev": "pnpm run build --watch",
+    "build": "tsc && vite build && npx @tailwindcss/cli -i src/styles/global.css -o ./dist/styles.css && node scripts/scope-css.mjs",
+    "dev": "node scripts/dev.mjs",
     "tailwind": "npx @tailwindcss/cli -i src/styles/global.css -o ./dist/styles.css --watch",
     "lint": "oxlint --config ../../.oxlintrc.json --disable-nested-config .",
     "lint:fix": "oxlint --config ../../.oxlintrc.json --disable-nested-config --fix .",
@@ -25,8 +26,10 @@
     "format:check": "oxfmt --config ../../.oxfmtrc.json --check ."
   },
   "dependencies": {
+    "@internationalized/date": "3.12.0",
     "@monaco-editor/react": "^4.7.0",
     "@queuedash/api": "workspace:*",
+    "@react-types/button": "3.15.1",
     "@tanstack/react-query": "^5.94.5",
     "@tanstack/react-table": "^8.21.3",
     "@trpc/client": "^11.14.1",
@@ -38,7 +41,7 @@
     "date-fns-tz": "^3.2.0",
     "lucide-react": "^0.577.0",
     "monaco-editor": "^0.55.1",
-    "react-aria-components": "^1.16.0",
+    "react-aria-components": "1.16.0",
     "react-intersection-observer": "^10.0.3",
     "react-json-tree": "^0.20.0",
     "react-router": "^7.13.1",
@@ -58,6 +61,7 @@
     "react-dom": "^19.2.4",
     "rollup-plugin-typescript-paths": "^1.5.0",
     "tailwindcss": "^4.2.2",
+    "tslib": "^2.8.1",
     "typescript": "^5.9.3",
     "vite": "^5.4.19"
   },

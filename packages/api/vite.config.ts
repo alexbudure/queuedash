@@ -14,11 +14,20 @@ export default defineConfig({
     lib: {
       entry: path.resolve(__dirname, "src/main.ts"),
       fileName: "main",
-      name: "QueueDash API",
+      name: "Queuedash API",
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["events", "node:crypto", "node:http"],
+      external: [
+        "bee-queue",
+        "bull",
+        "bullmq",
+        "events",
+        "groupmq",
+        "node:crypto",
+        "node:http",
+        "redis",
+      ],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,
@@ -27,6 +36,10 @@ export default defineConfig({
           sourceMap: false,
           declaration: true,
           outDir: "dist",
+          compilerOptions: {
+            composite: false,
+            incremental: false,
+          },
         }) as Plugin,
       ],
     },

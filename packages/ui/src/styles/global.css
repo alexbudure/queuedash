@@ -1,48 +1,51 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=Roboto+Mono:wght@100..700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=JetBrains+Mono:wght@100..800&display=swap");
 
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark
+  (&:where([data-queuedash-root].dark, [data-queuedash-root].dark *));
 
 @theme {
   --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
-    Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
 
-  --color-brand-50: #f0f7ff;
-  --color-brand-100: #e0effe;
-  --color-brand-200: #b9dffd;
-  --color-brand-300: #7cc5fc;
-  --color-brand-400: #36a8f8;
-  --color-brand-500: #0c8de9;
-  --color-brand-600: #0070c7;
-  --color-brand-700: #0159a2;
-  --color-brand-800: #064c85;
-  --color-brand-900: #0b406f;
+  --color-brand-50: #f2f6ff;
+  --color-brand-100: #e5ebff;
+  --color-brand-200: #cbd8fe;
+  --color-brand-300: #a5bbff;
+  --color-brand-400: #7895fd;
+  --color-brand-500: #526ffc;
+  --color-brand-600: #3e53ef;
+  --color-brand-700: #303fd0;
+  --color-brand-800: #2735a6;
+  --color-brand-900: #22317d;
+  --color-brand-950: #141e4b;
 
-  --color-slate-50: #f8f8f8;
-  --color-slate-100: #f0f0f0;
-  --color-slate-200: #e4e4e4;
-  --color-slate-300: #d1d1d1;
-  --color-slate-400: #a1a1a1;
-  --color-slate-500: #737373;
-  --color-slate-600: #525252;
-  --color-slate-700: #3d3d3d;
-  --color-slate-800: #262626;
-  --color-slate-900: #171717;
-  --color-slate-950: #0a0a0a;
+  --color-slate-50: #f7f8f9;
+  --color-slate-100: #eff0f1;
+  --color-slate-200: #e3e4e6;
+  --color-slate-300: #d0d1d4;
+  --color-slate-400: #9fa1a5;
+  --color-slate-500: #717378;
+  --color-slate-600: #4f5257;
+  --color-slate-700: #3b3d42;
+  --color-slate-800: #24262b;
+  --color-slate-900: #15171b;
+  --color-slate-950: #080a0d;
 
-  --color-gray-50: #f9f9f8;
-  --color-gray-100: #f3f3f2;
-  --color-gray-200: #e5e5e3;
-  --color-gray-300: #d2d2cf;
-  --color-gray-400: #a1a19c;
-  --color-gray-500: #72726d;
-  --color-gray-600: #55554f;
-  --color-gray-700: #43433d;
-  --color-gray-800: #2e2e2a;
-  --color-gray-900: #1d1d1a;
-  --color-gray-950: #121210;
+  --color-gray-50: #f8f9fa;
+  --color-gray-100: #f2f3f5;
+  --color-gray-200: #e3e5e8;
+  --color-gray-300: #d0d2d5;
+  --color-gray-400: #9ea1a6;
+  --color-gray-500: #6e7278;
+  --color-gray-600: #51555b;
+  --color-gray-700: #3f4349;
+  --color-gray-800: #2b2e33;
+  --color-gray-900: #1a1d21;
+  --color-gray-950: #101215;
 
   --color-red-50: #fef2f2;
   --color-red-100: #ffe1e1;
@@ -54,6 +57,7 @@
   --color-red-700: #ba2118;
   --color-red-800: #9a1f18;
   --color-red-900: #80201b;
+  --color-red-950: #4a1210;
 
   --color-amber-50: #fffbeb;
   --color-amber-100: #fff3c6;
@@ -65,6 +69,7 @@
   --color-amber-700: #b45206;
   --color-amber-800: #923f0c;
   --color-amber-900: #78340d;
+  --color-amber-950: #451f06;
 
   --color-green-50: #f0fdf4;
   --color-green-100: #dcfce7;
@@ -76,6 +81,7 @@
   --color-green-700: #15803d;
   --color-green-800: #166534;
   --color-green-900: #14532d;
+  --color-green-950: #052e16;
 
   --color-blue-50: #eff6ff;
   --color-blue-100: #dbeafe;
@@ -87,6 +93,7 @@
   --color-blue-700: #1d4ed8;
   --color-blue-800: #1e40af;
   --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
 
   --color-purple-50: #faf5ff;
   --color-purple-100: #f3e8ff;
@@ -98,6 +105,7 @@
   --color-purple-700: #7e22ce;
   --color-purple-800: #6b21a8;
   --color-purple-900: #581c87;
+  --color-purple-950: #3b0764;
 
   --color-cyan-50: #ecfeff;
   --color-cyan-100: #cffafe;
@@ -109,11 +117,47 @@
   --color-cyan-700: #0e7490;
   --color-cyan-800: #155e75;
   --color-cyan-900: #164e63;
+  --color-cyan-950: #083344;
 
-  --animate-overlay-show: overlayShow 180ms cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-overlay-hide: overlayHide 140ms cubic-bezier(0.4, 0, 1, 1);
-  --animate-side-panel-in: sidePanelIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-side-panel-out: sidePanelOut 180ms cubic-bezier(0.4, 0, 1, 1);
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+  --color-orange-950: #431407;
+
+  --color-violet-50: #f5f3ff;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  --color-violet-700: #6d28d9;
+  --color-violet-800: #5b21b6;
+  --color-violet-900: #4c1d95;
+  --color-violet-950: #2e1065;
+
+  /* Removed: "completed" green now comes from --color-green-*. Leaving emerald
+     available would let the stock ramp creep back in as a second green. */
+  --color-emerald-*: initial;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-quart: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-overlay-show: overlayShow 180ms var(--ease-out-expo);
+  --animate-overlay-hide: overlayHide 140ms var(--ease-in-quart);
+  --animate-side-panel-in: sidePanelIn 280ms var(--ease-out-expo);
+  --animate-side-panel-out: sidePanelOut 180ms var(--ease-in-quart);
+  --animate-popover-show: popoverShow 150ms var(--ease-out-expo);
+  --animate-popover-hide: popoverHide 110ms var(--ease-in-quart);
+  --animate-alert-show: alertShow 180ms var(--ease-out-expo);
+  --animate-heartbeat: heartbeat 1200ms ease-in-out infinite;
 
   @keyframes overlayShow {
     from {
@@ -150,24 +194,100 @@
       transform: translateX(100%);
     }
   }
+
+  @keyframes popoverShow {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes popoverHide {
+    from {
+      opacity: 1;
+      transform: none;
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes alertShow {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Distinct from animate-pulse: pulse is the "not loaded yet" language,
+     heartbeat is the "this is live" language. */
+  @keyframes heartbeat {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.65;
+      transform: scale(0.88);
+    }
+  }
 }
 
 @layer base {
-  :root {
+  [data-queuedash-root] {
     color-scheme: light;
+    @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  :root.dark {
+  [data-queuedash-root].dark {
     color-scheme: dark;
   }
 
-  body {
-    @apply bg-gray-50 text-gray-900 dark:bg-slate-950 dark:text-white;
+  /* Tailwind v4's preflight no longer sets this, and only a handful of
+     components set it themselves - so most buttons rendered an arrow while
+     rows and checkboxes rendered a hand. */
+  [data-queuedash-root] :is(button, [role="button"], summary) {
+    cursor: pointer;
+  }
+
+  [data-queuedash-root] :is(button, [role="button"]):disabled,
+  [data-queuedash-root] :is(button, [role="button"])[aria-disabled="true"],
+  [data-queuedash-root] :is(button, [role="button"])[data-disabled] {
+    cursor: not-allowed;
+  }
+
+  /* Chrome should not be selectable text - double-clicking a column label or a
+     button should not leave a highlight behind. */
+  [data-queuedash-root]
+    :is(button, [role="button"], [role="tab"], label, [role="columnheader"]) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  [data-queuedash-root] ::selection {
+    @apply bg-brand-200 text-brand-950;
+  }
+
+  [data-queuedash-root].dark ::selection {
+    @apply bg-brand-800 text-white;
   }
 }
 
 .data-json-renderer * {
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .data-json-renderer > ul {
@@ -176,27 +296,148 @@
   margin: 0 !important;
 }
 
+/* Scroll containers inside the dashboard get a thin, themed scrollbar so a
+   native chunky one never appears inside a designed panel. */
+/* Thin themed scrollbar. Deliberately does NOT contain scroll chaining - a
+   table's rows only scroll sideways, and every vertical wheel over them
+   belongs to the page. Overlays that should trap the wheel add
+   `qd-scroll-contain`. */
+.qd-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-gray-300) transparent;
+}
+
+.qd-scroll-contain {
+  overscroll-behavior: contain;
+}
+
+[data-queuedash-root].dark .qd-scroll {
+  scrollbar-color: var(--color-slate-700) transparent;
+}
+
+.qd-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.qd-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.qd-scroll::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-color: var(--color-gray-300);
+}
+
+.qd-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-gray-400);
+}
+
+[data-queuedash-root].dark .qd-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-slate-700);
+}
+
+[data-queuedash-root].dark .qd-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-slate-600);
+}
+
+/* A table's rows scroll with the page, between its pinned header and the
+   floating bar that docks below them. The browser knows about neither, so
+   without these margins Tab can move focus onto a row hidden behind one. */
+.qd-table-body * {
+  scroll-margin-top: calc(var(--qd-top-inset, 0px) + 2.5rem);
+  scroll-margin-bottom: 4rem;
+}
+
+/* Fades the trailing edge of a horizontal scroller so hidden columns are
+   discoverable. Toggled by the component once it knows it overflows. */
+.qd-scroll-fade-end {
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - 32px),
+    transparent 100%
+  );
+}
+
 .side-panel-overlay {
   background: rgb(0 0 0 / 8%);
   backdrop-filter: blur(2px);
 }
 
-.dark .side-panel-overlay {
+[data-queuedash-root].dark .side-panel-overlay {
   background: rgb(0 0 0 / 42%);
 }
 
 .side-panel-overlay[data-entering] {
-  animation: overlayShow 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: var(--animate-overlay-show);
 }
 
 .side-panel-overlay[data-exiting] {
-  animation: overlayHide 140ms cubic-bezier(0.4, 0, 1, 1);
+  animation: var(--animate-overlay-hide);
 }
 
 .side-panel[data-entering] {
-  animation: sidePanelIn 280ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: var(--animate-side-panel-in);
 }
 
 .side-panel[data-exiting] {
-  animation: sidePanelOut 180ms cubic-bezier(0.4, 0, 1, 1);
+  animation: var(--animate-side-panel-out);
+}
+
+/* react-aria stamps data-entering/data-exiting on popovers for free; the
+   `entering:animate-in` utilities this used to rely on were never compiled
+   because neither animation plugin is installed. */
+.qd-popover[data-entering] {
+  animation: var(--animate-popover-show);
+  transform-origin: var(--trigger-anchor-point, top);
+}
+
+.qd-popover[data-exiting] {
+  animation: var(--animate-popover-hide);
+}
+
+/* data-entering never lands on the Dialog itself, so the card is driven from
+   the overlay's state. */
+.alert-overlay[data-entering] {
+  animation: var(--animate-overlay-show);
+}
+
+.alert-overlay[data-exiting] {
+  animation: var(--animate-overlay-hide);
+}
+
+.alert-overlay[data-entering] .alert-dialog {
+  animation: var(--animate-alert-show);
+}
+
+/* Scoped to the dashboard root: this ships as an embeddable library, so a bare
+   universal selector would flatten the host app's motion too.
+   .animate-spin is deliberately left alone - a frozen spinner reads as a hung
+   request, which is worse than the motion it removes. */
+@media (prefers-reduced-motion: reduce) {
+  [data-queuedash-root] .side-panel[data-entering],
+  [data-queuedash-root] .side-panel[data-exiting],
+  [data-queuedash-root] .side-panel-overlay[data-entering],
+  [data-queuedash-root] .side-panel-overlay[data-exiting],
+  [data-queuedash-root] .qd-popover[data-entering],
+  [data-queuedash-root] .qd-popover[data-exiting],
+  [data-queuedash-root] .alert-overlay[data-entering],
+  [data-queuedash-root] .alert-overlay[data-exiting],
+  [data-queuedash-root] .alert-overlay[data-entering] .alert-dialog {
+    animation: none !important;
+  }
+
+  [data-queuedash-root] .animate-pulse,
+  [data-queuedash-root] .animate-heartbeat {
+    animation: none !important;
+    opacity: 0.65;
+  }
+
+  [data-queuedash-root] *,
+  [data-queuedash-root] *::before,
+  [data-queuedash-root] *::after {
+    transition-duration: 0.01ms !important;
+  }
 }

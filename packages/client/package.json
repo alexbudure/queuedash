@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/client",
   "version": "3.20.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "Prebuilt browser entrypoint for Queuedash server adapters",
   "files": [
     "dist"
   ],

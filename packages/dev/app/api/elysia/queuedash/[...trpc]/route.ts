@@ -9,9 +9,7 @@ async function getElysiaApp() {
 
   try {
     const { Elysia } = await import("elysia");
-    const { fetchRequestHandler } = await import(
-      "@trpc/server/adapters/fetch"
-    );
+    const { fetchRequestHandler } = await import("@trpc/server/adapters/fetch");
     const { appRouter } = await import("@queuedash/api");
     const { queues } = await import("../../../../../utils/fake-data");
 

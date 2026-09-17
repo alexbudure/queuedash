@@ -15,7 +15,7 @@ export default defineConfig({
     reportCompressedSize: true,
     lib: {
       entry: path.resolve(__dirname, "src/main.tsx"),
-      name: "QueueDash App",
+      name: "Queuedash App",
       fileName: "main",
       formats: ["cjs", "es"],
     },
@@ -28,6 +28,10 @@ export default defineConfig({
           sourceMap: false,
           declaration: true,
           outDir: "dist",
+          compilerOptions: {
+            composite: false,
+            incremental: false,
+          },
         }) as Plugin,
       ],
     },

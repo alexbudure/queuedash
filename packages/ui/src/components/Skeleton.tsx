@@ -1,3 +1,5 @@
+import { clsx } from "clsx";
+
 type SkeletonProps = {
   className?: string;
 };
@@ -5,7 +7,7 @@ type SkeletonProps = {
 export const Skeleton = ({ className }: SkeletonProps) => {
   return (
     <div
-      className={`animate-pulse bg-slate-100 dark:bg-slate-800 ${className}`}
+      className={clsx("animate-pulse bg-gray-100 dark:bg-slate-800", className)}
     />
   );
 };

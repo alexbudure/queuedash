@@ -1,7 +1,7 @@
 {
   "name": "with-express",
   "version": "1.0.0",
-  "description": "Example of using QueueDash with Express",
+  "description": "Example of using Queuedash with Express",
   "author": "Alex Budure",
   "license": "MIT",
   "scripts": {

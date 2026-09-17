@@ -6,6 +6,7 @@ export type RouterOutput = inferRouterOutputs<AppRouter>;
 export type RouterInput = inferRouterInputs<AppRouter>;
 
 export type Job = RouterOutput["job"]["list"]["jobs"][0];
+export type JobSearchResult = RouterOutput["job"]["search"]["results"][0];
 export type Queue = RouterOutput["queue"]["byName"];
 export type Status = RouterInput["job"]["list"]["status"];
 export type Scheduler = RouterOutput["scheduler"]["list"][0];
