@@ -1,6 +1,7 @@
 import { version } from "../../package.json";
 import type { QueuedashUiConfig } from "../trpc";
 import type { QueuedashPublicAuthConfig } from "./auth";
+import { QUEUEDASH_FAVICON } from "./favicon";
 
 const DEFAULT_PRODUCT_NAME = "Queuedash";
 
@@ -39,6 +40,12 @@ export const createQueuedashHtml = (
             min-height: 100vh;
           }
         </style>
+        <link
+          rel="icon"
+          href="${escapeHtml(
+            ui?.branding?.faviconUrl?.trim() || QUEUEDASH_FAVICON,
+          )}"
+        />
         <title>${escapeHtml(
           ui?.branding?.name?.trim() || DEFAULT_PRODUCT_NAME,
         )}</title>

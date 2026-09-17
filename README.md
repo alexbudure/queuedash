@@ -1,6 +1,9 @@
 <p align="center">
   <a href="https://www.queuedash.com" target="_blank" rel="noopener">
-    <img src="https://res.cloudinary.com/driverseat/image/upload/v1677406730/queuedash/queuedash-social-v3.png" alt="Queuedash">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
+      <img src="assets/logo-light.png" alt="Queuedash" width="280">
+    </picture>
   </a>
 </p>
 
@@ -31,7 +34,7 @@ where the dashboard runs or which data and actions it exposes.
 - Sensitive-key redaction and whole-category data exposure controls
 - A branded login with signed, HttpOnly sessions and explicit logout
 - Server-provided defaults with instance-scoped browser preferences
-- Custom product name, logo, and accessible logo text
+- Custom product name, logo, favicon, and accessible logo text
 - Express, Fastify, Hono, Elysia, Next.js, direct React, and Docker integrations
 - Scoped, specificity-hardened styles designed for embedded host applications
 
@@ -122,6 +125,7 @@ createQueuedashExpressMiddleware({
         name: "Acme Queues",
         logoUrl: "/assets/acme-logo.svg",
         logoAlt: "Acme",
+        faviconUrl: "/assets/acme-favicon.svg",
       },
       defaults: {
         theme: "system",

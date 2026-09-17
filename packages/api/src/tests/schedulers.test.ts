@@ -258,23 +258,71 @@ test("update scheduler does not create a missing scheduler", async () => {
 
   if (firstQueue.type !== "bullmq") return;
 
-  await expectTRPCError(
-    () =>
-      caller.scheduler.update({
-        queueName: firstQueue.queue.name,
-        key: "missing-scheduler",
-        template: { data: { shouldNotExist: true } },
-        opts: { every: 60_000 },
-      }),
-    "NOT_FOUND",
-  );
+  for (const key of ["missing-scheduler", "missing:scheduler"]) {
+    await expectTRPCError(
+      () =>
+        caller.scheduler.update({
+          queueName: firstQueue.queue.name,
+          key,
+          template: { data: { shouldNotExist: true } },
+          opts: { every: 60_000 },
+        }),
+      "NOT_FOUND",
+    );
+  }
 
   const schedulers = await caller.scheduler.list({
     queueName: firstQueue.queue.name,
   });
   expect(
-    schedulers.some((scheduler) => scheduler.key === "missing-scheduler"),
+    schedulers.some((scheduler) => scheduler.key.startsWith("missing")),
   ).toBe(false);
+});
+
+test("bulk scheduler removal uses one list read and bounded targeted lookups", async () => {
+  const schedulers = Array.from({ length: 100 }, (_, index) => ({
+    key: `schedule-${index}`,
+    name: `job-${index}`,
+    every: 60_000,
+  }));
+  const getJobSchedulers = vi.fn().mockResolvedValue(schedulers);
+  const getJobScheduler = vi.fn(async (key: string) =>
+    schedulers.find((item) => item.key === key),
+  );
+  let active = 0;
+  let peak = 0;
+  const removeJobScheduler = vi.fn(async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    active -= 1;
+    return true;
+  });
+  const queue = {
+    name: "bulk-scheduler-removal",
+    client: Promise.resolve({
+      set: vi.fn().mockResolvedValue("OK"),
+      eval: vi.fn().mockResolvedValue(1),
+    }),
+    toKey: (key: string) => `bull:bulk-scheduler-removal:${key}`,
+    getJobSchedulers,
+    getJobScheduler,
+    removeJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [{ queue, displayName: "Bulk schedulers", type: "bullmq" }],
+  });
+
+  const removed = await caller.scheduler.bulkRemove({
+    queueName: queue.name,
+    jobSchedulerIds: [...schedulers.map(({ key }) => key), schedulers[0].key],
+  });
+  expect(removed).toHaveLength(100);
+  expect(getJobSchedulers).toHaveBeenCalledTimes(1);
+  expect(getJobScheduler).toHaveBeenCalledTimes(100);
+  expect(removeJobScheduler).toHaveBeenCalledTimes(100);
+  expect(peak).toBeGreaterThan(1);
+  expect(peak).toBeLessThanOrEqual(25);
 });
 
 test("legacy BullMQ repeatables reject updates and use legacy removal", async () => {
@@ -289,14 +337,12 @@ test("legacy BullMQ repeatables reject updates and use legacy removal", async ()
       eval: vi.fn().mockResolvedValue(1),
     }),
     toKey: (key: string) => `bull:legacy-repeatable:${key}`,
-    getJobSchedulers: vi.fn().mockResolvedValue([
-      {
-        key: legacyKey,
-        name: "legacy-job",
-        id: null,
-        pattern: "0 0 * * *",
-      },
-    ]),
+    getJobScheduler: vi.fn().mockResolvedValue({
+      key: legacyKey,
+      name: "legacy-job",
+      id: null,
+      pattern: "0 0 * * *",
+    }),
     upsertJobScheduler,
     removeJobScheduler,
     removeRepeatableByKey,
@@ -377,7 +423,7 @@ test("scheduler editing stays disabled when presentation would redact data", asy
   const upsertJobScheduler = vi.fn();
   const queue = {
     name: "redacted-scheduler-update",
-    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    getJobScheduler: vi.fn().mockResolvedValue({ key: "daily" }),
     upsertJobScheduler,
   } as unknown as BullMQQueue;
   const caller = appRouter.createCaller({
@@ -417,7 +463,7 @@ test("long scheduler mutations renew their Redis lock", async () => {
       eval: evalCommand,
     }),
     toKey: (key: string) => `bull:scheduler-lock-renewal:${key}`,
-    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    getJobScheduler: vi.fn().mockResolvedValue({ key: "daily" }),
     upsertJobScheduler: vi.fn(async () => continueUpsert.promise),
   } as unknown as BullMQQueue;
   const adapter = new BullMQAdapter(queue, "Lock renewal");
@@ -472,8 +518,8 @@ test("scheduler removal cannot race an in-flight scheduler update", async () => 
     name: "scheduler-race",
     client: Promise.resolve(client),
     toKey: (key: string) => `bull:scheduler-race:${key}`,
-    getJobSchedulers: async () =>
-      schedulerExists ? [{ key: "daily-report" }] : [],
+    getJobScheduler: async () =>
+      schedulerExists ? { key: "daily-report" } : undefined,
     upsertJobScheduler: async () => {
       upsertStarted.resolve();
       await continueUpsert.promise;
@@ -578,7 +624,7 @@ test("scheduler validation rejects cross-queue and internal options", async () =
   const upsertJobScheduler = vi.fn();
   const queue = {
     name: "scheduler-option-policy",
-    getJobSchedulers: vi.fn().mockResolvedValue([{ key: "daily" }]),
+    getJobScheduler: vi.fn().mockResolvedValue({ key: "daily" }),
     upsertJobScheduler,
   } as unknown as BullMQQueue;
   const caller = appRouter.createCaller({

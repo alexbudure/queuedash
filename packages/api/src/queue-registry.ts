@@ -164,6 +164,9 @@ export class QueueRegistry {
   private lastErrorAt?: number;
   private lastSuccessfulRefreshAt?: number;
   private truncated = false;
+  private scanCursor = 0;
+  private scanQueueNames = new Set<string>();
+  private scanOverflow = false;
   private closePromise?: Promise<void>;
   private closing = false;
 
@@ -233,6 +236,9 @@ export class QueueRegistry {
         this.lastErrorAt = undefined;
         this.lastSuccessfulRefreshAt = undefined;
         this.truncated = false;
+        this.scanCursor = 0;
+        this.scanQueueNames.clear();
+        this.scanOverflow = false;
 
         if (registryCache.get(this.ctx) === this) {
           registryCache.delete(this.ctx);
@@ -350,7 +356,7 @@ export class QueueRegistry {
     const prefix = discovery.prefix ?? "bull";
     const maxQueues = normalizeDiscoveryMaxQueues(discovery.maxQueues);
     const marker = discovery.type === "bull" ? "id" : "meta";
-    const queueNames = new Set<string>();
+    const queueNames = new Set(this.scanQueueNames);
     const retainedCandidateLimit = maxQueues + 1;
     const staticQueueNames = new Set(
       this.staticQueues.map((queue) => queue.queue.name),
@@ -362,7 +368,8 @@ export class QueueRegistry {
       resolveQueueAccess(queueName, this.ctx.access, this.ctx.privacy).mode !==
         "hidden";
     let scanWorkTruncated = false;
-    let eligibleQueueOverflow = false;
+    let eligibleQueueOverflow = this.scanOverflow;
+    let cursor = this.scanCursor;
 
     client.on("error", () => {
       // Connection errors are surfaced by connect/scan. The listener prevents
@@ -372,7 +379,6 @@ export class QueueRegistry {
     try {
       await client.connect();
 
-      let cursor = 0;
       let iterations = 0;
       do {
         const page = await client.scan(cursor, {
@@ -461,6 +467,11 @@ export class QueueRegistry {
     );
 
     this.discoveredQueues = next;
+    // Continue a bounded sweep on the next refresh. Only a completed sweep
+    // may evict queues that were not seen, and failed scans retain their cursor.
+    this.scanCursor = cursor;
+    this.scanQueueNames = cursor === 0 ? new Set() : queueNames;
+    this.scanOverflow = cursor !== 0 && eligibleQueueOverflow;
     this.lastRefreshAt = Date.now();
     this.lastError = undefined;
     this.lastSuccessfulRefreshAt = this.lastRefreshAt;

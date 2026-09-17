@@ -75,10 +75,11 @@ export default function QueuedashPage() {
       />
 
       <div
+        // Lifted clear of the dashboard's pinned footer.
         style={{
           position: "fixed",
           right: 32,
-          bottom: 32,
+          bottom: 68,
           zIndex: 80,
         }}
       >

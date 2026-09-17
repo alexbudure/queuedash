@@ -1,8 +1,9 @@
 import { Pencil, Trash2 } from "lucide-react";
-import { useEffect } from "react";
 
+import { mutationToasts } from "../utils/mutationToasts";
 import type { Scheduler } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import { Alert } from "./Alert";
 import { Button } from "./Button";
 
 type SchedulerActionMenuProps = {
@@ -21,13 +22,9 @@ export const SchedulerActionMenu = ({
   onRemove,
   onUpdate,
 }: SchedulerActionMenuProps) => {
-  const removeMutation = trpc.scheduler.remove.useMutation();
-
-  useEffect(() => {
-    if (removeMutation.isSuccess) {
-      onRemove?.();
-    }
-  }, [removeMutation.isSuccess, onRemove]);
+  const removeMutation = trpc.scheduler.remove.useMutation(
+    mutationToasts("Scheduler removed", { onSuccess: () => onRemove?.() }),
+  );
 
   const input = {
     queueName,
@@ -47,14 +44,28 @@ export const SchedulerActionMenu = ({
         />
       ) : null}
       {canRemove ? (
-        <Button
-          size="sm"
-          label="Remove"
-          colorScheme="red"
-          icon={<Trash2 className="size-3.5" />}
-          onClick={() => removeMutation.mutate(input)}
-          isLoading={removeMutation.isPending}
-        />
+        <Alert
+          isPending={removeMutation.isPending}
+          title="Remove this scheduler?"
+          description={`This action cannot be undone. "${scheduler.name}" will stop scheduling new runs; jobs it has already enqueued are left alone.`}
+          action={
+            <Button
+              variant="filled"
+              colorScheme="red"
+              label="Yes, remove"
+              onClick={() => removeMutation.mutate(input)}
+            />
+          }
+        >
+          <Button
+            as="span"
+            size="sm"
+            label="Remove"
+            colorScheme="red"
+            icon={<Trash2 className="size-3.5" />}
+            isLoading={removeMutation.isPending}
+          />
+        </Alert>
       ) : null}
     </>
   );

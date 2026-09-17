@@ -1,17 +1,13 @@
 import { clsx } from "clsx";
 import { CheckCircle, Clock, Rocket } from "lucide-react";
 
+import { formatDuration } from "../utils/format";
+import { TEXT_MUTED } from "../utils/styles";
 import type { Job } from "../utils/trpc";
-import { Timestamp } from "./Timestamp";
+import { formatAbsoluteTimestamp, Timestamp } from "./Timestamp";
 
 type JobTimelineProps = {
   job: Job;
-};
-
-const formatDuration = (ms: number) => {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${(ms / 60000).toFixed(1)}m`;
 };
 
 export const JobTimeline = ({ job }: JobTimelineProps) => {
@@ -33,130 +29,140 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
   const isProcessing = !!processedAt && !finishedAt;
   const isFinished = !!finishedAt;
 
+  // The job panel no longer repeats these as an absolute-time grid, so each
+  // stage carries its wall-clock moment on hover.
+  const stageTitle = (label: string, date: Date | null) =>
+    date ? `${label} ${formatAbsoluteTimestamp(date, "full")}` : undefined;
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div
+        className="flex min-w-0 items-center gap-2"
+        title={stageTitle("Added", addedAt)}
+      >
+        <div
+          className={clsx(
+            "flex size-6 shrink-0 items-center justify-center rounded-full",
+            processedAt
+              ? "bg-gray-100 dark:bg-slate-800"
+              : "bg-gray-900 dark:bg-slate-100",
+          )}
+        >
+          <Clock
             className={clsx(
-              "flex size-6 shrink-0 items-center justify-center rounded-full",
+              "size-3",
               processedAt
-                ? "bg-gray-100 dark:bg-slate-800"
-                : "bg-gray-900 dark:bg-slate-100",
+                ? "text-gray-500 dark:text-slate-400"
+                : "text-white dark:text-slate-900",
+            )}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span
+            className={clsx(
+              "text-xs font-medium",
+              processedAt
+                ? "text-gray-500 dark:text-slate-400"
+                : "text-gray-900 dark:text-white",
             )}
           >
-            <Clock
-              className={clsx(
-                "size-3",
-                processedAt
-                  ? "text-gray-500 dark:text-slate-400"
-                  : "text-white dark:text-slate-900",
-              )}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col">
-            <span
-              className={clsx(
-                "text-xs font-medium",
-                processedAt
-                  ? "text-gray-500 dark:text-slate-400"
-                  : "text-gray-900 dark:text-white",
-              )}
-            >
-              Waiting
+            Waiting
+          </span>
+          {waitDuration ? (
+            <span className={clsx("text-xs tabular-nums", TEXT_MUTED)}>
+              {formatDuration(waitDuration)}
             </span>
-            {waitDuration ? (
-              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
-                {formatDuration(waitDuration)}
-              </span>
-            ) : null}
-          </div>
+          ) : null}
         </div>
+      </div>
 
-        <div className="h-px min-w-[20px] flex-1 bg-gray-100 dark:bg-slate-800" />
+      <div className="h-px min-w-[20px] flex-1 bg-gray-100 dark:bg-slate-800" />
 
-        <div className="flex min-w-0 items-center gap-2">
-          <div
+      <div
+        className="flex min-w-0 items-center gap-2"
+        title={stageTitle("Started", processedAt)}
+      >
+        <div
+          className={clsx(
+            "flex size-6 shrink-0 items-center justify-center rounded-full",
+            isProcessing
+              ? "animate-heartbeat bg-gray-900 dark:bg-slate-100"
+              : "bg-gray-100 dark:bg-slate-800",
+          )}
+        >
+          <Rocket
             className={clsx(
-              "flex size-6 shrink-0 items-center justify-center rounded-full",
+              "size-3",
               isProcessing
-                ? "animate-pulse bg-gray-900 dark:bg-slate-100"
+                ? "text-white dark:text-slate-900"
                 : finishedAt
-                  ? "bg-gray-100 dark:bg-slate-800"
-                  : "bg-gray-100 dark:bg-slate-800",
+                  ? "text-gray-500 dark:text-slate-400"
+                  : "text-gray-400 dark:text-slate-500",
+            )}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span
+            className={clsx(
+              "text-xs font-medium",
+              isProcessing
+                ? "text-gray-900 dark:text-white"
+                : finishedAt
+                  ? "text-gray-500 dark:text-slate-400"
+                  : "text-gray-400 dark:text-slate-500",
             )}
           >
-            <Rocket
-              className={clsx(
-                "size-3",
-                isProcessing
-                  ? "text-white dark:text-slate-900"
-                  : finishedAt
-                    ? "text-gray-500 dark:text-slate-400"
-                    : "text-gray-400 dark:text-slate-500",
-              )}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col">
-            <span
-              className={clsx(
-                "text-xs font-medium",
-                isProcessing
-                  ? "text-gray-900 dark:text-white"
-                  : finishedAt
-                    ? "text-gray-500 dark:text-slate-400"
-                    : "text-gray-400 dark:text-slate-500",
-              )}
-            >
-              Processing
+            Processing
+          </span>
+          {processDuration ? (
+            <span className={clsx("text-xs tabular-nums", TEXT_MUTED)}>
+              {formatDuration(processDuration)}
             </span>
-            {processDuration ? (
-              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
-                {formatDuration(processDuration)}
-              </span>
-            ) : null}
-          </div>
+          ) : null}
         </div>
+      </div>
 
-        <div className="h-px min-w-[20px] flex-1 bg-gray-100 dark:bg-slate-800" />
+      <div className="h-px min-w-[20px] flex-1 bg-gray-100 dark:bg-slate-800" />
 
-        <div className="flex min-w-0 items-center gap-2">
-          <div
+      <div
+        className="flex min-w-0 items-center gap-2"
+        title={stageTitle("Finished", finishedAt)}
+      >
+        <div
+          className={clsx(
+            "flex size-6 shrink-0 items-center justify-center rounded-full",
+            isFinished
+              ? hasFailed
+                ? "bg-red-500 dark:bg-red-600"
+                : "bg-green-500 dark:bg-green-600"
+              : "bg-gray-100 dark:bg-slate-800",
+          )}
+        >
+          <CheckCircle
             className={clsx(
-              "flex size-6 shrink-0 items-center justify-center rounded-full",
+              "size-3",
+              isFinished ? "text-white" : "text-gray-400 dark:text-slate-500",
+            )}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <span
+            className={clsx(
+              "text-xs font-medium",
               isFinished
                 ? hasFailed
-                  ? "bg-red-500 dark:bg-red-600"
-                  : "bg-green-500 dark:bg-green-600"
-                : "bg-gray-100 dark:bg-slate-800",
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-green-600 dark:text-green-400"
+                : "text-gray-400 dark:text-slate-500",
             )}
           >
-            <CheckCircle
-              className={clsx(
-                "size-3",
-                isFinished ? "text-white" : "text-gray-400 dark:text-slate-500",
-              )}
-            />
-          </div>
-          <div className="flex min-w-0 flex-col">
-            <span
-              className={clsx(
-                "text-xs font-medium",
-                isFinished
-                  ? hasFailed
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-green-600 dark:text-green-400"
-                  : "text-gray-400 dark:text-slate-500",
-              )}
-            >
-              {hasFailed ? "Failed" : "Complete"}
+            {hasFailed ? "Failed" : "Completed"}
+          </span>
+          {finishedAt ? (
+            <span className={clsx("text-xs tabular-nums", TEXT_MUTED)}>
+              <Timestamp value={finishedAt} variant="time" />
             </span>
-            {finishedAt ? (
-              <span className="text-xs text-gray-400 tabular-nums dark:text-slate-500">
-                <Timestamp value={finishedAt} variant="time" />
-              </span>
-            ) : null}
-          </div>
+          ) : null}
         </div>
       </div>
     </div>

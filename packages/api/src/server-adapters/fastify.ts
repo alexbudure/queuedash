@@ -141,10 +141,36 @@ export function fastifyQueuedashPlugin(
         ),
       );
   });
-  fastify.register(trpcFastify.fastifyTRPCPlugin, {
-    prefix: `${baseUrl}/trpc`,
-    trpcOptions: { router: appRouter, createContext: () => ctx },
-  });
+  fastify.register(
+    (rpc, _options, ready) => {
+      // tRPC reads JSON itself. Keep this parser scoped to the API routes.
+      rpc.removeContentTypeParser("application/json");
+      rpc.addContentTypeParser(
+        "application/json",
+        { parseAs: "string" },
+        (_req, body, parsed) => parsed(null, body),
+      );
+      rpc.removeContentTypeParser("multipart/form-data");
+      rpc.addContentTypeParser(
+        "multipart/form-data",
+        {},
+        (_req, body, parsed) => parsed(null, body),
+      );
+      // A batch of eight queue.byName calls exceeds Fastify's default
+      // 100-character named-parameter limit. Wildcards are not subject to it.
+      rpc.all<{ Params: { "*": string } }>("/*", async (req, res) => {
+        await trpcFastify.fastifyRequestHandler({
+          router: appRouter,
+          createContext: () => ctx,
+          req,
+          res,
+          path: req.params["*"],
+        });
+      });
+      ready();
+    },
+    { prefix: `${baseUrl}/trpc` },
+  );
 
   done();
 }

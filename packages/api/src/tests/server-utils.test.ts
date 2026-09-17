@@ -27,11 +27,15 @@ describe("createQueuedashHtml", () => {
     const html = createQueuedashHtml("</script><script>alert(1)</script>", {
       branding: {
         name: "</title><script>alert(1)</script>",
+        faviconUrl: '"><script>alert(1)</script>',
       },
     });
 
     expect(html).toContain(
       "<title>&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;</title>",
+    );
+    expect(html).toContain(
+      'href="&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"',
     );
     expect(html).toContain("\\u003c/script\\u003e");
     expect(html).not.toContain(
@@ -42,5 +46,22 @@ describe("createQueuedashHtml", () => {
   test("uses Queuedash when no custom product name is configured", () => {
     const html = createQueuedashHtml("/queuedash");
     expect(html).toContain("<title>Queuedash</title>");
+  });
+
+  test("links the inline Queuedash favicon by default", () => {
+    const html = createQueuedashHtml("/queuedash");
+    expect(html).toMatch(
+      /<link\s+rel="icon"\s+href="data:image\/svg\+xml,[^"]+"\s*\/>/,
+    );
+  });
+
+  test("prefers a custom favicon from branding", () => {
+    const html = createQueuedashHtml("/queuedash", {
+      branding: { faviconUrl: "/assets/acme-favicon.svg" },
+    });
+    expect(html).toMatch(
+      /<link\s+rel="icon"\s+href="\/assets\/acme-favicon.svg"\s*\/>/,
+    );
+    expect(html).not.toContain("data:image/svg+xml");
   });
 });

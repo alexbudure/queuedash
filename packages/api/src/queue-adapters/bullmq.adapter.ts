@@ -291,10 +291,10 @@ export class BullMQAdapter extends QueueAdapter<
     template: Record<string, unknown>,
   ): Promise<boolean> {
     return this.withSchedulerMutationLock(key, async () => {
-      const scheduler = (await this.queue.getJobSchedulers()).find(
-        (candidate) => candidate.key === key,
-      );
-      if (!scheduler) return false;
+      const scheduler = await this.queue.getJobScheduler(key);
+      // BullMQ can synthesize legacy metadata for a missing colon-delimited
+      // key. A null score means there is no scheduled entry to update.
+      if (!scheduler || scheduler.next === null) return false;
       if (isLegacyRepeatable(scheduler)) {
         throw new UnsupportedSchedulerUpdateError(
           "Legacy BullMQ repeatable jobs cannot be updated; remove and recreate this schedule instead",
@@ -308,9 +308,7 @@ export class BullMQAdapter extends QueueAdapter<
 
   async removeScheduler(key: string): Promise<void> {
     await this.withSchedulerMutationLock(key, async () => {
-      const scheduler = (await this.queue.getJobSchedulers()).find(
-        (candidate) => candidate.key === key,
-      );
+      const scheduler = await this.queue.getJobScheduler(key);
       if (scheduler && isLegacyRepeatable(scheduler)) {
         await this.queue.removeRepeatableByKey(key);
         return;

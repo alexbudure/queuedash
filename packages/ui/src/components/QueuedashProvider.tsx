@@ -36,6 +36,7 @@ type ResolvedBranding = {
 type QueuedashContextValue = {
   branding: ResolvedBranding;
   defaultPreferences: UserPreferences;
+  documentTitle: boolean;
   isDark: boolean;
   portalContainer: Element | null;
   preferences: UserPreferences;
@@ -353,6 +354,7 @@ export const QueuedashProvider = ({
     () => ({
       branding,
       defaultPreferences,
+      documentTitle: ui?.documentTitle === true,
       isDark:
         preferences.theme === "dark" ||
         (preferences.theme === "system" && systemDark),
@@ -374,6 +376,7 @@ export const QueuedashProvider = ({
     [
       branding,
       defaultPreferences,
+      ui?.documentTitle,
       portalContainer,
       preferenceScope,
       preferences,

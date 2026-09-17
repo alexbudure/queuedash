@@ -1,11 +1,21 @@
+import { clsx } from "clsx";
 import cronstrue from "cronstrue";
-import { AlertTriangle, Calendar, Clock, Info } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
-import { JSONTree } from "react-json-tree";
+import { AlertTriangle, Calendar, Clock } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 
+import { parseDataOrNull } from "../utils/json";
+import { SECTION_LABEL, TEXT_MUTED } from "../utils/styles";
 import type { Queue, Scheduler } from "../utils/trpc";
-import { AddJobModal } from "./AddJobModal";
-import { useQueuedash } from "./QueuedashProvider";
+import { JobFormFields, JobFormFooter, useJobForm } from "./AddJobModal";
+import { CopyButton } from "./CopyButton";
+import {
+  DetailBody,
+  DetailSection,
+  DisclosureButton,
+  Property,
+  PropertyList,
+} from "./DetailView";
+import { JsonPane } from "./JsonPane";
 import { SchedulerActionMenu } from "./SchedulerActionMenu";
 import { SidePanelDialog } from "./SidePanelDialog";
 import { Timestamp } from "./Timestamp";
@@ -18,66 +28,13 @@ type SchedulerModalProps = {
   onDismiss: () => void;
 };
 
-const jsonTreeLightTheme = {
-  scheme: "light",
-  author: "queuedash",
-  base00: "#f8fafc",
-  base01: "#f1f5f9",
-  base02: "#e2e8f0",
-  base03: "#64748b",
-  base04: "#94a3b8",
-  base05: "#171717",
-  base06: "#0a0a0a",
-  base07: "#000000",
-  base08: "#dc2626",
-  base09: "#ea580c",
-  base0A: "#ca8a04",
-  base0B: "#16a34a",
-  base0C: "#0891b2",
-  base0D: "#2563eb",
-  base0E: "#9333ea",
-  base0F: "#be185d",
-};
-
-const jsonTreeDarkTheme = {
-  scheme: "dark",
-  author: "queuedash",
-  base00: "#0f172a",
-  base01: "#1e293b",
-  base02: "#334155",
-  base03: "#64748b",
-  base04: "#94a3b8",
-  base05: "#e2e8f0",
-  base06: "#f1f5f9",
-  base07: "#f8fafc",
-  base08: "#f87171",
-  base09: "#fb923c",
-  base0A: "#facc15",
-  base0B: "#4ade80",
-  base0C: "#22d3ee",
-  base0D: "#60a5fa",
-  base0E: "#c084fc",
-  base0F: "#f472b6",
-};
-
-const parseUnknownJson = (value: unknown): unknown => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "object") return value;
-  if (typeof value !== "string") return value;
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-};
-
-const isEmptyData = (value: unknown) => {
-  if (value === null || value === undefined) return true;
-  if (typeof value === "object" && Object.keys(value as object).length === 0) {
-    return true;
-  }
-  return false;
+const formatEvery = (every?: number) => {
+  if (!every) return "-";
+  const seconds = every / 1000;
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
 };
 
 const getScheduleLabel = (scheduler: Scheduler) => {
@@ -90,24 +47,13 @@ const getScheduleLabel = (scheduler: Scheduler) => {
   }
 
   if (scheduler.every) {
-    const seconds = scheduler.every / 1000;
-    if (seconds < 60) return `Every ${seconds}s`;
-    if (seconds < 3600) return `Every ${Math.floor(seconds / 60)}m`;
-    if (seconds < 86400) return `Every ${Math.floor(seconds / 3600)}h`;
-    return `Every ${Math.floor(seconds / 86400)}d`;
+    return `Every ${formatEvery(scheduler.every)}`;
   }
 
   return "No schedule configured";
 };
 
-const formatEvery = (every?: number) => {
-  if (!every) return "-";
-  const seconds = every / 1000;
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  return `${Math.floor(seconds / 86400)}d`;
-};
+const BROWSER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const SchedulerModal = ({
   canRemove,
@@ -118,22 +64,34 @@ export const SchedulerModal = ({
 }: SchedulerModalProps) => {
   const [showRawDetails, setShowRawDetails] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const { isDark } = useQueuedash();
-  const jsonTreeTheme = isDark ? jsonTreeDarkTheme : jsonTreeLightTheme;
+  const rawId = useId();
+
+  const closeEdit = () => setShowEdit(false);
+
+  // Details and edit share one mounted dialog: swapping in a second
+  // SidePanelDialog re-fired the slide-in with no exit and jumped the panel
+  // width mid-transition. The form state outlives a cancel, so returning to
+  // the details view and reopening the editor keeps unsaved edits.
+  const form = useJobForm({
+    queue,
+    scheduler,
+    variant: "scheduler",
+    onDismiss: closeEdit,
+    onSuccess: onDismiss,
+  });
 
   const scheduleLabel = useMemo(() => getScheduleLabel(scheduler), [scheduler]);
 
-  const templateData = useMemo(() => {
-    const parsed = parseUnknownJson(scheduler.template?.data);
-    return isEmptyData(parsed) ? null : parsed;
-  }, [scheduler.template]);
+  const templateData = useMemo(
+    () => parseDataOrNull(scheduler.template?.data),
+    [scheduler.template],
+  );
 
   const templateOpts = useMemo(() => {
     const rawTemplate = scheduler.template as
       | Record<string, unknown>
       | undefined;
-    const parsed = parseUnknownJson(rawTemplate?.opts);
-    return isEmptyData(parsed) ? null : parsed;
+    return parseDataOrNull(rawTemplate?.opts);
   }, [scheduler.template]);
 
   const schedulerDetails = useMemo(() => {
@@ -143,208 +101,225 @@ export const SchedulerModal = ({
   }, [scheduler]);
 
   const nextRunDate = scheduler.next ? new Date(scheduler.next) : null;
-
-  if (showEdit) {
-    return (
-      <AddJobModal
-        queue={queue}
-        scheduler={scheduler}
-        variant="scheduler"
-        onDismiss={() => setShowEdit(false)}
-        onSuccess={onDismiss}
-      />
-    );
-  }
+  const identifier = scheduler.id ?? scheduler.key;
 
   return (
     <SidePanelDialog
-      title={scheduler.name}
-      subtitle={scheduler.id ?? scheduler.key}
+      title={showEdit ? "Edit scheduler" : scheduler.name}
+      titleClassName={showEdit ? undefined : "font-mono text-[15px]"}
+      subtitle={
+        showEdit ? (
+          queue.displayName
+        ) : (
+          <>
+            <span
+              className={clsx("truncate font-mono", TEXT_MUTED)}
+              title={identifier}
+            >
+              {identifier}
+            </span>
+            <CopyButton value={identifier} label="Scheduler key" />
+          </>
+        )
+      }
       open={true}
       onOpenChange={(isOpen) => {
+        // Editing is a sub-view of the details panel, not a separate dialog:
+        // closing an edit returns to details, as it did before the two were
+        // merged into one mounted dialog. Only details closes the panel.
         if (!isOpen) {
-          onDismiss();
+          if (showEdit) closeEdit();
+          else onDismiss();
         }
       }}
+      isDismissable={!showEdit || !form.isDirty}
+      isKeyboardDismissDisabled={showEdit && form.isDirty}
+      panelClassName="max-w-[760px]"
       headerActions={
-        <SchedulerActionMenu
-          canRemove={canRemove}
-          canUpdate={canUpdate}
-          queueName={queue.name}
-          scheduler={scheduler}
-          onRemove={onDismiss}
-          onUpdate={() => setShowEdit(true)}
-        />
+        showEdit ? null : (
+          <SchedulerActionMenu
+            canRemove={canRemove}
+            canUpdate={canUpdate}
+            queueName={queue.name}
+            scheduler={scheduler}
+            onRemove={onDismiss}
+            onUpdate={() => setShowEdit(true)}
+          />
+        )
+      }
+      footer={
+        showEdit ? <JobFormFooter form={form} onCancel={closeEdit} /> : null
       }
     >
-      <div className="space-y-6 p-6">
-        <div className="rounded-lg bg-gray-50/80 p-3.5 dark:bg-slate-800/40">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="inline-flex items-center gap-1.5 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
-                <Clock className="size-3" />
-                Schedule
-              </p>
-              <p className="mt-1.5 text-sm font-medium text-gray-900 dark:text-white">
-                {scheduleLabel}
-              </p>
+      {showEdit ? (
+        <JobFormFields form={form} />
+      ) : (
+        <DetailBody>
+          {/* The schedule is what a scheduler is, so it leads as one card:
+              what it says in words, what it says in cron, and when it fires
+              next - which used to be a second box underneath. */}
+          <DetailSection>
+            <div className="rounded-lg bg-gray-50/80 dark:bg-slate-800/40">
+              <div className="p-3.5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p
+                      className={clsx(
+                        "inline-flex items-center gap-1.5",
+                        SECTION_LABEL,
+                      )}
+                    >
+                      <Clock aria-hidden="true" className="size-3" />
+                      Schedule
+                    </p>
+                    <p
+                      title={scheduleLabel}
+                      className="mt-1.5 text-sm font-medium text-gray-900 dark:text-white"
+                    >
+                      {scheduleLabel}
+                    </p>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-gray-100/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-slate-700/60 dark:text-slate-400">
+                    {scheduler.pattern
+                      ? "Cron"
+                      : scheduler.every
+                        ? "Interval"
+                        : "Unscheduled"}
+                  </span>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {scheduler.pattern ? (
+                    <span className="inline-flex items-center rounded-full bg-blue-50/80 px-2.5 py-0.5 font-mono text-xs text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+                      {scheduler.pattern}
+                    </span>
+                  ) : null}
+                  {scheduler.every ? (
+                    <span className="inline-flex items-center rounded-full bg-blue-50/80 px-2.5 py-0.5 text-xs text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+                      Every {formatEvery(scheduler.every)}
+                    </span>
+                  ) : null}
+                  {scheduler.tz ? (
+                    <span className="inline-flex items-center rounded-full bg-gray-100/80 px-2.5 py-0.5 text-xs text-gray-500 dark:bg-slate-700/60 dark:text-slate-400">
+                      {scheduler.tz}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-slate-800">
+                {nextRunDate ? (
+                  <div className="flex items-start gap-2.5 px-3.5 py-2.5 text-xs">
+                    <Calendar
+                      aria-hidden="true"
+                      className="mt-0.5 size-3.5 shrink-0 text-blue-500 dark:text-blue-400"
+                    />
+                    <div className="min-w-0 flex-1">
+                      {/* Rendered in the scheduler's own zone so it agrees with
+                          the cron above it; the viewer's local time follows
+                          underneath rather than sitting on the same line in a
+                          different zone. */}
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        Next run{" "}
+                        <Timestamp
+                          value={nextRunDate}
+                          variant="full"
+                          timeZone={scheduler.tz ?? undefined}
+                        />
+                      </span>
+                      {scheduler.tz && scheduler.tz !== BROWSER_TIME_ZONE ? (
+                        <span className={clsx("mt-0.5 block", TEXT_MUTED)}>
+                          <Timestamp value={nextRunDate} variant="full" /> local
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+                    <AlertTriangle
+                      aria-hidden="true"
+                      className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400"
+                    />
+                    <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                      No next run scheduled
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-            <span className="inline-flex shrink-0 items-center rounded-full bg-gray-100/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-slate-700/60 dark:text-slate-400">
-              {scheduler.pattern
-                ? "Cron"
-                : scheduler.every
-                  ? "Interval"
-                  : "Unscheduled"}
-            </span>
-          </div>
+          </DetailSection>
 
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            {scheduler.pattern ? (
-              <span className="inline-flex items-center rounded-full bg-blue-50/80 px-2.5 py-0.5 font-mono text-xs text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
-                {scheduler.pattern}
-              </span>
-            ) : null}
-            {scheduler.every ? (
-              <span className="inline-flex items-center rounded-full bg-blue-50/80 px-2.5 py-0.5 text-xs text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
-                Every {formatEvery(scheduler.every)}
-              </span>
-            ) : null}
-            {scheduler.tz ? (
-              <span className="inline-flex items-center rounded-full bg-gray-100/80 px-2.5 py-0.5 text-xs text-gray-500 dark:bg-slate-700/60 dark:text-slate-400">
-                {scheduler.tz}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        {nextRunDate ? (
-          <div className="flex items-center gap-2.5 rounded-lg bg-blue-50/80 px-3 py-2.5 dark:bg-blue-950/20">
-            <Calendar className="size-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-            <div className="min-w-0 flex-1 text-xs">
-              <span className="font-medium text-blue-800 dark:text-blue-300">
-                Next run <Timestamp value={nextRunDate} variant="full" />
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2.5 rounded-lg bg-amber-50/80 px-3 py-2.5 dark:bg-amber-950/20">
-            <AlertTriangle className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400" />
-            <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
-              No next run scheduled
-            </span>
-          </div>
-        )}
-
-        <div>
-          <h3 className="mb-3 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
-            Details
-          </h3>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-            <DetailItem label="Queue" value={queue.name} />
-            <DetailItem label="Key" value={scheduler.key} mono />
-            <DetailItem label="ID" value={scheduler.id ?? "-"} mono />
-            <DetailItem
-              label="Total Runs"
-              value={
-                scheduler.iterationCount !== undefined
-                  ? String(scheduler.iterationCount)
-                  : "-"
-              }
-              mono
-            />
-            <DetailItem
-              label="Limit"
-              value={
-                scheduler.limit !== undefined
-                  ? String(scheduler.limit)
-                  : "No limit"
-              }
-              mono
-            />
-            <DetailItem
-              label="End Date"
-              value={<Timestamp value={scheduler.endDate} variant="full" />}
-            />
-          </div>
-        </div>
-
-        {templateData ? (
-          <div>
-            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
-              Job Data
-            </h3>
-            <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
-              <JSONTree
-                data={templateData}
-                theme={jsonTreeTheme}
-                invertTheme={false}
-                hideRoot
-                shouldExpandNodeInitially={() => true}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {templateOpts ? (
-          <div>
-            <h3 className="mb-2 text-xs font-medium tracking-wide text-gray-500 uppercase dark:text-slate-400">
-              Job Options
-            </h3>
-            <div className="data-json-renderer overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
-              <JSONTree
-                data={templateOpts}
-                theme={jsonTreeTheme}
-                invertTheme={false}
-                hideRoot
-                shouldExpandNodeInitially={() => true}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        <div>
-          <button
-            type="button"
-            className="flex items-center gap-1.5 text-xs text-gray-500 transition-colors hover:text-gray-900 dark:text-slate-400 dark:hover:text-white"
-            onClick={() => setShowRawDetails((prev) => !prev)}
+          <DetailSection
+            title="Properties"
+            action={
+              <DisclosureButton
+                isOpen={showRawDetails}
+                controls={rawId}
+                onToggle={() => setShowRawDetails((prev) => !prev)}
+              >
+                {showRawDetails ? "Hide raw options" : "Raw options"}
+              </DisclosureButton>
+            }
           >
-            <Info className="size-3" />
-            <span>
-              {showRawDetails ? "Hide" : "Show"} raw scheduler options
-            </span>
-          </button>
-          {showRawDetails ? (
-            <div className="data-json-renderer mt-2 overflow-x-auto rounded-lg border border-gray-100/60 bg-gray-50/50 text-xs dark:border-slate-800/60 dark:bg-slate-900/50">
-              <JSONTree
-                data={schedulerDetails}
-                theme={jsonTreeTheme}
-                invertTheme={false}
-                hideRoot
-                shouldExpandNodeInitially={() => true}
+            <PropertyList>
+              <Property label="Queue" value={queue.displayName} />
+              <Property label="Key" mono value={scheduler.key} />
+              {scheduler.id ? (
+                <Property label="ID" mono value={scheduler.id} />
+              ) : null}
+              <Property
+                label="Total runs"
+                mono
+                value={
+                  scheduler.iterationCount !== undefined
+                    ? String(scheduler.iterationCount)
+                    : "-"
+                }
               />
+              <Property
+                label="Limit"
+                mono={scheduler.limit !== undefined}
+                value={
+                  scheduler.limit !== undefined
+                    ? String(scheduler.limit)
+                    : "No limit"
+                }
+              />
+              <Property
+                label="End date"
+                value={
+                  scheduler.endDate ? (
+                    <Timestamp value={scheduler.endDate} variant="full" />
+                  ) : (
+                    "None"
+                  )
+                }
+              />
+            </PropertyList>
+            <div id={rawId}>
+              {showRawDetails ? (
+                <JsonPane
+                  data={schedulerDetails}
+                  expand="all"
+                  className="mt-3"
+                />
+              ) : null}
             </div>
+          </DetailSection>
+
+          {templateData !== null ? (
+            <DetailSection title="Template data">
+              <JsonPane data={templateData} expand="all" />
+            </DetailSection>
           ) : null}
-        </div>
-      </div>
+
+          {templateOpts !== null ? (
+            <DetailSection title="Template options">
+              <JsonPane data={templateOpts} expand="all" />
+            </DetailSection>
+          ) : null}
+        </DetailBody>
+      )}
     </SidePanelDialog>
   );
 };
-
-const DetailItem = ({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: ReactNode;
-  mono?: boolean;
-}) => (
-  <div>
-    <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">{label}</p>
-    <p
-      className={`text-sm break-all text-gray-900 dark:text-white ${mono ? "font-mono" : ""}`}
-    >
-      {value}
-    </p>
-  </div>
-);

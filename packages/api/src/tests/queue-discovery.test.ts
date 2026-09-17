@@ -1,7 +1,7 @@
 import { faker } from "@faker-js/faker";
 import Bull from "bull";
 import { Queue as BullMQQueue } from "bullmq";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getQueueRegistry,
@@ -15,6 +15,23 @@ import type { Context } from "../trpc";
 const queuesToClean: BullMQQueue[] = [];
 const bullQueuesToClean: Bull.Queue[] = [];
 const registriesToClose: QueueRegistry[] = [];
+
+// A shared Redis database can require several bounded refreshes. Advance only
+// the discovery clock; Redis I/O and its timers continue running normally.
+const discoverCompleteSweep = async (registry: QueueRegistry) => {
+  let now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+  try {
+    for (let refresh = 0; refresh < 20; refresh += 1) {
+      const entries = await registry.list();
+      if (!registry.getDiscoveryStatus().truncated) return entries;
+      now += 30_001;
+    }
+    throw new Error("Discovery did not finish a keyspace sweep");
+  } finally {
+    clock.mockRestore();
+  }
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -106,7 +123,7 @@ describe("queue discovery", () => {
     });
     registriesToClose.push(registry);
 
-    const entries = await registry.list();
+    const entries = await discoverCompleteSweep(registry);
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.adapter.getName()).toBe("emails");
@@ -137,7 +154,9 @@ describe("queue discovery", () => {
       registriesToClose.push(registry);
 
       expect(
-        (await registry.list()).map(({ adapter }) => adapter.getName()),
+        (await discoverCompleteSweep(registry)).map(({ adapter }) =>
+          adapter.getName(),
+        ),
       ).toEqual(["emails"]);
     } finally {
       await client.del(invalidMarker);
@@ -177,7 +196,7 @@ describe("queue discovery", () => {
     });
     registriesToClose.push(registry);
 
-    const names = (await registry.list()).map(({ adapter }) =>
+    const names = (await discoverCompleteSweep(registry)).map(({ adapter }) =>
       adapter.getName(),
     );
     expect(names).toEqual(["static", "discovered"]);
@@ -199,7 +218,7 @@ describe("queue discovery", () => {
     });
     registriesToClose.push(registry);
 
-    const entries = await registry.list();
+    const entries = await discoverCompleteSweep(registry);
 
     expect(entries).toHaveLength(1);
     expect(entries[0]?.adapter.getName()).toBe("emails");
@@ -225,7 +244,7 @@ describe("queue discovery", () => {
     });
     registriesToClose.push(registry);
 
-    const entries = await registry.list();
+    const entries = await discoverCompleteSweep(registry);
 
     expect(entries.map(({ adapter }) => adapter.getName())).toEqual(["emails"]);
   });
@@ -259,10 +278,8 @@ describe("queue discovery", () => {
     const registry = getQueueRegistry(ctx);
     registriesToClose.push(registry);
 
-    const [entries, settings] = await Promise.all([
-      registry.list(),
-      appRouter.createCaller(ctx).settings.get(),
-    ]);
+    const entries = await discoverCompleteSweep(registry);
+    const settings = await appRouter.createCaller(ctx).settings.get();
 
     expect(entries.map(({ adapter }) => adapter.getName())).toEqual([
       "visible",

@@ -288,6 +288,48 @@ describe("Express adapter auth", () => {
 });
 
 describe("Fastify adapter auth", () => {
+  it("authenticates and serves batches larger than Fastify's named-parameter limit", async () => {
+    const app = fastify();
+    const pause = vi.fn().mockResolvedValue(undefined);
+    app.register(fastifyQueuedashPlugin, {
+      auth,
+      baseUrl: "/queuedash",
+      ctx: {
+        queues: [
+          { type: "bull", displayName: "Test", queue: { name: "test", pause } },
+        ],
+      } as unknown as Context,
+    });
+    const cookie = `${QUEUEDASH_SESSION_COOKIE}=${createQueuedashSessionToken(auth)}`;
+    try {
+      const paths = Array(100).fill("settings.get").join(",");
+      for (const base of ["/queuedash/trpc", "/queuedash/%74rpc"]) {
+        const url = `${base}/${paths}?batch=1`;
+        expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+        const response = await app.inject({
+          method: "GET",
+          url,
+          headers: { cookie },
+        });
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toHaveLength(100);
+        expect(
+          response.json().every((item: { result?: unknown }) => item.result),
+        ).toBe(true);
+      }
+      const response = await app.inject({
+        method: "POST",
+        url: `/queuedash/trpc/${Array(8).fill("queue.pauseAll").join(",")}?batch=1`,
+        headers: { cookie, "content-type": "application/json" },
+        payload: {},
+      });
+      expect(response.statusCode).toBe(200);
+      expect(pause).toHaveBeenCalledTimes(8);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("supports login sessions without blocking the app shell", async () => {
     const app = fastify();
     app.register(fastifyQueuedashPlugin, {

@@ -65,6 +65,44 @@ const isInsideKeyframes = (rule) => {
   return false;
 };
 
+/**
+ * Tailwind v4 emits `space-*` / `divide-*` as a nested, zero-specificity rule:
+ *
+ *   .space-y-3 { :where(& > :not(:last-child)) { margin-block-end: … } }
+ *
+ * That works upstream because preflight's `*, ::before, ::after { margin: 0 }`
+ * sits in a lower cascade layer. We unwrap layers below (so the stylesheet wins
+ * against unlayered host CSS), which drops back to pure specificity - and the
+ * scoped preflight is `[data-queuedash-root]x3 *`, i.e. (0,3,0), against
+ * `:where(...)` at (0,0,0). Every space-y in the app silently collapsed to 0.
+ *
+ * Unwrapping the `:where()` gives the nested selector the parent's specificity,
+ * which restores the intended precedence.
+ */
+const unwrapWhereAroundParentSelector = (selector) => {
+  const prefix = ":where(";
+  if (!selector.startsWith(prefix) || !selector.endsWith(")")) return selector;
+
+  // Only unwrap when the opening `:where(` closes at the very end, so we never
+  // touch a selector that merely starts with one.
+  let depth = 0;
+  for (let index = prefix.length - 1; index < selector.length; index += 1) {
+    const character = selector[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        if (index !== selector.length - 1) return selector;
+        break;
+      }
+    }
+  }
+
+  const inner = selector.slice(prefix.length, -1).trim();
+  // `&` has to be present, or the unwrap would change what the rule matches.
+  return inner.startsWith("&") ? inner : selector;
+};
+
 const scopeSelector = (selector) => {
   if (!selector || selector.includes(scopedRootSelector)) return selector;
 
@@ -137,7 +175,14 @@ const scopeStylesheet = async () => {
   });
 
   root.walkRules((rule) => {
-    if (hasRuleAncestor(rule) || isInsideKeyframes(rule)) return;
+    if (isInsideKeyframes(rule)) return;
+
+    if (hasRuleAncestor(rule)) {
+      rule.selector = splitSelectorList(rule.selector)
+        .map(unwrapWhereAroundParentSelector)
+        .join(", ");
+      return;
+    }
 
     rule.selector = Array.from(
       new Set(splitSelectorList(rule.selector).map(scopeSelector)),

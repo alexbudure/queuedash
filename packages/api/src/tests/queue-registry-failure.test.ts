@@ -155,6 +155,86 @@ describe("queue registry discovery failures", () => {
     await registry.close();
   });
 
+  it("continues bounded sweeps and only evicts missing queues after a complete sweep", async () => {
+    redisMocks.connect.mockResolvedValue(undefined);
+    let sweep = 0;
+    redisMocks.scan.mockImplementation(async (cursor: number) => {
+      if (cursor === 0) sweep += 1;
+      return {
+        cursor: cursor === 200 ? 0 : cursor + 1,
+        keys:
+          cursor === 0
+            ? ["bull:early:meta"]
+            : cursor === 200 && sweep === 1
+              ? ["bull:late:meta"]
+              : [],
+      };
+    });
+    const registry = new QueueRegistry({
+      discovery: {
+        type: "bullmq",
+        connectionUrl: "redis://large.example:6379",
+        refreshIntervalMs: 5_000,
+      },
+    });
+    const names = async () =>
+      (await registry.list()).map(({ adapter }) => adapter.getName());
+
+    expect(await names()).toEqual(["early"]);
+    expect(redisMocks.scan).toHaveBeenCalledTimes(200);
+    expect(registry.getDiscoveryStatus().truncated).toBe(true);
+    vi.advanceTimersByTime(5_001);
+    expect(await names()).toEqual(["early", "late"]);
+    expect(redisMocks.scan.mock.calls[200][0]).toBe(200);
+    expect(redisMocks.scan).toHaveBeenCalledTimes(201);
+    expect(registry.getDiscoveryStatus().truncated).toBe(false);
+
+    vi.advanceTimersByTime(5_001);
+    expect(await names()).toEqual(["early", "late"]);
+    expect(redisMocks.queueClose).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(5_001);
+    expect(await names()).toEqual(["early"]);
+    expect(redisMocks.queueClose).toHaveBeenCalledTimes(1);
+    await registry.close();
+  });
+
+  it("retains sweep progress after failures and applies the queue cap across the whole sweep", async () => {
+    redisMocks.connect.mockResolvedValue(undefined);
+    redisMocks.scan.mockImplementation(async (cursor: number) => ({
+      cursor: cursor + 1,
+      keys: cursor === 0 ? ["bull:zeta:meta"] : [],
+    }));
+    const registry = new QueueRegistry({
+      discovery: {
+        type: "bullmq",
+        connectionUrl: "redis://large.example:6379",
+        refreshIntervalMs: 5_000,
+        maxQueues: 1,
+      },
+    });
+    const names = async () =>
+      (await registry.list()).map(({ adapter }) => adapter.getName());
+    expect(await names()).toEqual(["zeta"]);
+    vi.advanceTimersByTime(5_001);
+    redisMocks.scan.mockRejectedValueOnce(new Error("temporary failure"));
+    expect(await names()).toEqual(["zeta"]);
+    expect(registry.getDiscoveryStatus().healthy).toBe(false);
+    vi.advanceTimersByTime(5_001);
+    redisMocks.scan.mockResolvedValueOnce({
+      cursor: 0,
+      keys: ["bull:alpha:meta"],
+    });
+    expect(await names()).toEqual(["alpha"]);
+    expect(
+      redisMocks.scan.mock.calls.slice(-2).map(([cursor]) => cursor),
+    ).toEqual([200, 200]);
+    expect(registry.getDiscoveryStatus()).toMatchObject({
+      healthy: true,
+      truncated: true,
+    });
+    await registry.close();
+  });
+
   it("does not report truncation at an exact discovery cap", async () => {
     redisMocks.connect.mockReset();
     redisMocks.connect.mockResolvedValue(undefined);

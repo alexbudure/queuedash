@@ -211,15 +211,19 @@ const redactValueWithConfig = (
 
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((item, index) =>
-      redactValueWithConfig(
-        item,
-        config,
-        [...path, String(index)],
-        seen,
-        encodedJsonDepth,
-      ),
-    );
+    return value.map((item, index) => {
+      const key = String(index);
+      const childPath = [...path, key];
+      return shouldRedact(key, childPath, config)
+        ? config.replacement
+        : redactValueWithConfig(
+            item,
+            config,
+            childPath,
+            seen,
+            encodedJsonDepth,
+          );
+    });
   }
 
   return Object.fromEntries(
@@ -810,18 +814,32 @@ export const presentJob = (
 
   const redaction = resolveRedaction(privacy);
   const redacted = redactValue(exposed, privacy) as AdaptedJob;
+  const redactId = privacyRedactsJobIdentity(privacy);
+  const redactGroupId = privacyRedactsGroupIdentity(privacy);
+  // Bee-Queue and GroupMQ use an identifier as the default job name.
+  // Hiding that identifier must also hide its generated display alias.
+  const nameIsHiddenIdentity =
+    (redactId && exposed.name === exposed.id) ||
+    (redactGroupId && exposed.name === exposed.groupId);
   return {
     ...redacted,
-    id: privacyRedactsPath(privacy, ["id"]) ? redacted.id : exposed.id,
-    groupId: privacyRedactsGroupIdentity(privacy)
+    name: nameIsHiddenIdentity
+      ? (redaction?.replacement ?? DEFAULT_REPLACEMENT)
+      : redacted.name,
+    id: redactId ? redacted.id : exposed.id,
+    groupId: redactGroupId
       ? exposed.groupId === undefined
         ? undefined
         : redaction?.replacement
       : exposed.groupId,
-    failedReason: exposed.failedReason
-      ? redactText(exposed.failedReason, privacy)
-      : undefined,
-    stacktrace: exposed.stacktrace?.map((line) => redactText(line, privacy)),
+    // Text is already sanitized by redactValue. Preserve explicit field and
+    // element rules, keeping a wholly redacted trace an array on the wire.
+    stacktrace:
+      exposed.stacktrace === undefined
+        ? undefined
+        : Array.isArray(redacted.stacktrace)
+          ? redacted.stacktrace
+          : [redaction?.replacement ?? DEFAULT_REPLACEMENT],
   };
 };
 

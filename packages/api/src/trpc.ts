@@ -30,12 +30,18 @@ export type QueuedashBranding = {
   logoUrl?: string;
   // Accessible label for the custom logo (defaults to the product name)
   logoAlt?: string;
+  // Optional favicon for the standalone dashboard page served by the adapters
+  // (defaults to the Queuedash mark)
+  faviconUrl?: string;
 };
 
 export type QueuedashUiConfig = {
   // Stable identifier used to scope browser-local preferences
   instanceId?: string;
   branding?: QueuedashBranding;
+  // Let Queuedash set document.title to the current queue. Off by default:
+  // when embedded in a host app, the host owns the title.
+  documentTitle?: boolean;
   defaults?: {
     theme?: QueuedashTheme;
     // Default polling interval. Users can override this in their browser.

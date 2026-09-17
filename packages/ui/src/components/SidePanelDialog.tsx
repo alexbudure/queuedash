@@ -9,6 +9,7 @@ import {
   ModalOverlay,
 } from "react-aria-components";
 
+import { FOCUS_RING_DATA } from "../utils/styles";
 import { useQueuedash } from "./QueuedashProvider";
 
 type SidePanelDialogProps = {
@@ -17,9 +18,17 @@ type SidePanelDialogProps = {
   titleClassName?: string;
   headerActions?: ReactNode;
   children: ReactNode;
+  /** Pinned below the scroll area, so a primary action is never scrolled away. */
+  footer?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   panelClassName?: string;
+  /** Both are needed to protect unsaved work: `isDismissable={false}` alone
+   *  still lets Escape close the panel. */
+  isDismissable?: boolean;
+  isKeyboardDismissDisabled?: boolean;
+  /** Called when the close button is pressed while dismissal is blocked. */
+  onCloseAttempt?: () => void;
 };
 
 export const SidePanelDialog = ({
@@ -28,52 +37,70 @@ export const SidePanelDialog = ({
   titleClassName,
   headerActions,
   children,
+  footer,
   open,
   onOpenChange,
   panelClassName,
+  isDismissable = true,
+  isKeyboardDismissDisabled = false,
+  onCloseAttempt,
 }: SidePanelDialogProps) => {
   const { portalContainer } = useQueuedash();
-  const handleClose = () => onOpenChange(false);
+  // The X has to obey the same guard as Escape and the scrim. `isDismissable`
+  // and `isKeyboardDismissDisabled` only reach ModalOverlay, which governs
+  // outside-press and Escape - so without this the header button was a
+  // one-click discard for work the other two paths were protecting.
+  const canDismiss = isDismissable && !isKeyboardDismissDisabled;
+  const handleClose = () => {
+    if (canDismiss) onOpenChange(false);
+    else onCloseAttempt?.();
+  };
 
   return (
     <ModalOverlay
       UNSTABLE_portalContainer={portalContainer ?? undefined}
       isOpen={open}
       onOpenChange={onOpenChange}
-      isDismissable
-      className="side-panel-overlay fixed inset-0 z-50 flex items-center justify-end"
+      isDismissable={isDismissable}
+      isKeyboardDismissDisabled={isKeyboardDismissDisabled}
+      // The scrim was 42% in dark where Alert's is 65%. `.side-panel-overlay`
+      // in global.css outranks a plain utility, so matching it has to be forced.
+      className="side-panel-overlay fixed inset-0 z-50 flex items-center justify-end dark:bg-black/65!"
     >
       <div className="flex size-full items-center justify-end">
         <Modal
           className={clsx(
-            "side-panel relative size-full max-w-[680px] border-l border-gray-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900",
+            // OVERLAY_SURFACE's material, adapted to a full-height panel: in
+            // dark the old `border-slate-800` on a near-black scrim left no
+            // visible edge, so the hairline is the same light one popovers use.
+            "side-panel relative size-full max-w-[680px] border-l border-gray-200 bg-white shadow-xl dark:border-white/10 dark:bg-slate-900 dark:shadow-black/60",
             panelClassName,
           )}
         >
           <Dialog className="flex h-full flex-col overflow-hidden outline-none">
-            <AriaButton
-              onPress={handleClose}
-              className="absolute top-3 -left-11 hidden rounded-full bg-white/90 p-1.5 text-gray-500 shadow-sm transition-colors hover:text-gray-900 sm:flex dark:bg-slate-800/90 dark:text-slate-400 dark:hover:text-slate-200"
-              aria-label="Close panel"
-            >
-              <X className="size-4" />
-            </AriaButton>
-
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="min-w-0 flex-1 pr-3">
                 <Heading
                   slot="title"
+                  title={typeof title === "string" ? title : undefined}
                   className={clsx(
-                    "truncate text-sm font-medium text-gray-900 dark:text-white",
+                    "truncate text-base font-semibold text-gray-900 dark:text-white",
                     titleClassName,
                   )}
                 >
                   {title}
                 </Heading>
                 {subtitle ? (
-                  <p className="mt-0.5 truncate text-xs text-gray-400 dark:text-slate-500">
-                    {subtitle}
-                  </p>
+                  <div
+                    title={typeof subtitle === "string" ? subtitle : undefined}
+                    className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500"
+                  >
+                    {typeof subtitle === "string" ? (
+                      <span className="truncate">{subtitle}</span>
+                    ) : (
+                      subtitle
+                    )}
+                  </div>
                 ) : null}
               </div>
 
@@ -85,14 +112,21 @@ export const SidePanelDialog = ({
 
               <AriaButton
                 onPress={handleClose}
-                className="ml-2 rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:hidden dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                className={clsx(
+                  "ml-2 rounded-full p-1.5 text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 dark:active:bg-slate-700",
+                  FOCUS_RING_DATA,
+                )}
                 aria-label="Close panel"
               >
                 <X className="size-4" />
               </AriaButton>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+            <div className="qd-scroll qd-scroll-contain min-h-0 flex-1 overflow-y-auto">
+              {children}
+            </div>
+
+            {footer ? <div className="shrink-0">{footer}</div> : null}
           </Dialog>
         </Modal>
       </div>

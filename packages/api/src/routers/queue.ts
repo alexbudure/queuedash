@@ -13,6 +13,7 @@ import {
   redactValue,
   resolvePrivacyExposure,
 } from "../presentation";
+import { getQueueHealth } from "../queue-health";
 import {
   schedulerOptionsSchema,
   schedulerTemplateSchema,
@@ -465,21 +466,27 @@ export const queueRouter = router({
     }),
   list: procedure.query(async ({ ctx }) => {
     const internalCtx = await transformContext(ctx);
-    return internalCtx.queues.map((q) => {
-      return {
-        displayName: q.adapter.getDisplayName(),
-        name: q.adapter.getName(),
-        supports: {
-          pause: q.adapter.supports.pause,
-          resume: q.adapter.supports.resume,
-        },
-        access: resolveQueueAccess(
-          q.adapter.getName(),
-          internalCtx.access,
-          internalCtx.privacy,
-        ),
-      };
-    });
+    return Promise.all(
+      internalCtx.queues.map(async (q) => {
+        const health = await getQueueHealth(q.adapter);
+
+        return {
+          displayName: q.adapter.getDisplayName(),
+          name: q.adapter.getName(),
+          paused: health?.paused ?? null,
+          failedCount: health?.failedCount ?? null,
+          supports: {
+            pause: q.adapter.supports.pause,
+            resume: q.adapter.supports.resume,
+          },
+          access: resolveQueueAccess(
+            q.adapter.getName(),
+            internalCtx.access,
+            internalCtx.privacy,
+          ),
+        };
+      }),
+    );
   }),
   metrics: procedure
     .input(

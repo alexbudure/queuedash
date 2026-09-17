@@ -144,6 +144,7 @@ Direct UI embeddings can provide a `QueuedashUiConfig`:
       name: "Acme Queues",
       logoUrl: "/assets/acme-logo.svg",
       logoAlt: "Acme",
+      faviconUrl: "/assets/acme-favicon.svg",
     },
     defaults: {
       theme: "system",
@@ -239,7 +240,7 @@ The distributed stylesheet:
 
 This isolates Queuedash selectors and internal Tailwind variables while winning
 normal same-named host utility collisions. The stylesheet also imports Inter and
-Roboto Mono from Google Fonts. A host stylesheet using `!important` or greater
+JetBrains Mono from Google Fonts. A host stylesheet using `!important` or greater
 specificity can still override ordinary CSS; use an iframe if the embedding
 environment requires absolute style and resource isolation.
 

@@ -1228,3 +1228,16 @@ test("metrics count is sum of data array for failed jobs", async () => {
     }
   }
 });
+
+test("queue.list carries the pause state and failed count the sidebar shows", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const listed = (await caller.queue.list()).find(
+    (queue) => queue.name === firstQueue.queue.name,
+  );
+  expect(listed).toMatchObject({
+    paused: false,
+    failedCount: NUM_OF_FAILED_JOBS,
+  });
+});

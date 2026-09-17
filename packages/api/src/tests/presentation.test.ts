@@ -36,6 +36,42 @@ const createJob = (): AdaptedJob => ({
 });
 
 describe("presentation redaction", () => {
+  it.each([
+    { keys: ["failedReason", "stacktrace"] },
+    { paths: ["failedReason", "stacktrace"] },
+    { paths: ["failedReason", "stacktrace.*"] },
+  ])("preserves explicit error-field rules: %j", (rules) => {
+    const raw = {
+      ...createJob(),
+      failedReason: "Customer 123-45-6789",
+      stacktrace: ["Customer 123-45-6789"],
+    };
+    const presented = presentJob(raw, {
+      redact: { includeDefaultKeys: false, ...rules },
+    });
+    expect(presented.failedReason).toBe("[REDACTED]");
+    expect(presented.stacktrace).toEqual(["[REDACTED]"]);
+    expect(raw.stacktrace).toEqual(["Customer 123-45-6789"]);
+  });
+
+  it("preserves per-line trace rules without hiding unrelated lines", () => {
+    const raw = {
+      ...createJob(),
+      stacktrace: ["sensitive", "public"],
+    };
+    expect(
+      presentJob(raw, {
+        redact: { includeDefaultKeys: false, paths: ["stacktrace.0"] },
+      }).stacktrace,
+    ).toEqual(["[REDACTED]", "public"]);
+    expect(
+      presentJob(raw, {
+        redact: { keys: ["stacktrace"] },
+        expose: { stacktraces: false },
+      }).stacktrace,
+    ).toBeUndefined();
+  });
+
   it("redacts built-in sensitive keys across every job payload surface", () => {
     const job = presentJob(createJob(), { redact: true });
 

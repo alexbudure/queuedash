@@ -17,6 +17,7 @@ const queueConfigSchema = z.object({
           name: z.string().min(1).optional(),
           logoUrl: z.string().min(1).optional(),
           logoAlt: z.string().min(1).optional(),
+          faviconUrl: z.string().min(1).optional(),
         })
         .optional(),
       defaults: z

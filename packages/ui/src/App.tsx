@@ -48,13 +48,20 @@ const QueuedashApplication = ({
   headers,
   onUnauthorized,
 }: QueuedashApplicationProps) => {
-  const { isDark } = useQueuedash();
+  // Deliberately no global `placeholderData: keepPreviousData`. A same-key
+  // refetch (the poll) never clears `data`, so it bought nothing there - but it
+  // retains across *key* changes, which served the previous queue's jobs under
+  // the new queue's name with no skeleton. MetricsSection opts in locally and
+  // pairs it with an isPlaceholderData dim; that is the shape to copy.
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
         httpBatchLink({
           url: apiUrl,
+          // Keep fleet polls and bulk actions below common proxy URL limits.
+          maxURLLength: 8_000,
+          maxItems: 4,
           headers,
           fetch: async (input, init) => {
             const response = await fetch(input, {
@@ -73,7 +80,6 @@ const QueuedashApplication = ({
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <Toaster theme={isDark ? "dark" : "light"} />
         <BrowserRouter basename={basename}>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -98,6 +104,9 @@ const QueuedashRoot = ({ children }: PropsWithChildren) => {
       data-density={preferences.density}
       className={isDark ? "dark" : undefined}
     >
+      {/* Above the auth boundary: a background 401 unmounts the application
+          subtree, and a toast cannot be shown from a tree that is going away. */}
+      <Toaster theme={isDark ? "dark" : "light"} position="bottom-right" />
       {children}
     </div>
   );
@@ -117,6 +126,7 @@ const QueuedashWithAuth = ({
   const [authState, setAuthState] = useState<
     "checking" | "authenticated" | "unauthenticated"
   >("checking");
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -149,6 +159,7 @@ const QueuedashWithAuth = ({
       if (!response.ok) {
         throw new Error(`Sign out failed with status ${response.status}`);
       }
+      setSessionExpired(false);
       setAuthState("unauthenticated");
     } catch {
       toast.error("Could not sign out. Please try again.");
@@ -160,7 +171,15 @@ const QueuedashWithAuth = ({
     return (
       <LoginPage
         authBaseUrl={auth.baseUrl}
-        onAuthenticated={() => setAuthState("authenticated")}
+        notice={
+          sessionExpired
+            ? "Your session expired. Sign in again to continue where you left off."
+            : undefined
+        }
+        onAuthenticated={() => {
+          setSessionExpired(false);
+          setAuthState("authenticated");
+        }}
       />
     );
   }
@@ -171,7 +190,10 @@ const QueuedashWithAuth = ({
         apiUrl={apiUrl}
         basename={basename}
         headers={headers}
-        onUnauthorized={() => setAuthState("unauthenticated")}
+        onUnauthorized={() => {
+          setSessionExpired(true);
+          setAuthState("unauthenticated");
+        }}
       />
     </QueuedashAuthProvider>
   );

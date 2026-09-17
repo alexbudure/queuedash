@@ -9,6 +9,12 @@ import {
   Popover,
 } from "react-aria-components";
 
+import {
+  FOCUS_RING_DATA,
+  OVERLAY_ITEM,
+  OVERLAY_SURFACE,
+  TEXT_FAINT,
+} from "../utils/styles";
 import { useQueuedash } from "./QueuedashProvider";
 
 type Action = {
@@ -34,10 +40,13 @@ export const ActionMenu = ({
     <MenuTrigger isOpen={isOpen} onOpenChange={setIsOpen}>
       <AriaButton
         className={clsx(
-          "rounded-md p-1.5 transition-colors outline-none disabled:opacity-50",
-          isOpen
-            ? "bg-gray-100 dark:bg-slate-800"
-            : "hover:bg-gray-100 dark:hover:bg-slate-800",
+          "rounded-md p-1.5 transition-colors duration-150 disabled:opacity-50",
+          FOCUS_RING_DATA,
+          isDisabled
+            ? ""
+            : isOpen
+              ? "bg-gray-100 dark:bg-slate-800"
+              : "hover:bg-gray-100 active:bg-gray-200 dark:hover:bg-slate-800 dark:active:bg-slate-700",
         )}
         aria-label={ariaLabel}
         isDisabled={isDisabled}
@@ -48,34 +57,34 @@ export const ActionMenu = ({
       <Popover
         UNSTABLE_portalContainer={portalContainer ?? undefined}
         placement="bottom end"
-        offset={4}
-        className="entering:animate-in entering:fade-in entering:zoom-in-95 entering:duration-150 exiting:animate-out exiting:fade-out exiting:zoom-out-95 exiting:duration-150 min-w-[160px] rounded-lg border border-gray-100 bg-white p-1 shadow-lg outline-none dark:border-slate-800 dark:bg-slate-900"
+        offset={6}
+        className={clsx(
+          "qd-popover min-w-[180px] p-1 outline-none",
+          OVERLAY_SURFACE,
+        )}
       >
-        <Menu>
+        <Menu className="outline-none">
           {actions.map((action) => {
+            const isDestructive = action.tone === "destructive";
+            const isWarning = action.tone === "warning";
+
             return (
               <MenuItem
                 className={clsx(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors outline-none",
-                  action.tone === "destructive" || action.tone === "warning"
-                    ? ""
-                    : "text-gray-700 dark:text-slate-300",
-                  action.tone === "destructive"
-                    ? "text-red-600 hover:bg-red-50 focus:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10 dark:focus:bg-red-500/10"
-                    : action.tone === "warning"
-                      ? "text-orange-600 hover:bg-orange-50 focus:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-500/10 dark:focus:bg-orange-500/10"
-                      : "hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-slate-800 dark:focus:bg-slate-800",
+                  OVERLAY_ITEM,
+                  "transition-colors duration-150",
+                  isDestructive
+                    ? "text-red-600 hover:bg-red-50 focus:bg-red-50 data-[pressed]:bg-red-100 dark:text-red-400 dark:hover:bg-red-500/10 dark:focus:bg-red-500/10 dark:data-[pressed]:bg-red-500/20"
+                    : isWarning
+                      ? "text-orange-600 hover:bg-orange-50 focus:bg-orange-50 data-[pressed]:bg-orange-100 dark:text-orange-400 dark:hover:bg-orange-500/10 dark:focus:bg-orange-500/10 dark:data-[pressed]:bg-orange-500/20"
+                      : "text-gray-700 hover:bg-gray-50 focus:bg-gray-50 data-[pressed]:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-700/60 dark:focus:bg-slate-700/60 dark:data-[pressed]:bg-slate-700",
                 )}
                 key={action.label}
                 onAction={action.onSelect}
               >
                 {action.icon ? (
                   <span
-                    className={
-                      action.tone === "destructive" || action.tone === "warning"
-                        ? ""
-                        : "text-gray-400 dark:text-slate-500"
-                    }
+                    className={isDestructive || isWarning ? "" : TEXT_FAINT}
                   >
                     {action.icon}
                   </span>

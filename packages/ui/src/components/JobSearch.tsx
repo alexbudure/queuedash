@@ -1,17 +1,26 @@
+import { clsx } from "clsx";
 import { Loader2, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import {
+  FOCUS_FIELD,
+  FOCUS_RING,
+  INPUT_CLASS,
+  TEXT_FAINT,
+} from "../utils/styles";
 import type { JobSort } from "../utils/viewState";
+import { Select, type SelectOption } from "./Select";
+
+const SORT_OPTIONS: ReadonlyArray<SelectOption<JobSort>> = [
+  { label: "Queue order", value: "queue" },
+  { label: "Newest created", value: "newest" },
+  { label: "Oldest created", value: "oldest" },
+];
 
 type JobSearchProps = {
   query: string;
   sort: JobSort;
   isLoading?: boolean;
-  searchMeta?: {
-    scanned: number;
-    capped: boolean;
-    scanLimit: number;
-  };
   onQueryChange: (query: string) => void;
   onSortChange: (sort: JobSort) => void;
 };
@@ -20,7 +29,6 @@ export const JobSearch = ({
   query,
   sort,
   isLoading = false,
-  searchMeta,
   onQueryChange,
   onSortChange,
 }: JobSearchProps) => {
@@ -35,6 +43,17 @@ export const JobSearch = ({
     onQueryChange("");
   };
 
+  const isDirty = draft.trim() !== query;
+  // Reserve exactly the trailing cluster that is actually rendered, so a clean
+  // field uses its full width instead of holding a gap for absent controls.
+  const trailingPadding = isDirty
+    ? draft
+      ? "pr-[5.75rem]"
+      : "pr-16"
+    : draft
+      ? "pr-10"
+      : "pr-3";
+
   return (
     <div>
       <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
@@ -45,14 +64,20 @@ export const JobSearch = ({
           }}
           className="relative min-w-0 flex-1"
         >
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-gray-400 dark:text-slate-500" />
+          <Search
+            aria-hidden="true"
+            className={clsx(
+              "pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2",
+              TEXT_FAINT,
+            )}
+          />
           <input
             value={draft}
             maxLength={200}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="Filter jobs"
             placeholder="Filter this status by ID, name, group, or visible data"
-            className="h-9 w-full rounded-lg border border-gray-200 bg-white pr-20 pl-9 text-sm text-gray-900 transition outline-none placeholder:text-gray-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-600 dark:focus:border-brand-600 dark:focus:ring-brand-950"
+            className={clsx(INPUT_CLASS, FOCUS_FIELD, "pl-9", trailingPadding)}
           />
           <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
             {draft ? (
@@ -60,54 +85,50 @@ export const JobSearch = ({
                 type="button"
                 onClick={clear}
                 aria-label="Clear job filter"
-                className="flex size-6 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                className={clsx(
+                  "flex size-6 items-center justify-center rounded-md text-gray-400 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:active:bg-slate-700",
+                  FOCUS_RING,
+                )}
               >
                 <X className="size-3.5" />
               </button>
             ) : null}
-            <button
-              type="submit"
-              disabled={isLoading || draft.trim() === query}
-              aria-label={isLoading ? "Applying job filter" : undefined}
-              className="rounded-md bg-gray-900 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white"
-            >
-              {isLoading ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                "Apply"
-              )}
-            </button>
+            {isDirty || isLoading ? (
+              <button
+                type="submit"
+                disabled={isLoading}
+                aria-label={isLoading ? "Applying job filter" : undefined}
+                className={clsx(
+                  "relative h-6 rounded-md bg-brand-600 px-2.5 text-xs font-medium text-white transition-colors duration-150 hover:bg-brand-700 active:bg-brand-800 disabled:cursor-progress dark:hover:bg-brand-500 dark:active:bg-brand-700",
+                  FOCUS_RING,
+                )}
+              >
+                {/* The spinner is layered over the label so the button - and the
+                  cluster the input reserves space for - keeps its width. */}
+                <span className={clsx(isLoading && "invisible")}>Apply</span>
+                {isLoading ? (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-3.5 animate-spin"
+                    />
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
           </div>
         </form>
 
-        <select
-          aria-label="Sort jobs"
+        <Select<JobSort>
+          ariaLabel="Sort jobs"
+          size="lg"
+          className="shrink-0"
+          isDisabled={isLoading}
+          onChange={onSortChange}
+          options={SORT_OPTIONS}
           value={sort}
-          disabled={isLoading}
-          onChange={(event) => onSortChange(event.target.value as JobSort)}
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 transition outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:focus:border-brand-600 dark:focus:ring-brand-950"
-        >
-          <option value="queue">Queue order</option>
-          <option value="newest">Newest created</option>
-          <option value="oldest">Oldest created</option>
-        </select>
+        />
       </div>
-
-      {searchMeta ? (
-        <p
-          role="status"
-          aria-live="polite"
-          className={`mt-1.5 text-[10px] ${
-            searchMeta.capped
-              ? "text-amber-600 dark:text-amber-400"
-              : "text-gray-400 dark:text-slate-500"
-          }`}
-        >
-          {searchMeta.capped
-            ? `Partial results: scanned the first ${searchMeta.scanned.toLocaleString()} jobs permitted by the server.`
-            : `Scanned ${searchMeta.scanned.toLocaleString()} jobs.`}
-        </p>
-      ) : null}
     </div>
   );
 };

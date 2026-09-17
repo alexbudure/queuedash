@@ -250,6 +250,7 @@ const ctx: Context = {
       name: "Acme Queues",
       logoUrl: "/assets/acme-logo.svg",
       logoAlt: "Acme",
+      faviconUrl: "/assets/acme-favicon.svg",
     },
     defaults: {
       theme: "system",

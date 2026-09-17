@@ -1,9 +1,11 @@
-import { Check, Copy, Rocket, RotateCw, Trash2 } from "lucide-react";
-import { type ReactElement, useEffect, useMemo } from "react";
+import { Check, CopyPlus, Rocket, RotateCw, Trash2 } from "lucide-react";
+import { type ReactElement, useMemo, useState } from "react";
 
+import { mutationToasts } from "../utils/mutationToasts";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { ActionMenu } from "./ActionMenu";
+import { Alert } from "./Alert";
 import { Button } from "./Button";
 
 type JobActionMenuProps = {
@@ -15,7 +17,7 @@ type JobActionMenuProps = {
 };
 
 type JobAction = {
-  key: "retry" | "promote" | "discard" | "clone" | "remove";
+  key: "retry" | "promote" | "discard" | "rerun" | "remove";
   label: string;
   onSelect: () => void;
   icon: ReactElement;
@@ -30,30 +32,29 @@ export const JobActionMenu = ({
   queue,
   onRemove,
 }: JobActionMenuProps) => {
-  const retryMutation = trpc.job.retry.useMutation();
-  const promoteMutation = trpc.job.promote.useMutation();
-  const discardMutation = trpc.job.discard.useMutation();
-  const rerunMutation = trpc.job.rerun.useMutation();
-  const removeMutation = trpc.job.remove.useMutation();
+  const [confirm, setConfirm] = useState<"remove" | null>(null);
 
-  useEffect(() => {
-    if (
-      retryMutation.isSuccess ||
-      promoteMutation.isSuccess ||
-      discardMutation.isSuccess ||
-      rerunMutation.isSuccess ||
-      removeMutation.isSuccess
-    ) {
-      onRemove?.();
-    }
-  }, [
-    retryMutation.isSuccess,
-    promoteMutation.isSuccess,
-    discardMutation.isSuccess,
-    rerunMutation.isSuccess,
-    removeMutation.isSuccess,
-    onRemove,
-  ]);
+  // Retry and promote move the job to a different status, so it drops out of
+  // the list this panel was opened from. Closing keeps `?job=` from stranding -
+  // a stale id there silently swallows the `/` and `j`/`k` shortcuts.
+  const retryMutation = trpc.job.retry.useMutation(
+    mutationToasts("Job moved back to waiting", {
+      onSuccess: () => onRemove?.(),
+    }),
+  );
+  const promoteMutation = trpc.job.promote.useMutation(
+    mutationToasts("Job promoted", { onSuccess: () => onRemove?.() }),
+  );
+  const discardMutation = trpc.job.discard.useMutation(
+    mutationToasts("Job discarded"),
+  );
+  const rerunMutation = trpc.job.rerun.useMutation(
+    mutationToasts("Rerun added to the queue"),
+  );
+  // Discard and rerun leave the job where it is, so they correctly stay open.
+  const removeMutation = trpc.job.remove.useMutation(
+    mutationToasts("Job removed", { onSuccess: () => onRemove?.() }),
+  );
 
   const input = useMemo(
     () => ({
@@ -73,7 +74,7 @@ export const JobActionMenu = ({
     !job.finishedAt &&
     queue?.supports.discard === true &&
     queue.access.actions["job.discard"] === true;
-  const showClone = queue?.access.actions["job.rerun"] === true;
+  const showRerun = queue?.access.actions["job.rerun"] === true;
   const showRemove = queue?.access.actions["job.remove"] === true;
 
   const actions = useMemo<JobAction[]>(() => {
@@ -105,12 +106,12 @@ export const JobActionMenu = ({
         isLoading: discardMutation.isPending,
       });
     }
-    if (showClone) {
+    if (showRerun) {
       nextActions.push({
-        key: "clone",
-        label: "Clone",
+        key: "rerun",
+        label: "Rerun",
         onSelect: () => rerunMutation.mutate(input),
-        icon: <Copy className="size-4" />,
+        icon: <CopyPlus className="size-4" />,
         isLoading: rerunMutation.isPending,
       });
     }
@@ -118,7 +119,9 @@ export const JobActionMenu = ({
       nextActions.push({
         key: "remove",
         label: "Remove",
-        onSelect: () => removeMutation.mutate(input),
+        // A MenuItem closes the menu as it fires, so the confirmation lives
+        // outside the menu and is armed from here.
+        onSelect: () => setConfirm("remove"),
         icon: <Trash2 className="size-4" />,
         isLoading: removeMutation.isPending,
         tone: "destructive" as const,
@@ -129,7 +132,7 @@ export const JobActionMenu = ({
     showRetry,
     showPromote,
     showDiscard,
-    showClone,
+    showRerun,
     showRemove,
     input,
     retryMutation,
@@ -178,6 +181,30 @@ export const JobActionMenu = ({
           />
         </div>
       ) : null}
+
+      <Alert
+        isOpen={confirm === "remove"}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setConfirm(null);
+        }}
+        isPending={removeMutation.isPending}
+        title="Remove job?"
+        description={`This permanently removes job ${job.id} from ${
+          queue?.displayName ?? queueName
+        }. It cannot be undone.`}
+        action={
+          <Button
+            variant="filled"
+            colorScheme="red"
+            label="Remove"
+            onClick={() =>
+              removeMutation.mutate(input, {
+                onSettled: () => setConfirm(null),
+              })
+            }
+          />
+        }
+      />
     </>
   );
 };

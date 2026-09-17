@@ -1,3 +1,4 @@
+import { formatCount, pluralize } from "./format";
 import type { Status } from "./trpc";
 
 type JobSelectionActions = Partial<
@@ -6,6 +7,10 @@ type JobSelectionActions = Partial<
 
 export type JobSort = "queue" | "newest" | "oldest";
 export type TableLayoutVariant = "job" | "scheduler";
+
+/** Mirrors QueuedashDensity from the API package, kept local so the table
+ *  layout helpers do not depend on the provider. */
+export type TableDensity = "comfortable" | "compact";
 
 type JobAccessibleIdentity = {
   id: string;
@@ -99,20 +104,52 @@ export const getJobListRefetchInterval = (
   refreshIntervalMs: number | false,
 ) => (loadedPageCount <= 1 ? refreshIntervalMs : false);
 
+/**
+ * True when live updates are suspended purely because more pages are loaded -
+ * as opposed to the user having turned refreshing off. The table surfaces this
+ * so frozen rows under a live tab-count bar are explained rather than
+ * mysterious.
+ */
+export const isJobListPollingPaused = (
+  loadedPageCount: number,
+  refreshIntervalMs: number | false,
+) => refreshIntervalMs !== false && loadedPageCount > 1;
+
+/**
+ * Prose forms of the status slugs. Only `waiting-children` differs, but a
+ * confirm dialog reading "Remove all waiting-children jobs?" is the reason
+ * user-facing copy goes through the map rather than the wire value.
+ */
+const STATUS_DISPLAY_NAMES: Record<Status, string> = {
+  active: "active",
+  completed: "completed",
+  delayed: "delayed",
+  failed: "failed",
+  paused: "paused",
+  prioritized: "prioritized",
+  waiting: "waiting",
+  "waiting-children": "waiting children",
+};
+
+export const getStatusDisplayName = (status: Status) =>
+  STATUS_DISPLAY_NAMES[status];
+
+/**
+ * "1,204 matching failed jobs". The caller owns any "at least" prefix, so the
+ * same phrase can open a sentence or sit inside "3 of … selected".
+ */
 export const formatJobCountLabel = ({
   hasFilter,
-  isPartial,
   status,
   total,
 }: {
   hasFilter: boolean;
-  isPartial: boolean;
   status: Status;
   total: number;
 }) =>
-  `${isPartial ? "At least " : ""}${total} ${
-    hasFilter ? "matching " : ""
-  }${status} job${total === 1 ? "" : "s"}`;
+  `${formatCount(total)} ${hasFilter ? "matching " : ""}${getStatusDisplayName(
+    status,
+  )} ${pluralize(total, "job")}`;
 
 export const getSchedulerScheduleError = (
   patternValue: string,
@@ -234,12 +271,44 @@ export const getTableGridClassName = (
   selectable: boolean,
 ) => {
   if (variant === "job") {
+    // The lifecycle track's floor is its content - fixed-width segments that
+    // line up row to row, which overlapped each other when squeezed. It has
+    // to be a length: every row is its own grid, so a content-sized floor
+    // would put each row's column boundary somewhere else.
     return selectable
-      ? "grid-cols-[36px_minmax(200px,35%)_minmax(auto,1fr)_100px]"
-      : "grid-cols-[minmax(200px,35%)_minmax(auto,1fr)_100px]";
+      ? "grid-cols-[36px_minmax(0,22rem)_minmax(33.5rem,1fr)_100px]"
+      : "grid-cols-[minmax(0,22rem)_minmax(33.5rem,1fr)_100px]";
   }
 
   return selectable
-    ? "grid-cols-[36px_minmax(0,30%)_1fr_1fr]"
-    : "grid-cols-[minmax(0,30%)_1fr_1fr]";
+    ? "grid-cols-[36px_minmax(0,30%)_minmax(0,1fr)_minmax(0,1fr)]"
+    : "grid-cols-[minmax(0,30%)_minmax(0,1fr)_minmax(0,1fr)]";
 };
+
+/**
+ * The minimum width a table needs before its columns stop being readable.
+ * Below this the rows scroll sideways. Previously the grid was `min-w-max`,
+ * which meant "as wide as the widest row" - 1275px at every viewport,
+ * including 375px.
+ *
+ * For jobs: the lifecycle floor, the fixed tracks and padding, and 14rem left
+ * over for the job name - still inside the card on a 1280px screen.
+ */
+export const getTableMinWidthClassName = (variant: TableLayoutVariant) =>
+  variant === "job" ? "min-w-[912px]" : "min-w-[640px]";
+
+/**
+ * Row and header padding, derived from density.
+ *
+ * This lives here so the skeleton and the real row can't drift: they used to
+ * disagree by 4px in comfortable and 8px in compact, so the whole table
+ * resized the moment data landed.
+ */
+export const getTableRowPaddingClassName = (density: TableDensity) =>
+  density === "compact" ? "py-0" : "py-0.5";
+
+export const getTableCellPaddingClassName = (density: TableDensity) =>
+  density === "compact" ? "py-1" : "py-2";
+
+export const getTableHeaderPaddingClassName = (density: TableDensity) =>
+  density === "compact" ? "py-1.5" : "py-2";

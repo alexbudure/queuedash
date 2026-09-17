@@ -1,6 +1,15 @@
-import { Eye, EyeOff, Layers, LoaderCircle, LockKeyhole } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { clsx } from "clsx";
+import { Eye, EyeOff, LoaderCircle, LockKeyhole } from "lucide-react";
+import { type FormEvent, useId, useState } from "react";
 
+import {
+  FIELD_LABEL,
+  FOCUS_FIELD,
+  FOCUS_RING,
+  INPUT_CLASS,
+} from "../utils/styles";
+import { Button } from "./Button";
+import { QueuedashIcon } from "./Logo";
 import { useQueuedash } from "./QueuedashProvider";
 
 const createBasicAuthorization = (username: string, password: string) => {
@@ -27,9 +36,7 @@ const Brand = () => {
           className="h-7 max-w-40 object-contain"
         />
       ) : (
-        <div className="flex size-9 items-center justify-center rounded-xl bg-gray-900 text-white shadow-sm dark:bg-white dark:text-slate-950">
-          <Layers className="size-5" strokeWidth={2.4} />
-        </div>
+        <QueuedashIcon className="size-9 shrink-0" />
       )}
       <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
         {branding.name}
@@ -49,12 +56,16 @@ export const LoginLoading = () => (
 
 export const LoginPage = ({
   authBaseUrl,
+  notice,
   onAuthenticated,
 }: {
   authBaseUrl: string;
+  /** Why the sign-in form appeared, e.g. after a session expired. */
+  notice?: string;
   onAuthenticated: () => void;
 }) => {
   const { branding } = useQueuedash();
+  const errorId = useId();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -119,27 +130,46 @@ export const LoginPage = ({
             </p>
           </div>
 
+          {notice ? (
+            <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-300">
+              {notice}
+            </p>
+          ) : null}
+
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Above the fields: an error appearing between the password and
+                the submit button would move the button out from under the
+                cursor at the moment the user goes to retry. */}
+            {error ? (
+              <p
+                id={errorId}
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300"
+              >
+                {error}
+              </p>
+            ) : null}
+
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-slate-300">
-                Username
-              </span>
+              <span className={FIELD_LABEL}>Username</span>
               <input
                 name="username"
                 type="text"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
+                // oxlint-disable-next-line jsx-a11y/no-autofocus -- The form is the only thing on the page.
+                autoFocus
                 required
                 disabled={isSubmitting}
-                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900 transition outline-none placeholder:text-gray-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-600 dark:focus:border-brand-500 dark:focus:ring-brand-900/60"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? errorId : undefined}
+                className={clsx(INPUT_CLASS, FOCUS_FIELD)}
               />
             </label>
 
             <label className="block">
-              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-slate-300">
-                Password
-              </span>
+              <span className={FIELD_LABEL}>Password</span>
               <span className="relative block">
                 <input
                   name="password"
@@ -149,13 +179,19 @@ export const LoginPage = ({
                   autoComplete="current-password"
                   required
                   disabled={isSubmitting}
-                  className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 pr-10 text-sm text-gray-900 transition outline-none placeholder:text-gray-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-600 dark:focus:border-brand-500 dark:focus:ring-brand-900/60"
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? errorId : undefined}
+                  className={clsx(INPUT_CLASS, FOCUS_FIELD, "pr-9")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute top-0 right-0 flex size-10 items-center justify-center text-gray-400 transition hover:text-gray-700 dark:text-slate-500 dark:hover:text-slate-200"
+                  aria-pressed={showPassword}
+                  className={clsx(
+                    "absolute top-0 right-0 flex size-9 items-center justify-center rounded-lg text-gray-500 transition-colors duration-150 hover:text-gray-900 active:text-gray-700 dark:text-slate-400 dark:hover:text-white dark:active:text-slate-300",
+                    FOCUS_RING,
+                  )}
                 >
                   {showPassword ? (
                     <EyeOff className="size-4" />
@@ -166,25 +202,15 @@ export const LoginPage = ({
               </span>
             </label>
 
-            {error ? (
-              <p
-                role="alert"
-                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700 dark:border-red-900/70 dark:bg-red-950/40 dark:text-red-300"
-              >
-                {error}
-              </p>
-            ) : null}
-
-            <button
+            <Button
               type="submit"
-              disabled={isSubmitting || !username || !password}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 text-sm font-medium text-white shadow-sm transition hover:bg-gray-800 focus-visible:ring-2 focus-visible:ring-gray-400 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 dark:focus-visible:ring-slate-500 dark:focus-visible:ring-offset-slate-900"
-            >
-              {isSubmitting ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : null}
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </button>
+              variant="filled"
+              colorScheme="brand"
+              size="lg"
+              className="w-full"
+              isLoading={isSubmitting}
+              label={isSubmitting ? "Signing in…" : "Sign in"}
+            />
           </form>
         </div>
 

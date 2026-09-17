@@ -18,6 +18,8 @@ import {
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
 
+const BULK_SCHEDULER_CONCURRENCY = 25;
+
 export const schedulerRouter = router({
   list: procedure
     .input(
@@ -221,8 +223,9 @@ export const schedulerRouter = router({
 
         try {
           const schedulers = await queueInCtx.adapter.getSchedulers?.();
+          const requestedIds = new Set(jobSchedulerIds);
           const schedulersToRemove = schedulers?.filter((s) =>
-            jobSchedulerIds.includes(s.key),
+            requestedIds.has(s.key),
           );
 
           if (!schedulersToRemove || schedulersToRemove.length === 0) {
@@ -232,11 +235,21 @@ export const schedulerRouter = router({
             });
           }
 
-          await Promise.all(
-            jobSchedulerIds.map((id) =>
-              queueInCtx.adapter.removeScheduler?.(id),
-            ),
-          );
+          for (
+            let start = 0;
+            start < schedulersToRemove.length;
+            start += BULK_SCHEDULER_CONCURRENCY
+          ) {
+            const results = await Promise.allSettled(
+              schedulersToRemove
+                .slice(start, start + BULK_SCHEDULER_CONCURRENCY)
+                .map(({ key }) => queueInCtx.adapter.removeScheduler?.(key)),
+            );
+            const failure = results.find(
+              (result) => result.status === "rejected",
+            );
+            if (failure?.status === "rejected") throw failure.reason;
+          }
 
           return schedulersToRemove.map((scheduler) =>
             presentScheduler(scheduler, internalCtx.privacy),
