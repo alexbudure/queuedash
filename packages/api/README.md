@@ -14,10 +14,30 @@ Install `@queuedash/api` alongside your existing queue and web framework:
 npm install @queuedash/api
 ```
 
+Queuedash requires Node 22 or newer, the oldest release line still receiving
+security updates, and is built and tested on Node 24.
+
 Bull, BullMQ, Bee-Queue, GroupMQ, Express, Fastify, Hono, and Elysia are
 optional peer dependencies. Install only the libraries used by your
-application. BullMQ integrations require BullMQ 5.60 or newer so scheduler
-updates can safely preserve the complete native scheduler definition.
+application. BullMQ integrations work with BullMQ 5 (5.60 or newer, so
+scheduler updates can safely preserve the complete native scheduler definition)
+and with BullMQ 6. Bee-Queue integrations work with Bee-Queue 1 and 2, whose
+only difference is that 2 requires Node 20. Queuedash looks at each queue
+instance rather than at an installed version, so it follows whichever major
+your application uses.
+
+On BullMQ 6, queues must be backed by Redis. BullMQ 6 keeps a paused queue's
+jobs in Waiting, so Queuedash shows them there and marks the queue as paused.
+Jobs that a BullMQ 5 producer parked in the older Paused list still appear under
+Paused and count toward Empty's total, so that backlog is never hidden. BullMQ 6
+also drops legacy repeatable jobs, so migrate those to Job Schedulers before
+upgrading, as BullMQ itself requires.
+
+Queuedash uses the BullMQ your own application installs, so keep it at or ahead
+of the one your producers use. A BullMQ 5 dashboard that resumes a queue whose
+producers run BullMQ 6 drops the jobs they added during the pause, because the
+majors disagree on where a paused queue's jobs live. The reverse is safe:
+BullMQ 6 migrates a paused list that BullMQ 5 left behind.
 
 ## Express quick start
 
@@ -71,6 +91,11 @@ server.register(fastifyQueuedashPlugin, {
 });
 ```
 
+The plugin also works inside a Fastify prefix, such as
+`server.register(fastifyQueuedashPlugin, { prefix: "/admin", baseUrl: "/queuedash", ctx })`:
+authentication, the dashboard's API URL, and the session cookie path all follow
+the full `/admin/queuedash` mount.
+
 Hono mounts a child application:
 
 ```typescript
@@ -100,10 +125,14 @@ const app = new Elysia().use(
 
 For Next.js or another tRPC-compatible runtime, mount the exported `appRouter`
 and render [`@queuedash/ui`](https://www.npmjs.com/package/@queuedash/ui)
-separately. Custom handlers must protect the tRPC route with authentication and
-set `Cache-Control: private, no-store` on every success and error response. The
-Queuedash UI also requests tRPC data with `cache: "no-store"`, but only the
-server response header protects data from shared intermediary caches.
+separately. Custom handlers must protect the tRPC route with authentication,
+set `Cache-Control: private, no-store` on every success and error response, and
+reject tRPC `POST` requests whose `Content-Type` is not `application/json` with
+`415`. The last rule matters because tRPC also runs mutations posted as
+`multipart/form-data`, which any website can submit from a plain HTML form
+without a CORS preflight; the built-in adapters enforce it. The Queuedash UI
+also requests tRPC data with `cache: "no-store"`, but only the server response
+header protects data from shared intermediary caches.
 
 ## Authentication
 
@@ -149,6 +178,12 @@ browser.
 
 Set `mode: "basic"` for the browser-native HTTP Basic challenge used by
 Queuedash 3.20. Omitting `auth` keeps the integration public.
+
+Auth options are checked when the dashboard is mounted, not on the first
+request: an unknown `mode`, a username or password that is not a non-empty
+string, or a session secret that is not a string (a common result of reading
+numbers from JSON or YAML configuration) throws at startup with a message naming
+the field.
 
 This is intentionally a single shared credential, not users, roles, SSO, rate
 limiting, or an account system. Use HTTPS and consider an authenticated reverse
@@ -335,8 +370,8 @@ non-empty add-job options because its adapter cannot apply them safely.
 
 Manual add-job options are allowlisted per adapter. Bull and BullMQ accept
 ordinary execution controls such as delay, attempts, backoff, priority,
-and retention; GroupMQ accepts group ID, delay/run time, ordering, attempts,
-and job ID. Scheduling, repeat, parent-flow, and internal queue fields are
+and retention; GroupMQ accepts group ID, delay/run time, ordering,
+`maxAttempts`, and job ID. Scheduling, repeat, parent-flow, and internal queue fields are
 rejected—create schedules through the scheduler controls instead. Custom Bull
 and BullMQ job IDs are intentionally unavailable because they share the queue's
 internal Redis key namespace. GroupMQ group IDs must be 1–256 characters and
@@ -371,6 +406,15 @@ const ctx: Context = {
 replaces that policy. Keys match case-insensitively at any depth; paths are
 dot-separated and support `*` for one segment.
 
+Redacting `id` hides job identity. Each job id is shown as the replacement text
+followed by a short pseudonym (`[REDACTED]:3f9a…`) that is unique per job and
+stable for the life of the server process but cannot be reversed, so the list
+still opens the right job. The same applies to every copy of the id in its
+options, such as a custom `jobId`, a repeatable job's key, or a flow child's
+parent id. Each process keys its pseudonyms separately, so they differ between
+instances behind a load balancer. Lookups by id, logs, and job actions are
+disabled in this mode.
+
 Data categories set to `false` are withheld before tRPC serialization. Hidden
 content is unavailable to the browser and job search.
 
@@ -402,6 +446,11 @@ controls.
 
 Job statuses and mutation support also vary by adapter. Unsupported operations
 fail server-side even if invoked outside the UI.
+
+GroupMQ group inspection reads at most 5,000 groups with pending jobs. Beyond
+that, the Waiting list, cross-status search, group removal, and the Groups panel
+work from the first 5,000 groups Redis returns, and the job list marks its
+results as capped rather than failing.
 
 ## Security
 

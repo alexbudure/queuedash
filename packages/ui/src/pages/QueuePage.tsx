@@ -1,6 +1,12 @@
 import { clsx } from "clsx";
 import { LockKeyhole, Search, Star } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useSearchParams } from "react-router";
 
 import { Button } from "../components/Button";
@@ -19,6 +25,7 @@ import { QueueStatusFilter } from "../components/QueueStatusFilter";
 import { type QueueView, QueueViewTabs } from "../components/QueueViewTabs";
 import { SchedulerTable } from "../components/SchedulerTable";
 import { Skeleton } from "../components/Skeleton";
+import { isWaitingOnWorkers, WorkersInline } from "../components/WorkersPanel";
 import { NUM_OF_RETRIES } from "../utils/config";
 import { formatCount } from "../utils/format";
 import {
@@ -30,7 +37,10 @@ import {
 import type { Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import {
+  flattenUniqueJobs,
   getJobListRefetchInterval,
+  isServerScannedJobList,
+  isShortcutExemptTarget,
   type JobSort,
   shouldWriteEffectiveStatus,
   updateJobQueryParams,
@@ -72,6 +82,14 @@ export const QueuePage = () => {
   const queueName = id as string;
 
   const [searchParams, setSearchParams] = useSearchParams();
+  // The URL as last written or committed. The router applies a navigation in
+  // a transition, so for a moment after a write the rendered params still
+  // hold the old URL, and a write built on them undid the one before it: a
+  // retry that landed just after `j` closed the job `j` had moved to.
+  const latestParamsRef = useRef(searchParams);
+  useLayoutEffect(() => {
+    latestParamsRef.current = searchParams;
+  }, [searchParams]);
 
   const requestedSchedulersView = searchParams.get("view") === "schedulers";
   const rawQuery = searchParams.get("q")?.trim() ?? "";
@@ -90,21 +108,16 @@ export const QueuePage = () => {
     preferences.defaultJobStatus === "remember"
       ? preferences.lastJobStatus
       : preferences.defaultJobStatus;
-  const initialStatus = searchParams.get("status");
-  const [status, setStatus] = useState<Status>(
-    isValidStatus(initialStatus) ? initialStatus : preferredStatus,
-  );
 
   const updateParams = useCallback(
     (
-      mutate: (next: URLSearchParams) => void,
+      update: (next: URLSearchParams) => URLSearchParams | void,
       options?: { replace?: boolean },
     ) => {
-      setSearchParams((current) => {
-        const next = new URLSearchParams(current);
-        mutate(next);
-        return next;
-      }, options);
+      const current = new URLSearchParams(latestParamsRef.current);
+      const next = update(current) ?? current;
+      latestParamsRef.current = next;
+      setSearchParams(next, options);
     },
     [setSearchParams],
   );
@@ -175,6 +188,16 @@ export const QueuePage = () => {
     [updateParams],
   );
 
+  // For an action that settles after the reader may have moved on, so it only
+  // ever closes the job it ran on.
+  const handleJobLeft = useCallback(
+    (jobId: string) => {
+      if (latestParamsRef.current.get("job") !== jobId) return;
+      handleSelectJob(null);
+    },
+    [handleSelectJob],
+  );
+
   const queueReq = trpc.queue.byName.useQuery(
     {
       queueName,
@@ -187,6 +210,30 @@ export const QueuePage = () => {
   );
   const isSchedulersView =
     requestedSchedulersView && queueReq.data?.supports.schedulers !== false;
+
+  // Derived on every render - the URL, then the preference, then what the
+  // queue supports - rather than held in state and corrected by an effect.
+  // This page is not remounted between queues, so the state carried one
+  // queue's status into the next and asked the new queue for it first.
+  const requestedStatus = searchParams.get("status");
+  const candidateStatus = isValidStatus(requestedStatus)
+    ? requestedStatus
+    : preferredStatus;
+  const supportedStatuses = queueReq.data?.supports.statuses;
+  const status = (
+    supportedStatuses && !supportedStatuses.includes(candidateStatus)
+      ? supportedStatuses.includes("completed")
+        ? "completed"
+        : (supportedStatuses[0] ?? candidateStatus)
+      : candidateStatus
+  ) as Status;
+  // A filtered, grouped or sorted list is rebuilt by a server-side scan on
+  // every request, so it polls on a slower floor than a range read.
+  const isServerScanned = isServerScannedJobList({
+    groupId: selectedGroupId,
+    query,
+    sort,
+  });
 
   const jobListInput = {
     queueName,
@@ -218,46 +265,25 @@ export const QueuePage = () => {
         (queryState.state.data as { pages?: readonly unknown[] } | undefined)
           ?.pages?.length ?? 0,
         preferences.refreshIntervalMs,
+        isServerScanned,
       ),
     retry: NUM_OF_RETRIES,
   });
 
+  // Only the URL is left to an effect: once the queue says what it supports,
+  // the status shown is written back, so the link reproduces the view.
   useEffect(() => {
-    const searchStatus = searchParams.get("status");
-    const requestedStatus = isValidStatus(searchStatus)
-      ? searchStatus
-      : preferredStatus;
-    const supportedStatuses = queueReq.data?.supports.statuses;
-    const nextStatus = (
-      supportedStatuses && !supportedStatuses.includes(requestedStatus)
-        ? supportedStatuses.includes("completed")
-          ? "completed"
-          : (supportedStatuses[0] ?? requestedStatus)
-        : requestedStatus
-    ) as Status;
-
-    if (nextStatus !== status) {
-      setStatus(nextStatus);
-    }
-
     if (
       supportedStatuses &&
       shouldWriteEffectiveStatus({
-        effectiveStatus: nextStatus,
+        effectiveStatus: status,
         isSchedulersView,
         params: searchParams,
       })
     ) {
-      updateParams((next) => next.set("status", nextStatus), { replace: true });
+      updateParams((next) => next.set("status", status), { replace: true });
     }
-  }, [
-    isSchedulersView,
-    preferredStatus,
-    queueReq.data?.supports.statuses,
-    searchParams,
-    status,
-    updateParams,
-  ]);
+  }, [isSchedulersView, searchParams, status, supportedStatuses, updateParams]);
 
   useEffect(() => {
     if (
@@ -286,12 +312,7 @@ export const QueuePage = () => {
     },
   );
 
-  const jobs =
-    data?.pages
-      .map((page) => {
-        return page.jobs;
-      })
-      .flat() ?? [];
+  const jobs = flattenUniqueJobs(data?.pages);
   const totalJobs = data?.pages.at(-1)?.totalCount || 0;
   const firstPage = data?.pages[0];
   const searchMeta =
@@ -320,7 +341,10 @@ export const QueuePage = () => {
 
   const stepSelectedJob = useCallback(
     (delta: number) => {
-      const currentId = selectedJobId;
+      // From the job last asked for rather than the one this render shows, so
+      // a second `j` before the first has committed steps on instead of
+      // repeating it.
+      const currentId = latestParamsRef.current.get("job");
       if (!currentId) return;
       const currentJobs = jobsRef.current;
       const index = currentJobs.findIndex((job) => job.id === currentId);
@@ -329,7 +353,7 @@ export const QueuePage = () => {
       if (!nextJob) return;
       updateParams((next) => next.set("job", nextJob.id), { replace: true });
     },
-    [selectedJobId, updateParams],
+    [updateParams],
   );
 
   // Bound to the document but gated on the target, because the root itself is
@@ -363,16 +387,15 @@ export const QueuePage = () => {
         root.contains(target);
       if (!isOurs) return;
 
-      const isTyping = !!target?.closest?.(
-        "input, textarea, select, [contenteditable='true']",
-      );
+      // A text field owns its keys, and an alert dialog, menu or listbox runs
+      // its own keyboard model. `j` over the "Remove job?" confirmation used
+      // to step the panel behind it, and Remove then deleted the next job.
+      if (isShortcutExemptTarget(target)) return;
 
       if (keyboardEvent.key === "Escape") {
         if (selectedJobId) handleSelectJob(null);
         return;
       }
-
-      if (isTyping) return;
 
       // The open panel is a focus-trapped dialog, so pulling focus back to the
       // filter behind it would only be undone by the trap.
@@ -407,10 +430,14 @@ export const QueuePage = () => {
 
   // "Here's a job ID from a ticket, where is it?" - without this the only
   // answer is to guess the status and press Apply in all eight tabs.
-  const [searchAllStatuses, setSearchAllStatuses] = useState(false);
-  useEffect(() => {
-    setSearchAllStatuses(false);
-  }, [query, queueName, status]);
+  // It belongs to the queue, status and query it was asked for. A flag reset
+  // by an effect was still set for the render after the query changed - long
+  // enough to fire a search nobody asked for.
+  const crossStatusSearchKey = JSON.stringify([queueName, status, query]);
+  const [crossStatusSearchFor, setCrossStatusSearchFor] = useState<
+    string | null
+  >(null);
+  const searchAllStatuses = crossStatusSearchFor === crossStatusSearchKey;
 
   const crossStatusSearch = trpc.job.search.useQuery(
     { queueName, query },
@@ -427,11 +454,14 @@ export const QueuePage = () => {
     !isSchedulersView && !isError && !isJobListLoading && !!query;
   const hasMatchesInStatus = jobs.length > 0;
 
+  // The query found the job across statuses, but kept, it would filter the
+  // target status's bounded list - the list the job was missing from.
   const openJobInStatus = (jobId: string, jobStatus: Status) => {
     updateParams((next) => {
       next.set("status", jobStatus);
       next.delete("view");
       next.delete("group");
+      next.delete("q");
       next.set("job", jobId);
     });
   };
@@ -471,6 +501,18 @@ export const QueuePage = () => {
         <span className={memoryToneClass(memoryPercentage)}>
           {client.usedMemoryHuman} of {client.totalMemoryHuman} memory
         </span>
+        {/* Queues with metrics show workers in the Health strip; the rest
+            have no strip, so the count joins the other facts here. */}
+        {queueReq.data.supports.workers === true &&
+        !queueReq.data.supports.metrics ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <WorkersInline
+              queueName={queueName}
+              hasPendingWork={isWaitingOnWorkers(queueReq.data.counts)}
+            />
+          </>
+        ) : null}
       </p>
     ) : queueReq.data ? null : (
       <Skeleton className="mt-1.5 h-3.5 w-72 rounded" />
@@ -587,12 +629,12 @@ export const QueuePage = () => {
                 sort={sort}
                 isLoading={isJobListLoading}
                 onQueryChange={(nextQuery) => {
-                  setSearchParams((current) =>
+                  updateParams((current) =>
                     updateJobQueryParams(current, status, nextQuery),
                   );
                 }}
                 onSortChange={(nextSort) => {
-                  setSearchParams((current) =>
+                  updateParams((current) =>
                     updateJobSortParams(current, status, nextSort),
                   );
                 }}
@@ -630,6 +672,8 @@ export const QueuePage = () => {
                   selectedGroupId={selectedGroupId}
                   selectedJobId={selectedJobId}
                   onSelectJob={handleSelectJob}
+                  onJobLeft={handleJobLeft}
+                  onStepJob={stepSelectedJob}
                   onClearFilters={handleClearFilters}
                   loadedPageCount={loadedPageCount}
                   onResetPages={handleResetPages}
@@ -650,7 +694,9 @@ export const QueuePage = () => {
                           size="sm"
                           label="Search all statuses"
                           icon={<Search className="size-3.5" />}
-                          onClick={() => setSearchAllStatuses(true)}
+                          onClick={() =>
+                            setCrossStatusSearchFor(crossStatusSearchKey)
+                          }
                         />
                       )}
                     </div>

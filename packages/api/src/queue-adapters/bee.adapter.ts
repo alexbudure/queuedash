@@ -1,12 +1,14 @@
 import type BeeQueue from "bee-queue";
 
 import {
+  JobNotFoundError,
   QueueAdapter,
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
   type JobPageMeta,
   type JobScanToken,
+  type WorkerInfo,
 } from "./base.adapter";
 
 type BeeStatus = "waiting" | "active" | "completed" | "failed" | "delayed";
@@ -29,13 +31,38 @@ type BeeSetSnapshot = {
   seen: Set<string>;
 };
 
+// A job as Bee-Queue persists it in the queue's `jobs` hash (Job#toData).
+type BeeStoredJob = {
+  id: string;
+  data: Record<string, unknown>;
+  options: Record<string, unknown>;
+  status?: string;
+  progress?: unknown;
+};
+
 type BeeQueueInternals = {
   client: {
+    hexists: (
+      key: string,
+      field: string,
+      callback: (error: Error | null, exists: number) => void,
+    ) => void;
+    hmget: (
+      key: string,
+      ...fieldsThenCallback: [
+        ...fields: string[],
+        callback: (error: Error | null, values: Array<string | null>) => void,
+      ]
+    ) => void;
     lrange: (
       key: string,
       start: number,
       end: number,
       callback: (error: Error | null, ids: string[]) => void,
+    ) => void;
+    scard: (
+      key: string,
+      callback: (error: Error | null, count: number) => void,
     ) => void;
     sscan: (
       key: string,
@@ -66,6 +93,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
 
   supports: FeatureSupport<BeeStatus> = {
     addJobOptions: false,
+    addJobOptionKeys: [],
     pause: false,
     resume: false,
     clean: false,
@@ -129,6 +157,18 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     };
   }
 
+  // One SCARD of the failed set, where checkHealth() runs six commands.
+  async getFailedCount(): Promise<number> {
+    await this.queue.ready();
+    const queue = this.queue as unknown as BeeQueueInternals;
+    return new Promise<number>((resolve, reject) => {
+      queue.client.scard(queue.toKey("failed"), (error, count) => {
+        if (error) reject(error);
+        else resolve(count);
+      });
+    });
+  }
+
   async isPaused(): Promise<boolean> {
     return this.queue.paused;
   }
@@ -152,6 +192,10 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   }
 
   async getRedisInfo() {
+    // Bee-Queue leaves `client` null until the queue is ready, so reading it
+    // early threw while a dashboard loaded against a just-started queue. The
+    // other two methods that reach for the client already wait the same way.
+    await this.queue.ready();
     // @ts-expect-error Bee-Queue doesn't have typed client property
     const info = this.queue.client.server_info;
     return {
@@ -187,19 +231,9 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
       return this.getSetJobsPage(normalizedStatus, start, end, scanToken);
     }
 
-    const [jobs, jobIds] = await Promise.all([
-      this.queue.getJobs(normalizedStatus, {
-        start,
-        end,
-        size: end - start + 1,
-      }),
-      this.getOrderedJobIds(normalizedStatus, start, end),
-    ]);
-    const jobsById = new Map(jobs.map((job) => [String(job.id), job]));
-    const adapted = jobIds.flatMap((jobId) => {
-      const job = jobsById.get(jobId);
-      return job ? [this.adaptJob(job)] : [];
-    });
+    const jobIds = await this.getOrderedJobIds(normalizedStatus, start, end);
+    const jobs = await this.readStoredJobs(jobIds);
+    const adapted = jobs.flatMap((job) => (job ? [this.adaptJob(job)] : []));
     const requested = end - start + 1;
     this.pageMeta.set(adapted, {
       capped: false,
@@ -231,14 +265,47 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     });
   }
 
+  // Bee-Queue's getJob() keeps every job it returns in the host queue's `jobs`
+  // Map (storeJobs is on by default) and never evicts finished ones, so
+  // browsing finished jobs grew the host process's memory for good, and later
+  // lookups answered from that Map for jobs deleted elsewhere. Lookups here
+  // read the jobs hash directly, as Job.fromId() does, and leave the host's
+  // Map alone.
+  private async readStoredJobs(
+    ids: string[],
+  ): Promise<Array<BeeStoredJob | null>> {
+    if (ids.length === 0) return [];
+    await this.queue.ready();
+    const queue = this.queue as unknown as BeeQueueInternals;
+    const values = await new Promise<Array<string | null>>(
+      (resolve, reject) => {
+        queue.client.hmget(queue.toKey("jobs"), ...ids, (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        });
+      },
+    );
+    return ids.map((id, index) => {
+      const value = values[index];
+      if (!value) return null;
+      const stored = JSON.parse(value) as Partial<BeeStoredJob>;
+      return {
+        id,
+        data: stored.data ?? {},
+        options: stored.options ?? {},
+        status: stored.status,
+        progress: stored.progress,
+      };
+    });
+  }
+
   async getJob(jobId: string): Promise<AdaptedJob | null> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) return null;
-    return this.adaptJob(job);
+    const [job] = await this.readStoredJobs([jobId]);
+    return job ? this.adaptJob(job) : null;
   }
 
   async getJobStatus(jobId: string): Promise<BeeStatus | null> {
-    const job = await this.queue.getJob(jobId);
+    const [job] = await this.readStoredJobs([jobId]);
     if (!job) return null;
     if (job.status === "succeeded") return "completed";
     if (job.status === "failed") return "failed";
@@ -254,9 +321,18 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   }
 
   async removeJob(jobId: string): Promise<void> {
-    const job = await this.queue.getJob(jobId);
-    if (!job) throw new Error("Job not found");
-    await job.remove();
+    // Asked of Redis, not the host's Map, which may still hold a job that was
+    // deleted elsewhere.
+    await this.queue.ready();
+    const queue = this.queue as unknown as BeeQueueInternals;
+    const exists = await new Promise<number>((resolve, reject) => {
+      queue.client.hexists(queue.toKey("jobs"), jobId, (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      });
+    });
+    if (exists !== 1) throw new JobNotFoundError();
+    await this.queue.removeJob(jobId);
   }
 
   async retryJob(): Promise<void> {
@@ -274,6 +350,12 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
 
   async getJobLogs(): Promise<string[] | null> {
     return null; // Bee-Queue doesn't support job logs
+  }
+
+  // Bee-Queue workers leave nothing in Redis to recognize them by, so worker
+  // inspection is unavailable, which is not the same as "no workers".
+  async getWorkers(): Promise<WorkerInfo[] | null> {
+    return null;
   }
 
   private async scanSet(
@@ -363,17 +445,18 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     end: number,
   ): Promise<AdaptedJob[]> {
     const ids = snapshot.ids.slice(start, end + 1);
-    const jobs = await Promise.all(ids.map((id) => this.queue.getJob(id)));
-    const adapted = jobs
-      .filter(
-        (job): job is BeeQueue.Job<Record<string, unknown>> => job != null,
-      )
-      .map((job) => this.adaptJob(job));
+    const jobs = await this.readStoredJobs(ids);
+    const adapted = jobs.flatMap((job) => (job ? [this.adaptJob(job)] : []));
     const requested = end - start + 1;
+    // Past its first 5,000 members a completed/failed set cannot be paged at
+    // all, so this cap is Bee's own view running out - a larger scan limit
+    // would not reach the rest - and cross-status scans must stop on it.
+    const truncated =
+      snapshot.ids.length > MAX_BEE_SET_PAGE_OFFSET ||
+      (!snapshot.exhausted && snapshot.ids.length >= BEE_SET_SCAN_LIMIT);
     this.pageMeta.set(adapted, {
-      capped:
-        snapshot.ids.length > MAX_BEE_SET_PAGE_OFFSET ||
-        (!snapshot.exhausted && snapshot.ids.length >= BEE_SET_SCAN_LIMIT),
+      capped: truncated,
+      truncated,
       cursorAdvance: Math.min(ids.length, requested),
       exhausted: snapshot.exhausted && snapshot.ids.length <= end + 1,
       scanned: Math.min(end + 1, snapshot.ids.length, MAX_BEE_SET_PAGE_OFFSET),
@@ -442,19 +525,13 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     return this.pageMeta.get(jobs);
   }
 
-  private adaptJob(job: BeeQueue.Job<Record<string, unknown>>): AdaptedJob {
+  private adaptJob(job: BeeStoredJob): AdaptedJob {
     const jobName =
       job.id === "__default__" ? "Default" : this.getJobName(job.data, job.id);
 
-    // Bee-Queue job has status and progress properties
-    const jobWithMeta = job as BeeQueue.Job<Record<string, unknown>> & {
-      status?: string;
-      progress?: unknown;
-    };
-
     const progress =
-      jobWithMeta.progress && typeof jobWithMeta.progress === "object"
-        ? (jobWithMeta.progress as {
+      job.progress && typeof job.progress === "object"
+        ? (job.progress as {
             created?: number;
             started?: number;
             succeeded?: number;
@@ -475,6 +552,14 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     const stacktrace = Array.isArray(jobOptions.stacktraces)
       ? jobOptions.stacktraces
       : [];
+    // Bee-Queue records each failure as the error's whole stack. The reason is
+    // only its first line, the message; the frames stay in `stacktrace`, which
+    // presentation can withhold, rather than leaking through the reason.
+    const latestFailure = stacktrace[0];
+    const failedReason =
+      typeof latestFailure === "string"
+        ? latestFailure.split(/\r?\n/, 1)[0]?.trim()
+        : undefined;
 
     // Bee-Queue always stores the enqueue timestamp in job options.
     const createdAt =
@@ -498,9 +583,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
       processedAt,
       finishedAt,
       failedReason:
-        jobWithMeta.status === "failed"
-          ? stacktrace[0] || "Job failed"
-          : undefined,
+        job.status === "failed" ? failedReason || "Job failed" : undefined,
       stacktrace,
       retriedAt: null,
       returnValue: undefined, // Bee-Queue doesn't support return values

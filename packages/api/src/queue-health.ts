@@ -10,12 +10,15 @@ export const getQueueHealth = (
   const pending = pendingHealth.get(adapter);
   if (pending) return pending;
 
+  // The sidebar polls this for every queue on every page, so it reads the
+  // failed count alone: a full job count can be an O(groups) script that
+  // blocks Redis (GroupMQ).
   const read = Promise.allSettled([
-    adapter.getJobCounts(),
+    adapter.getFailedCount(),
     adapter.isPaused(),
-  ]).then(([counts, paused]): QueueHealth | null =>
-    counts.status === "fulfilled" && paused.status === "fulfilled"
-      ? { paused: paused.value, failedCount: counts.value.failed ?? 0 }
+  ]).then(([failedCount, paused]): QueueHealth | null =>
+    failedCount.status === "fulfilled" && paused.status === "fulfilled"
+      ? { paused: paused.value, failedCount: failedCount.value }
       : null,
   );
   let timeout: ReturnType<typeof setTimeout>;

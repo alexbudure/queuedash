@@ -27,6 +27,22 @@ export type UserPreferences = {
   timestamps: QueuedashTimestampMode;
 };
 
+/** The preferences a server defaults through `ui.defaults`. */
+type PreferenceSetting = Exclude<
+  keyof UserPreferences,
+  "lastJobStatus" | "pinnedQueues"
+>;
+
+type PreferenceOverrides = Partial<Pick<UserPreferences, PreferenceSetting>>;
+
+/** What this browser keeps: the settings it explicitly changed, and the state
+ *  that has no server default at all. */
+type StoredPreferences = {
+  overrides: PreferenceOverrides;
+  lastJobStatus: UserPreferences["lastJobStatus"];
+  pinnedQueues: string[];
+};
+
 type ResolvedBranding = {
   name: string;
   logoUrl?: string;
@@ -38,6 +54,7 @@ type QueuedashContextValue = {
   defaultPreferences: UserPreferences;
   documentTitle: boolean;
   isDark: boolean;
+  overrides: PreferenceOverrides;
   portalContainer: Element | null;
   preferences: UserPreferences;
   preferenceScope: string;
@@ -59,6 +76,7 @@ const DEFAULT_REFRESH_INTERVAL_MS = 2_000;
 const MIN_REFRESH_INTERVAL_MS = 1_000;
 const MAX_REFRESH_INTERVAL_MS = 60_000;
 const LEGACY_STORAGE_KEY = "user-preferences";
+const STORAGE_VERSION = 2;
 const THEME_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
 const QueuedashContext = createContext<QueuedashContextValue | null>(null);
@@ -97,68 +115,154 @@ const clampRefreshInterval = (value: number | false): number | false =>
         MAX_REFRESH_INTERVAL_MS,
       );
 
-const readStoredPreferences = (
-  key: string,
-): Partial<UserPreferences> | null => {
+const EMPTY_STORED_PREFERENCES: StoredPreferences = {
+  overrides: {},
+  lastJobStatus: "completed",
+  pinnedQueues: [],
+};
+
+const readStorageItem = (key: string): unknown => {
   if (typeof window === "undefined") return null;
 
   try {
     const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw) as {
-      defaultJobStatus?: unknown;
-      density?: unknown;
-      jobsPerPage?: unknown;
-      lastJobStatus?: unknown;
-      pinnedQueues?: unknown;
-      refreshIntervalMs?: unknown;
-      showOverviewMetrics?: unknown;
-      theme?: unknown;
-      timestamps?: unknown;
-    };
-    return {
-      ...(isDefaultJobStatus(parsed?.defaultJobStatus)
-        ? { defaultJobStatus: parsed.defaultJobStatus }
-        : {}),
-      ...(parsed?.density === "compact" || parsed?.density === "comfortable"
-        ? { density: parsed.density }
-        : {}),
-      ...(JOBS_PER_PAGE_OPTIONS.includes(
-        parsed?.jobsPerPage as (typeof JOBS_PER_PAGE_OPTIONS)[number],
-      )
-        ? {
-            jobsPerPage: parsed.jobsPerPage as UserPreferences["jobsPerPage"],
-          }
-        : {}),
-      ...(isJobStatus(parsed?.lastJobStatus)
-        ? { lastJobStatus: parsed.lastJobStatus }
-        : {}),
-      ...(Array.isArray(parsed?.pinnedQueues)
-        ? {
-            pinnedQueues: parsed.pinnedQueues.filter(
-              (queueName): queueName is string => typeof queueName === "string",
-            ),
-          }
-        : {}),
-      ...(isTheme(parsed?.theme) ? { theme: parsed.theme } : {}),
-      ...((typeof parsed?.refreshIntervalMs === "number" &&
-        Number.isFinite(parsed.refreshIntervalMs)) ||
-      parsed?.refreshIntervalMs === false
-        ? {
-            refreshIntervalMs: clampRefreshInterval(parsed.refreshIntervalMs),
-          }
-        : {}),
-      ...(typeof parsed?.showOverviewMetrics === "boolean"
-        ? { showOverviewMetrics: parsed.showOverviewMetrics }
-        : {}),
-      ...(parsed?.timestamps === "relative" || parsed?.timestamps === "absolute"
-        ? { timestamps: parsed.timestamps }
-        : {}),
-    };
+    return raw ? (JSON.parse(raw) as unknown) : null;
   } catch {
     return null;
   }
+};
+
+const writeStoredPreferences = (key: string, stored: StoredPreferences) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ v: STORAGE_VERSION, ...stored }),
+    );
+  } catch {
+    // Browser storage is an optional enhancement.
+  }
+};
+
+const parseOverrides = (value: unknown): PreferenceOverrides => {
+  const parsed = value as {
+    defaultJobStatus?: unknown;
+    density?: unknown;
+    jobsPerPage?: unknown;
+    refreshIntervalMs?: unknown;
+    showOverviewMetrics?: unknown;
+    theme?: unknown;
+    timestamps?: unknown;
+  };
+  return {
+    ...(isDefaultJobStatus(parsed?.defaultJobStatus)
+      ? { defaultJobStatus: parsed.defaultJobStatus }
+      : {}),
+    ...(parsed?.density === "compact" || parsed?.density === "comfortable"
+      ? { density: parsed.density }
+      : {}),
+    ...(JOBS_PER_PAGE_OPTIONS.includes(
+      parsed?.jobsPerPage as (typeof JOBS_PER_PAGE_OPTIONS)[number],
+    )
+      ? {
+          jobsPerPage: parsed.jobsPerPage as UserPreferences["jobsPerPage"],
+        }
+      : {}),
+    ...(isTheme(parsed?.theme) ? { theme: parsed.theme } : {}),
+    ...((typeof parsed?.refreshIntervalMs === "number" &&
+      Number.isFinite(parsed.refreshIntervalMs)) ||
+    parsed?.refreshIntervalMs === false
+      ? {
+          refreshIntervalMs: clampRefreshInterval(parsed.refreshIntervalMs),
+        }
+      : {}),
+    ...(typeof parsed?.showOverviewMetrics === "boolean"
+      ? { showOverviewMetrics: parsed.showOverviewMetrics }
+      : {}),
+    ...(parsed?.timestamps === "relative" || parsed?.timestamps === "absolute"
+      ? { timestamps: parsed.timestamps }
+      : {}),
+  };
+};
+
+const parseUserState = (
+  value: unknown,
+): Partial<Omit<StoredPreferences, "overrides">> => {
+  const parsed = value as { lastJobStatus?: unknown; pinnedQueues?: unknown };
+  return {
+    ...(isJobStatus(parsed?.lastJobStatus)
+      ? { lastJobStatus: parsed.lastJobStatus }
+      : {}),
+    ...(Array.isArray(parsed?.pinnedQueues)
+      ? {
+          pinnedQueues: parsed.pinnedQueues.filter(
+            (queueName): queueName is string => typeof queueName === "string",
+          ),
+        }
+      : {}),
+  };
+};
+
+/**
+ * Choosing the server default is not an override. Storing it would pin this
+ * browser to today's default, so a later change on the server - a slower poll
+ * for everyone, say - would never reach it.
+ */
+const withOverride = <Key extends PreferenceSetting>(
+  overrides: PreferenceOverrides,
+  key: Key,
+  value: UserPreferences[Key] | undefined,
+  defaults: UserPreferences,
+): PreferenceOverrides => {
+  const next = { ...overrides };
+  if (value === undefined || value === defaults[key]) delete next[key];
+  else next[key] = value;
+  return next;
+};
+
+const isCurrentVersion = (value: unknown): value is { overrides?: unknown } =>
+  typeof value === "object" &&
+  value !== null &&
+  (value as { v?: unknown }).v === STORAGE_VERSION;
+
+const loadStoredPreferences = (
+  storageKey: string,
+  defaults: UserPreferences,
+): StoredPreferences => {
+  const current = readStorageItem(storageKey);
+  if (isCurrentVersion(current)) {
+    return {
+      ...EMPTY_STORED_PREFERENCES,
+      ...parseUserState(current),
+      overrides: parseOverrides(current.overrides),
+    };
+  }
+
+  const legacy = readStorageItem(LEGACY_STORAGE_KEY);
+  if (current === null && legacy === null) return EMPTY_STORED_PREFERENCES;
+
+  // Version 1 stored the whole merged object on every write, server defaults
+  // included, so one status-pill click froze every default in that browser.
+  // A stored value can only be told apart from a frozen default where it
+  // differs from the server's current one, so only those stay overrides. The
+  // scoped entry still wins over v3's unscoped one.
+  const values = { ...parseOverrides(legacy), ...parseOverrides(current) };
+  const migrated: StoredPreferences = {
+    ...EMPTY_STORED_PREFERENCES,
+    ...parseUserState(legacy),
+    ...parseUserState(current),
+    overrides: (Object.keys(values) as PreferenceSetting[]).reduce(
+      (overrides, key) => withOverride(overrides, key, values[key], defaults),
+      {},
+    ),
+  };
+  // Saved at once, judged against the defaults it was read with. Left in the
+  // old format, it would be judged again against whatever the defaults are on
+  // the next visit, and a value frozen from today's default would come back
+  // as an override.
+  writeStoredPreferences(storageKey, migrated);
+  return migrated;
 };
 
 const createStorageKey = (basename: string, instanceId?: string): string => {
@@ -200,11 +304,21 @@ export const QueuedashProvider = ({
   );
   const storageKey = createStorageKey(basename, ui?.instanceId);
   const preferenceScope = ui?.instanceId?.trim() || basename || "default";
-  const [preferences, setPreferences] = useState<UserPreferences>(() => ({
-    ...defaultPreferences,
-    ...readStoredPreferences(LEGACY_STORAGE_KEY),
-    ...readStoredPreferences(storageKey),
-  }));
+  const [stored, setStored] = useState(() =>
+    loadStoredPreferences(storageKey, defaultPreferences),
+  );
+  // Server defaults, then this browser's overrides, then the state that has
+  // no server default. Derived rather than stored, so a changed server default
+  // reaches every setting this browser has not overridden.
+  const preferences = useMemo<UserPreferences>(
+    () => ({
+      ...defaultPreferences,
+      ...stored.overrides,
+      lastJobStatus: stored.lastJobStatus,
+      pinnedQueues: stored.pinnedQueues,
+    }),
+    [defaultPreferences, stored],
+  );
   const [portalContainer, setPortalContainer] = useState<Element | null>(null);
   const [systemDark, setSystemDark] = useState(
     () =>
@@ -231,106 +345,82 @@ export const QueuedashProvider = ({
     return () => mediaQuery.removeListener(handleMediaChange);
   }, []);
 
-  const savePreferences = useCallback(
-    (nextPreferences: UserPreferences) => {
-      if (typeof window === "undefined") return;
-
-      try {
-        window.localStorage.setItem(
-          storageKey,
-          JSON.stringify(nextPreferences),
-        );
-      } catch {
-        // Browser storage is an optional enhancement.
-      }
+  const updateStored = useCallback(
+    (update: (current: StoredPreferences) => StoredPreferences) => {
+      setStored((current) => {
+        const next = update(current);
+        writeStoredPreferences(storageKey, next);
+        return next;
+      });
     },
     [storageKey],
   );
 
+  const setOverride = useCallback(
+    <Key extends PreferenceSetting>(key: Key, value: UserPreferences[Key]) =>
+      updateStored((current) => ({
+        ...current,
+        overrides: withOverride(
+          current.overrides,
+          key,
+          value,
+          defaultPreferences,
+        ),
+      })),
+    [defaultPreferences, updateStored],
+  );
+
   const setTheme = useCallback(
-    (theme: QueuedashTheme) => {
-      setPreferences((current) => {
-        const next = { ...current, theme };
-        savePreferences(next);
-        return next;
-      });
-    },
-    [savePreferences],
+    (theme: QueuedashTheme) => setOverride("theme", theme),
+    [setOverride],
   );
-
   const setRefreshInterval = useCallback(
-    (refreshIntervalMs: number | false) => {
-      setPreferences((current) => {
-        const next = {
-          ...current,
-          refreshIntervalMs: clampRefreshInterval(refreshIntervalMs),
-        };
-        savePreferences(next);
-        return next;
-      });
-    },
-    [savePreferences],
+    (refreshIntervalMs: number | false) =>
+      setOverride("refreshIntervalMs", clampRefreshInterval(refreshIntervalMs)),
+    [setOverride],
   );
-
-  const updatePreference = useCallback(
-    <Key extends keyof UserPreferences>(
-      key: Key,
-      value: UserPreferences[Key],
-    ) => {
-      setPreferences((current) => {
-        const next = { ...current, [key]: value };
-        savePreferences(next);
-        return next;
-      });
-    },
-    [savePreferences],
-  );
-
   const setJobsPerPage = useCallback(
     (jobsPerPage: UserPreferences["jobsPerPage"]) =>
-      updatePreference("jobsPerPage", jobsPerPage),
-    [updatePreference],
+      setOverride("jobsPerPage", jobsPerPage),
+    [setOverride],
   );
   const setDefaultJobStatus = useCallback(
     (defaultJobStatus: QueuedashDefaultJobStatus) =>
-      updatePreference("defaultJobStatus", defaultJobStatus),
-    [updatePreference],
-  );
-  const setLastJobStatus = useCallback(
-    (lastJobStatus: UserPreferences["lastJobStatus"]) =>
-      updatePreference("lastJobStatus", lastJobStatus),
-    [updatePreference],
+      setOverride("defaultJobStatus", defaultJobStatus),
+    [setOverride],
   );
   const setDensity = useCallback(
-    (density: QueuedashDensity) => updatePreference("density", density),
-    [updatePreference],
+    (density: QueuedashDensity) => setOverride("density", density),
+    [setOverride],
   );
   const setTimestamps = useCallback(
     (timestamps: QueuedashTimestampMode) =>
-      updatePreference("timestamps", timestamps),
-    [updatePreference],
+      setOverride("timestamps", timestamps),
+    [setOverride],
   );
   const setShowOverviewMetrics = useCallback(
     (showOverviewMetrics: boolean) =>
-      updatePreference("showOverviewMetrics", showOverviewMetrics),
-    [updatePreference],
+      setOverride("showOverviewMetrics", showOverviewMetrics),
+    [setOverride],
+  );
+  const setLastJobStatus = useCallback(
+    (lastJobStatus: UserPreferences["lastJobStatus"]) =>
+      updateStored((current) => ({ ...current, lastJobStatus })),
+    [updateStored],
   );
   const togglePinnedQueue = useCallback(
-    (queueName: string) => {
-      setPreferences((current) => {
-        const pinnedQueues = current.pinnedQueues.includes(queueName)
+    (queueName: string) =>
+      updateStored((current) => ({
+        ...current,
+        pinnedQueues: current.pinnedQueues.includes(queueName)
           ? current.pinnedQueues.filter((name) => name !== queueName)
-          : [...current.pinnedQueues, queueName];
-        const next = { ...current, pinnedQueues };
-        savePreferences(next);
-        return next;
-      });
-    },
-    [savePreferences],
+          : [...current.pinnedQueues, queueName],
+      })),
+    [updateStored],
   );
 
   const resetPreferences = useCallback(() => {
-    setPreferences(defaultPreferences);
+    setStored(EMPTY_STORED_PREFERENCES);
     if (typeof window === "undefined") return;
 
     try {
@@ -339,7 +429,7 @@ export const QueuedashProvider = ({
     } catch {
       // Browser storage is an optional enhancement.
     }
-  }, [defaultPreferences, storageKey]);
+  }, [storageKey]);
 
   const branding = useMemo<ResolvedBranding>(() => {
     const name = ui?.branding?.name?.trim() || DEFAULT_PRODUCT_NAME;
@@ -358,6 +448,7 @@ export const QueuedashProvider = ({
       isDark:
         preferences.theme === "dark" ||
         (preferences.theme === "system" && systemDark),
+      overrides: stored.overrides,
       portalContainer,
       preferences,
       preferenceScope,
@@ -377,6 +468,7 @@ export const QueuedashProvider = ({
       branding,
       defaultPreferences,
       ui?.documentTitle,
+      stored.overrides,
       portalContainer,
       preferenceScope,
       preferences,

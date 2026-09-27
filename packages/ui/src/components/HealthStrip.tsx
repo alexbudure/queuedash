@@ -23,7 +23,11 @@ import {
   StatCellSkeleton,
   StatStrip,
 } from "./StatStrip";
-import { WorkersPanel, workersSummary } from "./WorkersPanel";
+import {
+  isWaitingOnWorkers,
+  WorkersPanel,
+  workersSummary,
+} from "./WorkersPanel";
 
 type TimeRange = "1m" | "1h" | "24h" | "7d";
 
@@ -87,10 +91,31 @@ const MetricSparkline = ({
   </div>
 );
 
-const calculateTrend = (current: number, previous: number) => {
-  if (previous === 0) return null;
+/**
+ * Against the window of the same length just before this one. No baseline, no
+ * trend: a window the queue's history does not reach, or one where nothing
+ * finished, would read as growth from nothing.
+ */
+// A slow queue rounded to "0.0/min" even after running hundreds of jobs over a
+// week, so step up to a coarser unit until the rate reads as a real number.
+const formatThroughput = (perMinute: number): string => {
+  if (perMinute === 0) return "0/min";
+  if (perMinute >= 0.1) return `${perMinute.toFixed(1)}/min`;
+  const perHour = perMinute * 60;
+  if (perHour >= 0.1) return `${perHour.toFixed(1)}/h`;
+  return `${(perHour * 24).toFixed(1)}/day`;
+};
+
+const calculateTrend = (current: number, previous: number | null) => {
+  if (!previous) return null;
   const change = ((current - previous) / previous) * 100;
   return { change, isPositive: change >= 0 };
+};
+
+/** The completed share of everything that finished, or null if nothing did. */
+const getSuccessRate = (completed: number, failed: number) => {
+  const total = completed + failed;
+  return total > 0 ? (completed / total) * 100 : null;
 };
 
 const MetricCells = ({
@@ -102,10 +127,14 @@ const MetricCells = ({
 }) => {
   const { preferences } = useQueuedash();
   const minutes = TIME_RANGES[timeRange].minutes;
+  // Complete minutes only. The current one is still filling: counting it read
+  // "Last minute" as near zero at the top of every minute and dragged every
+  // window down with a partial bucket.
+  const metricsWindow = { start: 1, end: minutes + 1 };
 
   const { data: completedMetrics, isPlaceholderData: isCompletedStale } =
     trpc.queue.metrics.useQuery(
-      { queueName, type: "completed", start: 0, end: minutes },
+      { queueName, type: "completed", ...metricsWindow },
       {
         enabled: !!queueName,
         refetchInterval: preferences.refreshIntervalMs,
@@ -117,7 +146,7 @@ const MetricCells = ({
 
   const { data: failedMetrics, isPlaceholderData: isFailedStale } =
     trpc.queue.metrics.useQuery(
-      { queueName, type: "failed", start: 0, end: minutes },
+      { queueName, type: "failed", ...metricsWindow },
       {
         enabled: !!queueName,
         refetchInterval: preferences.refreshIntervalMs,
@@ -142,30 +171,40 @@ const MetricCells = ({
 
   // A queue that ran nothing has no success rate and no throughput - reporting
   // "100.0%" for it is a claim about jobs that never existed.
-  const successRate =
-    totalCount > 0 ? (completedCount / totalCount) * 100 : null;
-  const prevTotalCount =
-    (completedMetrics?.meta.prevCount ?? 0) +
-    (failedMetrics?.meta.prevCount ?? 0);
-  const prevSuccessRate =
-    completedMetrics && prevTotalCount > 0
-      ? (completedMetrics.meta.prevCount / prevTotalCount) * 100
+  const successRate = getSuccessRate(completedCount, failedCount);
+  // Every baseline is the previous window, never `meta.prevCount`: that is the
+  // library's running total, so trends against it read about -99% and a spike
+  // of failures drew a green badge. The previous window's rate needs both of
+  // its counts, or it would be a rate over half the jobs.
+  const previousSuccessRate =
+    completedMetrics?.previousCount != null &&
+    failedMetrics?.previousCount != null
+      ? getSuccessRate(
+          completedMetrics.previousCount,
+          failedMetrics.previousCount,
+        )
       : null;
   const successRateTrend =
-    successRate !== null && prevSuccessRate !== null
+    successRate !== null && previousSuccessRate !== null
       ? {
-          change: successRate - prevSuccessRate,
-          isPositive: successRate >= prevSuccessRate,
+          change: successRate - previousSuccessRate,
+          isPositive: successRate >= previousSuccessRate,
         }
       : null;
   const completedTrend = completedMetrics
-    ? calculateTrend(completedMetrics.count, completedMetrics.meta.prevCount)
+    ? calculateTrend(completedMetrics.count, completedMetrics.previousCount)
     : null;
   const failedTrend = failedMetrics
-    ? calculateTrend(failedMetrics.count, failedMetrics.meta.prevCount)
+    ? calculateTrend(failedMetrics.count, failedMetrics.previousCount)
     : null;
+  // Per minute the window has history for: a queue three days old has not had
+  // seven days to run jobs in, and dividing by them understated its rate.
   const throughput =
-    totalCount > 0 ? (completedCount / minutes).toFixed(1) : null;
+    totalCount > 0
+      ? formatThroughput(
+          completedCount / Math.max(1, completedMetrics?.coveredMinutes ?? 0),
+        )
+      : null;
   const successRateSparkline =
     completedMetrics?.data && failedMetrics?.data
       ? completedMetrics.data.map((c, i) => {
@@ -192,7 +231,7 @@ const MetricCells = ({
       <StatCell
         isStale={isStale}
         label="Throughput"
-        value={throughput === null ? "—" : `${throughput}/min`}
+        value={throughput ?? "—"}
         trend={<TrendIndicator trend={completedTrend} />}
         sub={
           throughput === null
@@ -321,20 +360,20 @@ export const HealthStrip = ({
   const supportsMetrics = queue?.supports.metrics === true;
   const supportsWorkers = queue?.supports.workers === true;
 
-  if (queue && !supportsMetrics && !supportsWorkers) return null;
+  // Without metrics there is nothing to make a strip of: one full-width cell
+  // holding a worker count was a card built around a single number, so those
+  // queues carry their workers in the subtitle instead.
+  if (queue && !supportsMetrics) return null;
 
-  const cellCount = queue
-    ? (supportsMetrics ? 3 : 0) + (supportsWorkers ? 1 : 0)
-    : 3;
-  const hasPendingWork = queue
-    ? queue.counts.waiting + queue.counts.active > 0
-    : false;
+  const cellCount = supportsWorkers ? 4 : 3;
+  const hasPendingWork = queue ? isWaitingOnWorkers(queue.counts) : false;
 
   return (
     <StatStrip
       label="Health"
       ariaLabel="Queue health"
-      columns={cellCount as 1 | 2 | 3 | 4}
+      columns={cellCount}
+      collapsibleOnPhones
       action={
         supportsMetrics ? (
           // Inside the strip because it scopes only these numbers - as a
@@ -350,9 +389,7 @@ export const HealthStrip = ({
         ) : null
       }
     >
-      {!queue || supportsMetrics ? (
-        <MetricCells queueName={queueName} timeRange={timeRange} />
-      ) : null}
+      <MetricCells queueName={queueName} timeRange={timeRange} />
       {supportsWorkers ? (
         <WorkersCell queueName={queueName} hasPendingWork={hasPendingWork} />
       ) : null}

@@ -8,7 +8,7 @@
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "@queuedash/api": "^3.12.0",
+    "@queuedash/api": "^4.0.0",
     "bull": "^4.16.5",
     "express": "^5.1.0"
   },

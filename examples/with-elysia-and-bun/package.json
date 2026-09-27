@@ -12,7 +12,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@queuedash/api": "^3.12.0",
+    "@queuedash/api": "^4.0.0",
     "bull": "^4.16.5",
     "elysia": "^1.4.16"
   }

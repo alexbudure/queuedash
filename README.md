@@ -47,6 +47,8 @@ uses:
 npm install @queuedash/api
 ```
 
+Queuedash requires Node 22 or newer, and is built and tested on Node 24.
+
 Mount the Express middleware with at least one queue:
 
 ```typescript
@@ -104,7 +106,9 @@ Queuedash detects adapter capabilities and hides unsupported controls.
 | GroupMQ   | Yes                  | No              | No      | No         | No     |
 
 BullMQ also provides the broadest metrics, logs, flow, priority, and scheduler
-support, and Queuedash requires BullMQ 5.60 or newer for safe scheduler editing.
+support. Queuedash works with BullMQ 5 (5.60 or newer, for safe scheduler
+editing) and BullMQ 6, and with Bee-Queue 1 and 2, serving whichever major your
+application installs.
 GroupMQ exposes its native groups. Bee-Queue remains intentionally limited to
 operations supported safely by its API.
 
@@ -336,6 +340,15 @@ Use `QUEUES_CONFIG_FILE_PATH` instead of `QUEUES_CONFIG_JSON` to load the same
 configuration from a mounted file. Docker supports Bull, BullMQ, and Bee-Queue
 static queues; Redis discovery supports Bull and BullMQ. BullMQ static queues
 may use either `connectionUrl` or `clusterNodes`.
+
+The image bundles BullMQ 6, which talks to queues written by BullMQ 5 and 6
+alike. Keep it ahead of your own BullMQ, not behind: a BullMQ 5 dashboard
+resuming a queue whose producers run BullMQ 6 drops whatever those producers
+added while it was paused, because the two majors disagree on where a paused
+queue's jobs live. BullMQ 6 migrates a list BullMQ 5 left behind, so this image
+is safe in front of either major. The same caveat applies to `@queuedash/api`
+embedded in your own application, where the BullMQ your application installs is
+the one Queuedash uses.
 
 The Docker JSON schema accepts the same `ui`, `privacy`, `access`, `search`, and
 `discovery` settings described above, excluding programmatic callback functions.

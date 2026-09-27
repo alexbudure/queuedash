@@ -4,14 +4,10 @@ import type { Handler } from "express";
 import type { Context } from "../routers/_app";
 import { appRouter } from "../routers/_app";
 import {
-  createQueuedashExpiredSessionCookie,
-  createQueuedashSessionCookie,
-  getQueuedashAuthMode,
-  isQueuedashBasicAuthorized,
-  isQueuedashSessionAuthorized,
-  QUEUEDASH_AUTH_CHALLENGE,
-  QUEUEDASH_AUTH_REQUIRED_MESSAGE,
+  getQueuedashRoute,
   type QueuedashAuthOptions,
+  resolveQueuedashRequest,
+  validateQueuedashAuthOptions,
 } from "./auth";
 import { createQueuedashHtml } from "./utils";
 
@@ -22,91 +18,40 @@ export function createQueuedashExpressMiddleware({
   ctx: Context;
   auth?: QueuedashAuthOptions;
 }): Handler {
-  return async (req, res) => {
-    const authMode = getQueuedashAuthMode(auth);
-    const sendUnauthorized = (challenge = false) => {
-      res.set({
-        "Cache-Control": "no-store",
-        ...(challenge ? { "WWW-Authenticate": QUEUEDASH_AUTH_CHALLENGE } : {}),
+  const authMode = validateQueuedashAuthOptions(auth);
+
+  return async (req, res, next) => {
+    // Express 4 does not catch a rejected handler: an error escaping here
+    // would be an unhandled rejection, which ends the host process.
+    try {
+      const decision = resolveQueuedashRequest(auth, {
+        route: getQueuedashRoute(req.method, req.path),
+        method: req.method,
+        authorization: req.headers.authorization,
+        cookie: req.headers.cookie,
+        contentType: req.headers["content-type"],
+        baseUrl: req.baseUrl,
+        isSecure: req.secure,
       });
-      res.status(401).send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
-    };
 
-    if (
-      authMode === "basic" &&
-      !isQueuedashBasicAuthorized(req.headers.authorization, auth)
-    ) {
-      sendUnauthorized(true);
-      return;
-    }
-
-    if (authMode === "session" && auth) {
-      if (req.path === "/auth/login" && req.method === "POST") {
-        if (!isQueuedashBasicAuthorized(req.headers.authorization, auth)) {
-          sendUnauthorized();
-          return;
-        }
-
-        res
-          .set({
-            "Cache-Control": "no-store",
-            "Set-Cookie": createQueuedashSessionCookie({
-              auth,
-              baseUrl: req.baseUrl,
-              requestIsSecure: req.secure,
-            }),
-          })
-          .status(204)
-          .send();
+      if (decision.type === "respond") {
+        res.set(decision.headers).status(decision.status).send(decision.body);
         return;
       }
 
-      if (req.path === "/auth/logout" && req.method === "POST") {
-        res
-          .set({
-            "Cache-Control": "no-store",
-            "Set-Cookie": createQueuedashExpiredSessionCookie(req.baseUrl),
-          })
-          .status(204)
-          .send();
+      if (decision.type === "trpc") {
+        res.set(decision.headers);
+        const endpoint = req.path.replace("/trpc", "").slice(1);
+        await trpcNodeHttp.nodeHTTPRequestHandler({
+          router: appRouter,
+          createContext: () => ctx,
+          req,
+          res,
+          path: endpoint,
+        });
         return;
       }
 
-      if (req.path === "/auth/session" && req.method === "GET") {
-        if (!isQueuedashSessionAuthorized(req.headers.cookie, auth)) {
-          sendUnauthorized();
-          return;
-        }
-
-        res.set({ "Cache-Control": "no-store" }).status(204).send();
-        return;
-      }
-
-      if (req.path.startsWith("/auth/")) {
-        res.status(404).send("Not found");
-        return;
-      }
-    }
-
-    if (req.path.startsWith("/trpc")) {
-      res.set("Cache-Control", "private, no-store");
-      if (
-        authMode === "session" &&
-        !isQueuedashSessionAuthorized(req.headers.cookie, auth)
-      ) {
-        sendUnauthorized();
-        return;
-      }
-
-      const endpoint = req.path.replace("/trpc", "").slice(1);
-      await trpcNodeHttp.nodeHTTPRequestHandler({
-        router: appRouter,
-        createContext: () => ctx,
-        req,
-        res,
-        path: endpoint,
-      });
-    } else {
       res
         .type("text/html")
         .send(
@@ -118,6 +63,8 @@ export function createQueuedashExpressMiddleware({
               : undefined,
           ),
         );
+    } catch (error) {
+      next(error);
     }
   };
 }

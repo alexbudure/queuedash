@@ -1,20 +1,38 @@
 import { clsx } from "clsx";
 import { Loader2 } from "lucide-react";
+import { useState } from "react";
 
-import { formatDurationFromSeconds } from "../utils/format";
-import { TEXT_MUTED } from "../utils/styles";
+import { formatCountLabel, formatDurationFromSeconds } from "../utils/format";
+import { FOCUS_RING, TEXT_MUTED } from "../utils/styles";
 import type { RouterOutput } from "../utils/trpc";
+import { trpc } from "../utils/trpc";
+import { useQueuedash } from "./QueuedashProvider";
 import { SidePanelDialog } from "./SidePanelDialog";
 
-type Worker = RouterOutput["queue"]["workers"][number];
+type Worker = NonNullable<RouterOutput["queue"]["workers"]>[number];
 
 type WorkersState = {
-  workers: Worker[] | undefined;
+  /** `null` when this Redis will not let workers be inspected at all. */
+  workers: Worker[] | null | undefined;
   isLoading: boolean;
   isError: boolean;
-  /** Jobs are waiting or active, so "no workers" means nothing will move. */
+  /**
+   * Jobs are waiting and none is running, so "no workers" means nothing will
+   * move. See `isWaitingOnWorkers`.
+   */
   hasPendingWork: boolean;
 };
+
+/**
+ * Jobs are ready to run and none of them is running. An active job proves
+ * something is processing even when no worker shows up in the list, so it
+ * rules the "Not processing" warning out.
+ */
+export const isWaitingOnWorkers = (counts: {
+  waiting: number;
+  prioritized: number;
+  active: number;
+}) => counts.waiting + counts.prioritized > 0 && counts.active === 0;
 
 /** The one-line reading of the worker list, shared by the cell and the panel. */
 export const workersSummary = ({
@@ -28,7 +46,11 @@ export const workersSummary = ({
   tone: "normal" | "warning";
 } => {
   if (isLoading) return { value: "—", sub: "Checking…", tone: "normal" };
-  if (isError) return { value: "—", sub: "Unavailable", tone: "normal" };
+  // Unknown is not zero: a Redis that will not list its clients says nothing
+  // about whether workers are there, so it must not read as "Not processing".
+  if (isError || workers === null) {
+    return { value: "—", sub: "Unavailable", tone: "normal" };
+  }
   const list = workers ?? [];
   if (list.length === 0) {
     return hasPendingWork
@@ -77,6 +99,10 @@ export const WorkersPanel = ({
         </div>
       ) : isError ? (
         <p className="text-xs text-red-600 dark:text-red-400">
+          Could not check workers.
+        </p>
+      ) : workers === null ? (
+        <p className={clsx("text-xs", TEXT_MUTED)}>
           Worker inspection is unavailable from this Redis server.
         </p>
       ) : workers?.length ? (
@@ -120,3 +146,62 @@ export const WorkersPanel = ({
     </div>
   </SidePanelDialog>
 );
+
+/**
+ * The worker count as one more fact in a queue's subtitle, for queues with no
+ * metrics to build a strip from. It still opens the list, and it still turns
+ * amber when jobs are waiting and nobody is there to run them.
+ */
+export const WorkersInline = ({
+  queueName,
+  hasPendingWork,
+}: {
+  queueName: string;
+  hasPendingWork: boolean;
+}) => {
+  const { preferences } = useQueuedash();
+  const [open, setOpen] = useState(false);
+  const workersReq = trpc.queue.workers.useQuery(
+    { queueName },
+    { refetchInterval: preferences.refreshIntervalMs },
+  );
+  const isUnavailable = workersReq.isError || workersReq.data === null;
+  const count = workersReq.data?.length ?? 0;
+  const isWarning =
+    !workersReq.isLoading && !isUnavailable && count === 0 && hasPendingWork;
+  const label = workersReq.isLoading
+    ? "checking workers"
+    : isUnavailable
+      ? "workers unavailable"
+      : isWarning
+        ? "0 workers, not processing"
+        : formatCountLabel(count, "worker");
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        className={clsx(
+          "rounded underline decoration-dotted underline-offset-2 transition-colors duration-150 hover:text-gray-900 dark:hover:text-white",
+          isWarning && "text-amber-600 dark:text-amber-400",
+          FOCUS_RING,
+        )}
+      >
+        {label}
+      </button>
+      {open ? (
+        <WorkersPanel
+          open={open}
+          onOpenChange={setOpen}
+          queueName={queueName}
+          workers={workersReq.data}
+          isLoading={workersReq.isLoading}
+          isError={workersReq.isError}
+          hasPendingWork={hasPendingWork}
+        />
+      ) : null}
+    </>
+  );
+};

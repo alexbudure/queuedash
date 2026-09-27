@@ -2,6 +2,11 @@ import { useId } from "react";
 import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 
 type SparklineProps = {
+  /**
+   * One value per minute, newest first - the order `queue.metrics` returns. It
+   * is drawn the other way round, so time runs left to right and the newest
+   * minute is the right edge, as on every other time axis.
+   */
   data: number[];
   color: string;
   height?: number;
@@ -35,7 +40,9 @@ export const Sparkline = ({
     );
   }
 
-  const chartData = data.map((value, index) => ({ value, index }));
+  const chartData = [...data]
+    .reverse()
+    .map((value, index) => ({ value, index }));
 
   const gradientId = `sparkline-gradient-${id}`;
 

@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createQueuedashHtml } from "../server-adapters/utils";
+import {
+  createQueuedashFetchHandler,
+  createQueuedashHtml,
+} from "../server-adapters/utils";
 
 describe("createQueuedashHtml", () => {
   test("includes server-provided UI configuration in the bootstrap", () => {
@@ -63,5 +66,33 @@ describe("createQueuedashHtml", () => {
       /<link\s+rel="icon"\s+href="\/assets\/acme-favicon.svg"\s*\/>/,
     );
     expect(html).not.toContain("data:image/svg+xml");
+  });
+});
+
+describe("createQueuedashFetchHandler", () => {
+  const request = (path: string) => new Request(`http://localhost${path}`);
+
+  test("serves only paths beneath the base URL", async () => {
+    const handle = createQueuedashFetchHandler({
+      baseUrl: "/queuedash",
+      ctx: { queues: [] },
+    });
+
+    for (const path of ["/queuedash", "/queuedash/", "/queuedash/settings"]) {
+      expect((await handle(request(path))).status).toBe(200);
+    }
+    for (const path of ["/queuedashboard", "/other/queuedash/settings"]) {
+      expect((await handle(request(path))).status).toBe(404);
+    }
+  });
+
+  test("accepts a base URL with a trailing slash", async () => {
+    const handle = createQueuedashFetchHandler({
+      baseUrl: "/queuedash/",
+      ctx: { queues: [] },
+    });
+
+    expect((await handle(request("/queuedash/settings"))).status).toBe(200);
+    expect((await handle(request("/queuedash/auth/session"))).status).toBe(404);
   });
 });

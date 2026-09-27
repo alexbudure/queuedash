@@ -1,7 +1,13 @@
 import { clsx } from "clsx";
-import type { ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
 
-import { CARD_BORDER, SECTION_LABEL, TEXT_MUTED } from "../utils/styles";
+import {
+  CARD_BORDER,
+  FOCUS_RING,
+  SECTION_LABEL,
+  TEXT_MUTED,
+} from "../utils/styles";
 import { Skeleton } from "./Skeleton";
 
 /**
@@ -96,6 +102,7 @@ export const StatStrip = ({
   ariaLabel,
   action,
   columns,
+  collapsibleOnPhones = false,
   children,
 }: {
   label: string;
@@ -103,20 +110,62 @@ export const StatStrip = ({
   /** A control scoped to the numbers, e.g. a time range, at the strip's right. */
   action?: ReactNode;
   columns: 1 | 2 | 3 | 4;
+  /**
+   * Below `sm` the strip starts as just its header and opens on a tap. On a
+   * phone four stacked cells were ~215px between the page title and the list
+   * the page is for; from `sm` up the strip is always open.
+   */
+  collapsibleOnPhones?: boolean;
   children: ReactNode;
-}) => (
-  <section aria-label={ariaLabel} className={clsx("rounded-xl", CARD_BORDER)}>
-    <div className="flex h-9 items-center justify-between pr-1.5 pl-4">
-      <h2 className={SECTION_LABEL}>{label}</h2>
-      {action}
-    </div>
-    <div
-      className={clsx(
-        "grid border-t border-gray-100/60 dark:border-slate-800/60",
-        COLUMNS[columns],
-      )}
-    >
-      {children}
-    </div>
-  </section>
-);
+}) => {
+  const [isOpenOnPhone, setIsOpenOnPhone] = useState(false);
+  const bodyId = useId();
+  const isClosedOnPhone = collapsibleOnPhones && !isOpenOnPhone;
+
+  return (
+    <section aria-label={ariaLabel} className={clsx("rounded-xl", CARD_BORDER)}>
+      <div className="flex h-9 items-center justify-between pr-1.5 pl-4">
+        {collapsibleOnPhones ? (
+          <>
+            <button
+              type="button"
+              aria-expanded={isOpenOnPhone}
+              aria-controls={bodyId}
+              onClick={() => setIsOpenOnPhone((open) => !open)}
+              className={clsx(
+                "-ml-1 flex h-7 items-center gap-1 rounded-md px-1 sm:hidden",
+                FOCUS_RING,
+              )}
+            >
+              <span className={SECTION_LABEL}>{label}</span>
+              <ChevronDown
+                aria-hidden="true"
+                className={clsx(
+                  "size-3.5 transition-transform duration-150",
+                  TEXT_MUTED,
+                  isOpenOnPhone && "rotate-180",
+                )}
+              />
+            </button>
+            <h2 className={clsx("hidden sm:block", SECTION_LABEL)}>{label}</h2>
+          </>
+        ) : (
+          <h2 className={SECTION_LABEL}>{label}</h2>
+        )}
+        <div className={clsx(isClosedOnPhone && "hidden sm:block")}>
+          {action}
+        </div>
+      </div>
+      <div
+        id={bodyId}
+        className={clsx(
+          "border-t border-gray-100/60 dark:border-slate-800/60",
+          COLUMNS[columns],
+          isClosedOnPhone ? "hidden sm:grid" : "grid",
+        )}
+      >
+        {children}
+      </div>
+    </section>
+  );
+};

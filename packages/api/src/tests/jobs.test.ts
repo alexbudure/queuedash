@@ -1,12 +1,18 @@
 import { faker } from "@faker-js/faker";
 import { TRPCError } from "@trpc/server";
 import type { Queue as BullMQQueue } from "bullmq";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 
+import {
+  type AdaptedJob,
+  JobNotFoundError,
+  type JobPageMeta,
+} from "../queue-adapters/base.adapter";
 import { GroupMQAdapter } from "../queue-adapters/groupmq.adapter";
 import { appRouter } from "../routers/_app";
-import { transformContext } from "../trpc";
+import { type Context, transformContext } from "../trpc";
 import {
+  bullmqMajor,
   initRedisInstance,
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
@@ -15,6 +21,108 @@ import {
   sleep,
   type,
 } from "./test.utils";
+
+type TestQueue = Awaited<ReturnType<typeof initRedisInstance>>["firstQueue"];
+
+// Delayed jobs hold still while a test reads them: no worker takes one before
+// it is due.
+const addDelayedJob = async (
+  firstQueue: TestQueue,
+  data: Record<string, unknown>,
+  delay: number,
+): Promise<string> => {
+  switch (firstQueue.type) {
+    case "bull":
+      return String((await firstQueue.queue.add(data, { delay })).id);
+    case "bullmq":
+      return String(
+        (await firstQueue.queue.add("delayed", data, { delay })).id,
+      );
+    case "bee":
+      return (
+        await firstQueue.queue
+          .createJob(data)
+          .delayUntil(Date.now() + delay)
+          .save()
+      ).id;
+    case "groupmq":
+      return (
+        await firstQueue.queue.add({
+          groupId: `delayed-${faker.string.uuid()}`,
+          data,
+          delay,
+          maxAttempts: 1,
+        })
+      ).id;
+  }
+};
+
+const syntheticJob = (index: number): AdaptedJob => ({
+  id: `synthetic-${index}`,
+  name: "synthetic",
+  data: { synthetic: index },
+  opts: {},
+  createdAt: new Date(1_700_000_000_000 + index * 1_000),
+  processedAt: null,
+  finishedAt: null,
+  retriedAt: null,
+  groupId: "synthetic-group",
+  attemptsMade: 0,
+});
+
+// Serves a completed list of `count` jobs from memory through the adapter the
+// router resolves for `ctx`, so paging and scanning run exactly as they would
+// against Redis, at sizes a fixture can't cheaply reach. Oldest job first, so
+// sorting newest reverses it.
+const serveSyntheticJobs = async (ctx: Context, count: number) => {
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  if (!adapter) throw new Error("The fixture has no queue");
+  const jobs = Array.from({ length: count }, (_, index) => syntheticJob(index));
+  const getJobs = vi
+    .spyOn(adapter, "getJobs")
+    .mockImplementation(async (_status, start, end) =>
+      jobs.slice(start, end + 1),
+    );
+  const getJobPageMeta = vi
+    .spyOn(adapter, "getJobPageMeta")
+    .mockReturnValue(undefined);
+  const getJob = vi
+    .spyOn(adapter, "getJob")
+    .mockImplementation(
+      async (jobId) => jobs.find((job) => job.id === jobId) ?? null,
+    );
+  const removeJob = vi
+    .spyOn(adapter, "removeJob")
+    .mockImplementation(async (jobId) => {
+      const index = jobs.findIndex((job) => job.id === jobId);
+      if (index < 0) throw new JobNotFoundError();
+      jobs.splice(index, 1);
+    });
+  onTestFinished(() => {
+    getJobs.mockRestore();
+    getJobPageMeta.mockRestore();
+    getJob.mockRestore();
+    removeJob.mockRestore();
+  });
+  return { adapter, jobs, getJobs, getJob };
+};
+
+const pageThrough = async (
+  caller: ReturnType<typeof appRouter.createCaller>,
+  input: Parameters<
+    ReturnType<typeof appRouter.createCaller>["job"]["list"]
+  >[0],
+) => {
+  const pages = [];
+  let cursor: number | undefined = 0;
+  while (cursor !== undefined) {
+    if (pages.length > 500) throw new Error("The list never ran out");
+    const page = await caller.job.list({ ...input, cursor });
+    pages.push(page);
+    cursor = page.nextCursor;
+  }
+  return pages;
+};
 
 test("list completed jobs", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
@@ -290,7 +398,12 @@ test("exact-id search cannot bypass presentation redaction", async () => {
     maxScanned: 100,
   });
   expect(result.results.some(({ job }) => job.id === rawJob.id)).toBe(false);
-  expect(result.results.every(({ job }) => job.id === "[REDACTED]")).toBe(true);
+  // A hidden id is a per-job pseudonym, never the id itself.
+  expect(
+    result.results.every(({ job }) =>
+      /^\[REDACTED\]:[0-9a-f]{16}$/.test(job.id),
+    ),
+  ).toBe(true);
 });
 
 test("redacted job identities cannot target a different job", async () => {
@@ -454,6 +567,474 @@ test("job list reports partial results at the configured scan cap", async () => 
     capped: true,
     scanLimit: 25,
   });
+});
+
+test("bounded lists page to their limit and end on a short page", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+
+  // The README's `search.maxScanned: 1_000` at the UI's 30 a page: cursor 990
+  // was advertised, then refused.
+  const readmeCtx = { ...ctx, search: { maxScanned: 1_000 } };
+  await serveSyntheticJobs(readmeCtx, 1_050);
+  const readmePages = await pageThrough(appRouter.createCaller(readmeCtx), {
+    queueName,
+    status: "completed",
+    sort: "newest",
+    limit: 30,
+  });
+  expect(readmePages).toHaveLength(34);
+  expect(readmePages.at(-1)?.jobs).toHaveLength(10);
+  expect(readmePages.flatMap(({ jobs }) => jobs.map(({ id }) => id))).toEqual(
+    Array.from({ length: 1_000 }, (_, index) => `synthetic-${999 - index}`),
+  );
+
+  // The default 5,000-job limit: cursor 4,980 was advertised, then refused.
+  const defaultCtx = { ...ctx };
+  await serveSyntheticJobs(defaultCtx, 5_100);
+  const defaultPages = await pageThrough(appRouter.createCaller(defaultCtx), {
+    queueName,
+    status: "completed",
+    query: "synthetic",
+    limit: 30,
+  });
+  expect(defaultPages).toHaveLength(167);
+  expect(defaultPages.at(-1)?.jobs).toHaveLength(20);
+  expect(defaultPages.at(-1)?.searchMeta).toMatchObject({
+    capped: true,
+    scanned: 5_000,
+    scanLimit: 5_000,
+  });
+
+  // The documented minimum limit refused every filtered, grouped or sorted
+  // list at 30 a page on page 1.
+  const minimumCtx = { ...ctx, search: { maxScanned: 25 } };
+  await serveSyntheticJobs(minimumCtx, 40);
+  const minimumCaller = appRouter.createCaller(minimumCtx);
+  for (const view of [
+    { sort: "newest" },
+    { query: "synthetic" },
+    { groupId: "synthetic-group" },
+  ] as const) {
+    const pages = await pageThrough(minimumCaller, {
+      queueName,
+      status: "completed",
+      limit: 30,
+      ...view,
+    });
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.jobs).toHaveLength(25);
+    expect(pages[0]?.searchMeta).toMatchObject({ capped: true, scanLimit: 25 });
+  }
+});
+
+test("page-capped adapter lists serve their last page rather than refuse it", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  // The lists an adapter can only page through its first 5,000 jobs of.
+  const status =
+    firstQueue.type === "groupmq"
+      ? "waiting"
+      : firstQueue.type === "bee"
+        ? "completed"
+        : undefined;
+  if (!status) return;
+  const { adapter, getJobs } = await serveSyntheticJobs(ctx, 5_100);
+  const getJobCounts = vi
+    .spyOn(adapter, "getJobCounts")
+    .mockResolvedValue({ [status]: 5_100 });
+  onTestFinished(() => getJobCounts.mockRestore());
+  const caller = appRouter.createCaller(ctx);
+  const input = {
+    queueName: firstQueue.queue.name,
+    status,
+    limit: 30,
+  } as const;
+
+  const previous = await caller.job.list({ ...input, cursor: 4_950 });
+  expect(previous.nextCursor).toBe(4_980);
+  const last = await caller.job.list({ ...input, cursor: 4_980 });
+  expect(last.jobs).toHaveLength(20);
+  expect(last.nextCursor).toBeUndefined();
+  expect(getJobs).toHaveBeenLastCalledWith(status, 4_980, 4_999);
+  await expectTRPCError(
+    () => caller.job.list({ ...input, cursor: 5_000 }),
+    "BAD_REQUEST",
+  );
+});
+
+test("load-more pages continue page 1's order without rescanning", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const marker = `snapshot-order-${faker.string.uuid()}`;
+  const jobIds: string[] = [];
+  const addOrdered = async (order: number) => {
+    jobIds[order] = await addDelayedJob(firstQueue, { marker, order }, 600_000);
+    // Distinct creation times, so "newest" has one answer.
+    await sleep(3);
+  };
+  for (let order = 0; order < 12; order += 1) await addOrdered(order);
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  const getJobs = vi.spyOn(adapter, "getJobs");
+  onTestFinished(() => getJobs.mockRestore());
+  const caller = appRouter.createCaller(ctx);
+  const input = {
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    query: marker,
+    sort: "newest",
+    limit: 5,
+  } as const;
+  const orders = (page: { jobs: Array<{ data: Record<string, unknown> }> }) =>
+    page.jobs.map(({ data }) => data.order);
+
+  const first = await caller.job.list(input);
+  expect(orders(first)).toEqual([11, 10, 9, 8, 7]);
+
+  // Newer matches arrive, which a rescan would put first, repeating page 1's
+  // rows on page 2; and a job page 2 would show is removed.
+  for (let order = 12; order < 15; order += 1) await addOrdered(order);
+  await caller.job.remove({
+    queueName: firstQueue.queue.name,
+    jobId: jobIds[5] ?? "",
+  });
+  getJobs.mockClear();
+
+  const second = await caller.job.list({ ...input, cursor: first.nextCursor });
+  expect(orders(second)).toEqual([6, 4, 3, 2]);
+  expect(second.nextCursor).toBe(10);
+  expect(getJobs).not.toHaveBeenCalled();
+
+  // Page 1 stays live.
+  const refreshed = await caller.job.list(input);
+  expect(orders(refreshed)).toEqual([14, 13, 12, 11, 10]);
+  expect(getJobs).toHaveBeenCalled();
+});
+
+test("list snapshots expire and are evicted past the entry cap", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const { getJobs } = await serveSyntheticJobs(ctx, 40);
+  const caller = appRouter.createCaller(ctx);
+  const input = {
+    queueName: firstQueue.queue.name,
+    status: "completed",
+    sort: "newest",
+    limit: 10,
+  } as const;
+  const loadMore = async () => {
+    getJobs.mockClear();
+    await caller.job.list({ ...input, cursor: 10 });
+    return getJobs.mock.calls.length > 0;
+  };
+
+  await caller.job.list(input);
+  expect(await loadMore()).toBe(false);
+
+  // A minute on, page 2 no longer trusts page 1's order.
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 60_000);
+  try {
+    expect(await loadMore()).toBe(true);
+  } finally {
+    clock.mockRestore();
+  }
+
+  // Only the 32 newest snapshots are kept, whichever lists they belong to.
+  await caller.job.list(input);
+  for (let index = 0; index < 32; index += 1) {
+    await caller.job.list({ ...input, query: `synthetic-${index}` });
+  }
+  expect(await loadMore()).toBe(true);
+});
+
+test("bounded scans count each job once while the list shifts under them", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const marker = `shifting-${faker.string.uuid()}`;
+  const originals = new Set(
+    await Promise.all(
+      Array.from({ length: 150 }, (_, index) =>
+        addDelayedJob(
+          firstQueue,
+          { marker, original: index },
+          600_000 + index * 1_000,
+        ),
+      ),
+    ),
+  );
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  const readPage = adapter.getJobs.bind(adapter);
+  let arrivals = 0;
+  // After the scan's first page, jobs due both sooner and later than every
+  // original arrive. Whichever end the adapter reads from gains 25 jobs, so
+  // its next page repeats 25 the scan already has: a busy queue gaining jobs
+  // ahead of a scan.
+  const getJobs = vi
+    .spyOn(adapter, "getJobs")
+    .mockImplementation(async (...args) => {
+      const page = await readPage(...args);
+      if (arrivals === 0) {
+        arrivals += 1;
+        await Promise.all(
+          Array.from({ length: 25 }, (_, index) =>
+            Promise.all([
+              addDelayedJob(firstQueue, { arrival: index }, 60_000),
+              addDelayedJob(firstQueue, { arrival: index }, 3_600_000),
+            ]),
+          ),
+        );
+      }
+      return page;
+    });
+  onTestFinished(() => getJobs.mockRestore());
+  const caller = appRouter.createCaller(ctx);
+  const input = {
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    query: marker,
+    limit: 100,
+    scanLimit: 300,
+  } as const;
+
+  const first = await caller.job.list(input);
+  const second = await caller.job.list({ ...input, cursor: first.nextCursor });
+  const listed = [...first.jobs, ...second.jobs].map(({ id }) => id);
+  expect(first.totalCount).toBe(150);
+  expect(listed).toHaveLength(150);
+  expect(new Set(listed)).toEqual(originals);
+
+  // Removing every match while the queue shifts again: each job once, none
+  // "failed" for having been removed already.
+  arrivals = 0;
+  await expect(
+    caller.job.bulkRemoveByFilter({
+      queueName: firstQueue.queue.name,
+      status: "delayed",
+      query: marker,
+      maxScanned: 300,
+    }),
+  ).resolves.toMatchObject({ matched: 150, succeeded: 150, failed: 0 });
+});
+
+test("filters match only what the viewer can see", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const hidden = `hidden-${faker.string.uuid()}`;
+  const visible = `visible-${faker.string.uuid()}`;
+  await addDelayedJob(
+    firstQueue,
+    { secretField: hidden, note: visible },
+    600_000,
+  );
+  const caller = appRouter.createCaller({
+    ...ctx,
+    privacy: { redact: { keys: ["secretField"] } },
+  });
+  const input = {
+    queueName: firstQueue.queue.name,
+    status: "delayed",
+    limit: 10,
+  } as const;
+
+  await expect(
+    caller.job.list({ ...input, query: hidden }),
+  ).resolves.toMatchObject({ totalCount: 0 });
+  const matched = await caller.job.list({ ...input, query: visible });
+  expect(matched.jobs).toHaveLength(1);
+  expect(matched.jobs[0]?.data.secretField).toBe("[REDACTED]");
+  await expect(
+    caller.job.bulkRemoveByFilter({
+      queueName: firstQueue.queue.name,
+      status: "delayed",
+      query: hidden,
+    }),
+  ).resolves.toMatchObject({ matched: 0, succeeded: 0 });
+  await expect(
+    caller.job.list({ ...input, query: visible }),
+  ).resolves.toMatchObject({ totalCount: 1 });
+});
+
+test("unqueried scans present only the jobs they return", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const privateCtx = {
+    ...ctx,
+    privacy: { redact: { keys: ["secretField"] } },
+  };
+  const { jobs } = await serveSyntheticJobs(privateCtx, 100);
+  // Presenting a job under a redaction policy reads every value of its data
+  // to redact inside it.
+  const presented = new Set<string>();
+  for (const job of jobs) {
+    Object.defineProperty(job.data, "probe", {
+      enumerable: true,
+      get: () => {
+        presented.add(job.id);
+        return "probe";
+      },
+    });
+  }
+  const caller = appRouter.createCaller(privateCtx);
+
+  const page = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "completed",
+    sort: "newest",
+    limit: 5,
+  });
+  expect(page.totalCount).toBe(100);
+  expect(page.jobs.map(({ id }) => id)).toEqual(
+    [99, 98, 97, 96, 95].map((index) => `synthetic-${index}`),
+  );
+  expect(presented).toEqual(new Set(page.jobs.map(({ id }) => id)));
+
+  // Acting on matches needs their ids, not how they look.
+  presented.clear();
+  await expect(
+    caller.job.bulkRemoveByFilter({
+      queueName: firstQueue.queue.name,
+      status: "completed",
+      groupId: "synthetic-group",
+    }),
+  ).resolves.toMatchObject({ matched: 100, succeeded: 100, failed: 0 });
+  expect(presented.size).toBe(0);
+});
+
+test("a truncated adapter page leaves search and group removal partial", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  // Every status sees one job, then says no larger limit reaches the rest of
+  // it, as GroupMQ does past its first 5,000 groups.
+  const getJobs = vi
+    .spyOn(adapter, "getJobs")
+    .mockImplementation(async (_status, start) =>
+      start === 0
+        ? [{ ...syntheticJob(0), data: { truncatedTarget: true } }]
+        : [],
+    );
+  const getJobPageMeta = vi
+    .spyOn(adapter, "getJobPageMeta")
+    .mockImplementation((page) => ({
+      capped: true,
+      cursorAdvance: page.length,
+      exhausted: false,
+      scanned: 1,
+      scanLimit: 5_000,
+      truncated: true,
+    }));
+  onTestFinished(() => {
+    getJobs.mockRestore();
+    getJobPageMeta.mockRestore();
+  });
+  const caller = appRouter.createCaller(ctx);
+  const statusCount = adapter.supports.statuses.length;
+
+  const search = await caller.job.search({
+    queueName: firstQueue.queue.name,
+    query: "truncatedTarget",
+    maxScanned: 500,
+  });
+  expect(search).toMatchObject({ partial: true, scanLimitReached: true });
+  expect(search.results.map(({ job }) => job.id)).toEqual(["synthetic-0"]);
+  expect(getJobs).toHaveBeenCalledTimes(statusCount);
+
+  getJobs.mockClear();
+  const removal = await caller.job.bulkRemoveByGroup({
+    queueName: firstQueue.queue.name,
+    groupId: "a-group-beyond-the-cap",
+  });
+  expect(removal).toMatchObject({
+    total: 0,
+    partial: true,
+    scanLimitReached: true,
+  });
+  expect(getJobs).toHaveBeenCalledTimes(statusCount);
+});
+
+test("a page capped only by the scan's own limit does not end a cross-status scan", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  // 300 waiting jobs, served as GroupMQ serves them: never past the scan
+  // limit the caller passes, and capped wherever that limit ends the page.
+  // Cross-status scans raise the limit one batch per round, so every page
+  // before the last is capped. Stopping there read only the first batch.
+  const jobs = Array.from({ length: 300 }, (_, index) => ({
+    ...syntheticJob(index),
+    data: { marker: `needle-${index}-x` },
+    groupId: index < 150 ? "first-half" : "second-half",
+  }));
+  const pageMeta = new WeakMap<AdaptedJob[], JobPageMeta>();
+  let cappedPages = 0;
+  const getJobs = vi
+    .spyOn(adapter, "getJobs")
+    .mockImplementation(async (status, start, end, scanLimit = end + 1) => {
+      const source = status === "waiting" ? jobs : [];
+      const through = Math.min(end + 1, scanLimit, source.length);
+      const page = source.slice(start, through);
+      const exhausted = through >= source.length;
+      const capped = !exhausted && through >= scanLimit;
+      if (capped) cappedPages += 1;
+      pageMeta.set(page, {
+        capped,
+        cursorAdvance: page.length,
+        exhausted,
+        scanned: through,
+        scanLimit,
+      });
+      return page;
+    });
+  const getJobPageMeta = vi
+    .spyOn(adapter, "getJobPageMeta")
+    .mockImplementation((page) => pageMeta.get(page));
+  const removeJob = vi
+    .spyOn(adapter, "removeJob")
+    .mockImplementation(async (jobId) => {
+      const index = jobs.findIndex((job) => job.id === jobId);
+      if (index < 0) throw new JobNotFoundError();
+      jobs.splice(index, 1);
+    });
+  onTestFinished(() => {
+    getJobs.mockRestore();
+    getJobPageMeta.mockRestore();
+    removeJob.mockRestore();
+  });
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+
+  for (const position of [150, 299]) {
+    const search = await caller.job.search({
+      queueName,
+      query: `needle-${position}-x`,
+    });
+    expect(search.results.map(({ job }) => job.id)).toEqual([
+      `synthetic-${position}`,
+    ]);
+    expect(search).toMatchObject({
+      partial: false,
+      scanLimitReached: false,
+      scanned: 300,
+    });
+  }
+  expect(cappedPages).toBeGreaterThan(0);
+
+  cappedPages = 0;
+  const removal = await caller.job.bulkRemoveByGroup({
+    queueName,
+    groupId: "second-half",
+  });
+  expect(removal).toMatchObject({
+    total: 150,
+    succeeded: 150,
+    failed: 0,
+    scanned: 300,
+    partial: false,
+    scanLimitReached: false,
+  });
+  expect(cappedPages).toBeGreaterThan(0);
+  expect(jobs.map((job) => job.groupId)).toEqual(Array(150).fill("first-half"));
 });
 
 test("bulk remove by filter removes only matching jobs", async () => {
@@ -1118,47 +1699,6 @@ test("GroupMQ staged removal maintains staging and group bookkeeping", async () 
   expect(
     await firstQueue.queue.redis.zscore(`${namespace}:ready`, groupId),
   ).toBe(null);
-});
-
-test("GroupMQ bounds group inspection before reading all group IDs", async () => {
-  const smembers = vi.fn();
-  const queue = {
-    name: "too-many-groups",
-    namespace: "groupmq:too-many-groups",
-    redis: {
-      scard: vi.fn().mockResolvedValue(5_001),
-      smembers,
-    },
-  } as never;
-  const adapter = new GroupMQAdapter(queue, "Too many groups");
-
-  await expect(adapter.getGroups()).rejects.toThrow(
-    "supports at most 5,000 groups",
-  );
-  expect(smembers).not.toHaveBeenCalled();
-});
-
-test("GroupMQ rechecks the group cap after reading group IDs", async () => {
-  const pipeline = vi.fn();
-  const queue = {
-    name: "groups-grew-during-read",
-    namespace: "groupmq:groups-grew-during-read",
-    redis: {
-      scard: vi.fn().mockResolvedValue(5_000),
-      smembers: vi
-        .fn()
-        .mockResolvedValue(
-          Array.from({ length: 5_001 }, (_, index) => `group-${index}`),
-        ),
-      pipeline,
-    },
-  } as never;
-  const adapter = new GroupMQAdapter(queue, "Growing group set");
-
-  await expect(adapter.getGroups()).rejects.toThrow(
-    "supports at most 5,000 groups",
-  );
-  expect(pipeline).not.toHaveBeenCalled();
 });
 
 test("GroupMQ group inspection fails closed on pipeline errors", async () => {
@@ -1885,13 +2425,15 @@ test("promote job", async () => {
           waitingList.jobs.some((j) => j.id === job.id),
       ).toBe(true);
     } else {
-      const pausedList = await caller.job.list({
-        limit: 10,
+      // BullMQ 6 keeps a paused queue's jobs in `wait`, so the promoted job
+      // surfaces under waiting there; 5 moves it to the paused list.
+      const promotedList = await caller.job.list({
+        limit: 100,
         cursor: 0,
-        status: "paused",
+        status: bullmqMajor === 5 ? "paused" : "waiting",
         queueName: firstQueue.queue.name,
       });
-      expect(pausedList.jobs.some((j) => j.id === job.id)).toBe(true);
+      expect(promotedList.jobs.some((j) => j.id === job.id)).toBe(true);
     }
   } else {
     try {
@@ -2017,6 +2559,42 @@ test("get job logs", async () => {
 
     expect(logs).toBeNull();
   }
+});
+
+test("a job looked up by id carries its live status", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const [completed, failed] = await Promise.all(
+    (["completed", "failed"] as const).map(
+      async (status) =>
+        (await caller.job.list({ queueName, status, limit: 1 })).jobs[0],
+    ),
+  );
+  expect(completed && failed).toBeTruthy();
+  if (!completed || !failed) return;
+  const delayedId = await addDelayedJob(
+    firstQueue,
+    { byIdStatus: true },
+    600_000,
+  );
+
+  await expect(
+    caller.job.byId({ queueName, jobId: completed.id }),
+  ).resolves.toMatchObject({ id: completed.id, status: "completed" });
+  await expect(
+    caller.job.byId({ queueName, jobId: failed.id }),
+  ).resolves.toMatchObject({ id: failed.id, status: "failed" });
+  // Bee-Queue stores waiting, active and delayed jobs alike, so it can't say.
+  await expect(
+    caller.job.byId({ queueName, jobId: delayedId }),
+  ).resolves.toMatchObject({
+    id: delayedId,
+    status: firstQueue.type === "bee" ? null : "delayed",
+  });
+  await expect(
+    caller.job.byId({ queueName, jobId: "non-existent-job-id" }),
+  ).resolves.toBeNull();
 });
 
 // ============================================================================
@@ -2196,6 +2774,10 @@ test("list paused jobs", async () => {
     queueName: firstQueue.queue.name,
   });
 
+  // BullMQ lists paused jobs on both majors (6 for a BullMQ 5 producer's).
+  if (type === "bullmq") {
+    expect(queue.supports.statuses).toContain("paused");
+  }
   if (!queue.supports.statuses.includes("paused")) {
     await expectTRPCError(
       () =>
@@ -2277,94 +2859,221 @@ test("list failed jobs", async () => {
 test("job not found error on retry", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  const retry = () =>
+    caller.job.retry({
+      queueName: firstQueue.queue.name,
+      jobId: "non-existent-job-id",
+    });
 
-  if (firstQueue.type !== "bee") {
-    try {
-      await caller.job.retry({
-        queueName: firstQueue.queue.name,
-        jobId: "non-existent-job-id",
-      });
-      throw new Error("Should have thrown TRPCError");
-    } catch (e) {
-      expect(e).toBeInstanceOf(TRPCError);
-      if (e instanceof TRPCError) {
-        if (firstQueue.type === "groupmq") {
-          expect(e.code).toBe("BAD_REQUEST");
-        } else {
-          expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
-        }
-      }
-    }
+  if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+    await expectTRPCError(retry, "BAD_REQUEST");
+    return;
   }
+  // The adapter's own error answers, rather than a 500 that lost it.
+  const error = await expectTRPCError(retry, "NOT_FOUND");
+  expect(error.cause).toBeInstanceOf(JobNotFoundError);
 });
 
 test("job not found error on remove", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  try {
-    await caller.job.remove({
-      queueName: firstQueue.queue.name,
-      jobId: "non-existent-job-id",
-    });
-    throw new Error("Should have thrown TRPCError");
-  } catch (e) {
-    expect(e).toBeInstanceOf(TRPCError);
-    if (e instanceof TRPCError) {
-      // GroupMQ returns INTERNAL_SERVER_ERROR for invalid job IDs
-      expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
-    }
-  }
+  await expectTRPCError(
+    () =>
+      caller.job.remove({
+        queueName: firstQueue.queue.name,
+        jobId: "non-existent-job-id",
+      }),
+    "NOT_FOUND",
+  );
 });
 
 test("job not found error on promote", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  const promote = () =>
+    caller.job.promote({
+      queueName: firstQueue.queue.name,
+      jobId: "non-existent-job-id",
+    });
 
-  if (firstQueue.type === "bullmq" || firstQueue.type === "groupmq") {
-    try {
-      await caller.job.promote({
-        queueName: firstQueue.queue.name,
-        jobId: "non-existent-job-id",
-      });
-      throw new Error("Should have thrown TRPCError");
-    } catch (e) {
-      expect(e).toBeInstanceOf(TRPCError);
-      if (e instanceof TRPCError) {
-        expect(e.code).toBe("NOT_FOUND");
-      }
-    }
+  if (firstQueue.type === "bee") {
+    await expectTRPCError(promote, "BAD_REQUEST");
+    return;
   }
+  await expectTRPCError(promote, "NOT_FOUND");
+});
+
+test("a job that disappears mid-action is NOT_FOUND, with the adapter's error as cause", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const { jobs } = await caller.job.list({
+    queueName: firstQueue.queue.name,
+    status: "failed",
+    limit: 1,
+  });
+  const job = jobs[0];
+  expect(job).toBeDefined();
+  if (!job) return;
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  // Found by the lookup, then gone by the time the removal runs.
+  const vanished = new JobNotFoundError();
+  const removeJob = vi.spyOn(adapter, "removeJob").mockRejectedValue(vanished);
+  onTestFinished(() => removeJob.mockRestore());
+
+  const error = await expectTRPCError(
+    () =>
+      caller.job.remove({ queueName: firstQueue.queue.name, jobId: job.id }),
+    "NOT_FOUND",
+  );
+  expect(error.cause).toBe(vanished);
+
+  // Any other adapter failure stays a server error, still with its cause.
+  const failure = new Error("Redis went away");
+  removeJob.mockRejectedValue(failure);
+  const serverError = await expectTRPCError(
+    () =>
+      caller.job.remove({ queueName: firstQueue.queue.name, jobId: job.id }),
+    "INTERNAL_SERVER_ERROR",
+  );
+  expect(serverError.cause).toBe(failure);
 });
 
 test("bulk remove with one non-existent job", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
 
-  const { jobs } = await caller.job.list({
+  const { jobs, totalCount } = await caller.job.list({
     limit: 2,
     cursor: 0,
     status: "failed",
     queueName: firstQueue.queue.name,
   });
+  const job = jobs[0];
+  expect(job).toBeDefined();
+  if (!job) return;
 
-  if (jobs.length > 0) {
-    try {
-      await caller.job.bulkRemove({
-        queueName: firstQueue.queue.name,
-        jobIds: [jobs[0].id, "non-existent-job-id"],
-      });
-      throw new Error("Should have thrown TRPCError");
-    } catch (e) {
-      expect(e).toBeInstanceOf(TRPCError);
-      if (e instanceof TRPCError) {
-        // GroupMQ returns INTERNAL_SERVER_ERROR for invalid job IDs
-        expect(["NOT_FOUND", "INTERNAL_SERVER_ERROR"]).toContain(e.code);
-        if (e.code === "NOT_FOUND") {
-          expect(e.message).toContain("not found");
-        }
-      }
-    }
+  // The missing id is a failure of its own; the real job is still removed,
+  // and a job listed twice is removed once.
+  await expect(
+    caller.job.bulkRemove({
+      queueName: firstQueue.queue.name,
+      jobIds: [job.id, "non-existent-job-id", job.id],
+    }),
+  ).resolves.toEqual({ succeeded: 1, failed: 1 });
+  const after = await caller.job.list({
+    limit: 100,
+    cursor: 0,
+    status: "failed",
+    queueName: firstQueue.queue.name,
+  });
+  expect(after.totalCount).toBe(totalCount - 1);
+  expect(after.jobs.some(({ id }) => id === job.id)).toBe(false);
+});
+
+test("bulk remove and retry take at most 1,000 ids", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const jobIds = Array.from(
+    { length: 1_001 },
+    (_, index) => `too-many-${index}`,
+  );
+
+  await expectTRPCError(
+    () => caller.job.bulkRemove({ queueName: firstQueue.queue.name, jobIds }),
+    "BAD_REQUEST",
+  );
+  await expectTRPCError(
+    () => caller.job.bulkRetry({ queueName: firstQueue.queue.name, jobIds }),
+    "BAD_REQUEST",
+  );
+});
+
+test("bulk remove and retry act on a bounded number of jobs at a time", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const adapter = (await transformContext(ctx)).queues[0]?.adapter;
+  expect(adapter).toBeDefined();
+  if (!adapter) return;
+  const caller = appRouter.createCaller(ctx);
+  const jobIds = Array.from({ length: 120 }, (_, index) => `bounded-${index}`);
+  let inFlight = 0;
+  let mostInFlight = 0;
+  const settleSlowly = async (jobId: string) => {
+    inFlight += 1;
+    mostInFlight = Math.max(mostInFlight, inFlight);
+    await sleep(1);
+    inFlight -= 1;
+    if (jobId.endsWith("7")) throw new JobNotFoundError();
+  };
+  const removeJob = vi
+    .spyOn(adapter, "removeJob")
+    .mockImplementation(settleSlowly);
+  const retryJob = vi
+    .spyOn(adapter, "retryJob")
+    .mockImplementation(settleSlowly);
+  onTestFinished(() => {
+    removeJob.mockRestore();
+    retryJob.mockRestore();
+  });
+
+  await expect(
+    caller.job.bulkRemove({ queueName: firstQueue.queue.name, jobIds }),
+  ).resolves.toEqual({ succeeded: 108, failed: 12 });
+  expect(removeJob).toHaveBeenCalledTimes(120);
+  expect(mostInFlight).toBeLessThanOrEqual(25);
+
+  if (!adapter.supports.retry) return;
+  mostInFlight = 0;
+  await expect(
+    caller.job.bulkRetry({ queueName: firstQueue.queue.name, jobIds }),
+  ).resolves.toEqual({ succeeded: 108, failed: 12 });
+  expect(retryJob).toHaveBeenCalledTimes(120);
+  expect(mostInFlight).toBeLessThanOrEqual(25);
+});
+
+test("an id naming BullMQ's own meta key is not a job", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  if (firstQueue.type !== "bullmq") return;
+  const { queue } = firstQueue;
+  await queue.setGlobalConcurrency(3);
+  await queue.pause();
+  const caller = appRouter.createCaller(ctx);
+  const input = { queueName: queue.name, jobId: "meta" };
+
+  // Read as a job, "meta" was the queue's settings hash: removing it resumed
+  // the paused queue and dropped its global limits.
+  for (const operation of [
+    () => caller.job.remove(input),
+    () => caller.job.retry(input),
+    () => caller.job.promote(input),
+    () => caller.job.logs(input),
+  ]) {
+    await expectTRPCError(operation, "NOT_FOUND");
+  }
+  // byId answers a missing job with null, as it always has.
+  await expect(caller.job.byId(input)).resolves.toBeNull();
+  await expect(
+    caller.job.bulkRemove({ queueName: queue.name, jobIds: ["meta"] }),
+  ).resolves.toEqual({ succeeded: 0, failed: 1 });
+
+  expect(await queue.isPaused()).toBe(true);
+  expect(await queue.getGlobalConcurrency()).toBe(3);
+});
+
+test("searching every status for a queue key's name finds jobs, not the key", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  // An exact-id lookup of "failed" read the queue's failed set as a job hash
+  // and failed the whole search with WRONGTYPE.
+  for (const query of ["failed", "completed", "events", "id", "meta"]) {
+    const search = await caller.job.search({
+      queueName: firstQueue.queue.name,
+      query,
+    });
+    expect(search.results.every(({ job }) => job.id !== query)).toBe(true);
   }
 });
 
@@ -2414,21 +3123,19 @@ test("empty job list for status with no jobs", async () => {
   expect(Array.isArray(result.jobs)).toBe(true);
 });
 
-test("logs on non-existent job returns null or empty", async () => {
+test("logs on a non-existent job are NOT_FOUND where logs exist", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
-
-  const logs = await caller.job.logs({
+  const input = {
     queueName: firstQueue.queue.name,
     jobId: "non-existent-job-id",
-  });
+  };
 
-  // Should either be null or handle gracefully
   if (type === "bullmq") {
-    // BullMQ might return empty array or null
-    expect(logs === null || Array.isArray(logs)).toBe(true);
+    // Not an empty log: the job isn't there to have one.
+    await expectTRPCError(() => caller.job.logs(input), "NOT_FOUND");
   } else {
-    expect(logs).toBeNull();
+    await expect(caller.job.logs(input)).resolves.toBeNull();
   }
 });
 

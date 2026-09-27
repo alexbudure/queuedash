@@ -99,10 +99,94 @@ export const getRefreshIntervalOptions = (
   ];
 };
 
+/**
+ * The fastest a server-scanned job list refreshes. A filtered, grouped or
+ * created-at-sorted list is not a range read: the server rebuilds it from a
+ * bounded scan of up to 5,000 jobs on every request, so polling it at the
+ * usual 2s cost thousands of job reads a tick.
+ */
+export const SERVER_SCAN_MIN_REFRESH_INTERVAL_MS = 10_000;
+
+/** Whether the server builds this job list by scanning rather than reading a range. */
+export const isServerScannedJobList = ({
+  groupId,
+  query,
+  sort,
+}: {
+  groupId?: string | null;
+  query?: string;
+  sort: JobSort;
+}) => Boolean(groupId || query || sort !== "queue");
+
 export const getJobListRefetchInterval = (
   loadedPageCount: number,
   refreshIntervalMs: number | false,
-) => (loadedPageCount <= 1 ? refreshIntervalMs : false);
+  isServerScanned = false,
+) => {
+  if (loadedPageCount > 1 || refreshIntervalMs === false) return false;
+  return isServerScanned
+    ? Math.max(refreshIntervalMs, SERVER_SCAN_MIN_REFRESH_INTERVAL_MS)
+    : refreshIntervalMs;
+};
+
+/**
+ * Flattens loaded pages into one list, keeping the first occurrence of each
+ * id. Offset pages over a live queue overlap: jobs that arrive between two
+ * fetches push the tail of page 1 onto page 2. The repeat was a second row
+ * with the same id, so one click selected both and a bulk Rerun ran the job
+ * twice.
+ */
+export const flattenUniqueJobs = <TJob extends { id: string }>(
+  pages: ReadonlyArray<{ jobs: readonly TJob[] }> | undefined,
+): TJob[] => {
+  const seen = new Set<string>();
+  const jobs: TJob[] = [];
+  for (const page of pages ?? []) {
+    for (const job of page.jobs) {
+      if (seen.has(job.id)) continue;
+      seen.add(job.id);
+      jobs.push(job);
+    }
+  }
+  return jobs;
+};
+
+/** Input types that do not take typed text, so do not own `j`, `/` or Escape. */
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+/**
+ * Whether a keystroke belongs to something other than the page's single-key
+ * shortcuts: a text field, where the key is text, or an alert dialog, menu or
+ * listbox, which each run their own keyboard model. `j` pressed over an open
+ * "Remove job?" confirmation used to step the panel underneath it to the next
+ * job - and the dialog's Remove then deleted that one.
+ */
+export const isShortcutExemptTarget = (target: EventTarget | null) => {
+  if (!target || !("closest" in target)) return false;
+  const element = target as HTMLElement;
+  if (element.isContentEditable) return true;
+  if (element.tagName === "TEXTAREA" || element.tagName === "SELECT") {
+    return true;
+  }
+  if (element.tagName === "INPUT") {
+    return !NON_TEXT_INPUT_TYPES.has((element as HTMLInputElement).type);
+  }
+  return (
+    element.closest(
+      "[role='alertdialog'], [role='menu'], [role='listbox'], [role='textbox']",
+    ) !== null
+  );
+};
 
 /**
  * True when live updates are suspended purely because more pages are loaded -

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import { containsPrototypeKey } from "./utils/global.utils";
+
+// `.strict()` refuses a "__proto__" key on the options themselves, but the
+// free-form values below are passed through as parsed, and those still carry
+// one as an ordinary key (see containsPrototypeKey).
 const schedulerTemplateOptionsSchema = z
   .object({
     attempts: z.unknown().optional(),
@@ -24,7 +29,10 @@ const schedulerTemplateOptionsSchema = z
       .optional(),
     timestamp: z.number().finite().optional(),
   })
-  .strict();
+  .strict()
+  .refine((opts) => !containsPrototypeKey(opts), {
+    message: 'Job options cannot contain a "__proto__" key',
+  });
 
 const schedulerDateSchema = z.union([
   z.number().finite(),

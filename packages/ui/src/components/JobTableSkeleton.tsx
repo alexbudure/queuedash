@@ -65,10 +65,13 @@ export const JobTableSkeleton = ({
   layoutVariant = "job",
   rows = 30,
   selectable = true,
+  withFooterRow = false,
 }: {
   layoutVariant?: TableLayoutVariant;
   rows?: number;
   selectable?: boolean;
+  /** Reserves the 48px row a full page ends in (load-more or "End of list"). */
+  withFooterRow?: boolean;
 }) => {
   const { preferences } = useQueuedash();
   const gridClassName = getTableGridClassName(layoutVariant, selectable);
@@ -119,6 +122,7 @@ export const JobTableSkeleton = ({
           ))}
         </div>
       ))}
+      {withFooterRow ? <div aria-hidden="true" className="h-12" /> : null}
     </div>
   );
 };

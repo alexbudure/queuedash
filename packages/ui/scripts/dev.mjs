@@ -170,6 +170,8 @@ const buildStyles = async () => {
   return runOnce(process.execPath, ["scripts/scope-css.mjs"]);
 };
 
+const buildTypes = () => runOnce(pnpm, ["run", "build:types"]);
+
 let snapshot = await createSnapshot();
 let pendingApplication = false;
 let pendingStyles = false;
@@ -190,7 +192,8 @@ const drainBuilds = async () => {
       const applicationCode = rebuildApplication ? await buildApplication() : 0;
       const stylesCode =
         rebuildStyles || rebuildApplication ? await buildStyles() : 0;
-      if (applicationCode !== 0 || stylesCode !== 0) {
+      const typesCode = rebuildApplication ? await buildTypes() : 0;
+      if (applicationCode !== 0 || stylesCode !== 0 || typesCode !== 0) {
         console.error("Rebuild failed. Watching for the next change.");
       }
     }

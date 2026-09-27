@@ -9,7 +9,6 @@ import {
   Pause,
   Search,
   Settings,
-  Star,
 } from "lucide-react";
 import { type FC, type PropsWithChildren, useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router";
@@ -25,7 +24,7 @@ import {
 } from "../utils/styles";
 import { trpc } from "../utils/trpc";
 import { getQueuePath } from "../utils/viewState";
-import { CommandPalette } from "./CommandPalette";
+import { CommandPalette, decodePathSegment } from "./CommandPalette";
 import { ErrorCard } from "./ErrorCard";
 import { QueuedashIcon } from "./Logo";
 import { useQueuedashAuth } from "./QueuedashAuthProvider";
@@ -127,94 +126,72 @@ const navLinkClass = (isActive: boolean) =>
 type QueueNavLinkProps = {
   to: string;
   label: string;
-  isPinned: boolean;
   isReadOnly: boolean;
   isPaused: boolean;
   failedCount: number | null;
-  onTogglePinned: () => void;
   onClick?: () => void;
-  alwaysShowPin?: boolean;
 };
+
+/**
+ * No pin control here. Pinning happens a handful of times, and a star that
+ * appeared on every row you passed over made the most-scanned list in the
+ * product shift under the cursor. It lives beside the queue's title and in
+ * the command palette; the Pinned group is what shows the state.
+ */
 const QueueNavLink = ({
   to,
   label,
-  isPinned,
   isReadOnly,
   isPaused,
   failedCount,
-  onTogglePinned,
   onClick,
-  alwaysShowPin = false,
 }: QueueNavLinkProps) => {
   const hasTrailing = !!failedCount || isPaused || isReadOnly;
   return (
-    <div className="group/queue flex items-center">
-      <NavLink
-        to={to}
-        onClick={onClick}
-        // Not `transition-all`: Inter is a variable font, so interpolating
-        // the weight axis reflows the label inside its `truncate` box.
-        className={({ isActive }) => clsx(navLinkClass(isActive), "flex-1")}
-      >
-        <span className="truncate" title={label}>
-          {label}
+    <NavLink
+      to={to}
+      onClick={onClick}
+      // Not `transition-all`: Inter is a variable font, so interpolating the
+      // weight axis reflows the label inside its `truncate` box.
+      className={({ isActive }) => navLinkClass(isActive)}
+    >
+      <span className="truncate" title={label}>
+        {label}
+      </span>
+      {/* Glyphs, not pills: at sidebar width a pill cost the queue its own
+          name ("Payment processi… Read-only"). Flush right, in one column. */}
+      {hasTrailing ? (
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
+          {failedCount ? (
+            <span
+              title={`${formatCompactCount(failedCount)} failed`}
+              className="font-mono text-[11px] text-red-600 tabular-nums dark:text-red-400"
+            >
+              {formatCompactCount(failedCount)}
+              <span className="sr-only"> failed</span>
+            </span>
+          ) : null}
+          {isPaused ? (
+            <span title="Paused" className="flex">
+              <Pause
+                aria-hidden="true"
+                className={clsx("size-3", TEXT_FAINT)}
+              />
+              <span className="sr-only">(paused)</span>
+            </span>
+          ) : null}
+          {isReadOnly ? (
+            <span title="Read-only" className="flex">
+              <LockKeyhole
+                aria-hidden="true"
+                className={clsx("size-3", TEXT_FAINT)}
+              />
+              <span className="sr-only">(read-only)</span>
+            </span>
+          ) : null}
         </span>
-        {/* Glyphs, not pills: at sidebar width a pill cost the queue its own
-            name ("Payment processi… Read-only"). They share the star's column
-            so every row's trailing icons line up. */}
-        {hasTrailing ? (
-          <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2">
-            {failedCount ? (
-              <span
-                title={`${formatCompactCount(failedCount)} failed`}
-                className="font-mono text-[11px] text-red-600 tabular-nums dark:text-red-400"
-              >
-                {formatCompactCount(failedCount)}
-                <span className="sr-only"> failed</span>
-              </span>
-            ) : null}
-            {isPaused ? (
-              <span title="Paused" className="flex">
-                <Pause
-                  aria-hidden="true"
-                  className={clsx("size-3", TEXT_FAINT)}
-                />
-                <span className="sr-only">(paused)</span>
-              </span>
-            ) : null}
-            {isReadOnly ? (
-              <span title="Read-only" className="flex">
-                <LockKeyhole
-                  aria-hidden="true"
-                  className={clsx("size-3", TEXT_FAINT)}
-                />
-                <span className="sr-only">(read-only)</span>
-              </span>
-            ) : null}
-          </span>
-        ) : null}
-      </NavLink>
-      <button
-        type="button"
-        onClick={onTogglePinned}
-        aria-label={`${isPinned ? "Unpin" : "Pin"} ${label}`}
-        title={`${isPinned ? "Unpin" : "Pin"} queue`}
-        // Takes no width until the row is hovered (or the star has focus, or
-        // the queue is pinned), so the trailing glyphs sit on the right edge
-        // and slide left to make room for it.
-        className={clsx(
-          "flex h-6 shrink-0 items-center justify-end overflow-hidden rounded text-gray-500 transition-all duration-150 hover:text-amber-500 active:text-amber-600 dark:text-slate-400 dark:hover:text-amber-400 dark:active:text-amber-300",
-          FOCUS_RING,
-          isPinned
-            ? "w-6 text-amber-500 opacity-100 dark:text-amber-400"
-            : alwaysShowPin
-              ? "w-6 opacity-100"
-              : "w-0 opacity-0 group-hover/queue:w-6 group-hover/queue:opacity-100 focus-visible:w-6 focus-visible:opacity-100",
-        )}
-      >
-        <Star className="size-3" fill={isPinned ? "currentColor" : "none"} />
-      </button>
-    </div>
+      ) : null}
+    </NavLink>
   );
 };
 
@@ -239,7 +216,7 @@ const SidebarContent = ({
   onOpenPalette: () => void;
   showHeader?: boolean;
 }) => {
-  const { preferences, togglePinnedQueue } = useQueuedash();
+  const { preferences } = useQueuedash();
   const { isSigningOut, signOut } = useQueuedashAuth();
   const [queueFilter, setQueueFilter] = useState("");
   const normalizedFilter = queueFilter.trim().toLocaleLowerCase();
@@ -269,13 +246,10 @@ const SidebarContent = ({
       key={queue.name}
       to={getQueuePath(queue.name)}
       label={queue.displayName}
-      isPinned={isPinned(queue)}
       isReadOnly={queue.access.mode === "read-only"}
       isPaused={queue.paused === true}
       failedCount={queue.failedCount}
-      onTogglePinned={() => togglePinnedQueue(queue.name)}
       onClick={onNavClick}
-      alwaysShowPin={!showHeader}
     />
   );
 
@@ -541,7 +515,7 @@ const getPageTitle = (
   if (path === "") return "Overview";
   if (path === "/settings") return "Settings";
 
-  const queueName = decodeURIComponent(path.replace(/^\/(queues\/)?/, ""));
+  const queueName = decodePathSegment(path.replace(/^\/(queues\/)?/, ""));
   return (
     queues?.find((queue) => queue.name === queueName)?.displayName ?? queueName
   );

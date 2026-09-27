@@ -86,10 +86,18 @@ export const Button = ({
       // Red outline
       "border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100 active:bg-red-200 dark:border-red-800/80 dark:bg-red-950/40 dark:text-red-400 dark:hover:border-red-700 dark:hover:bg-red-950 dark:active:bg-red-900/60":
         colorScheme === "red" && variant === "outline",
+      // Brand outline. Every scheme styles both variants: a combination with
+      // no branch rendered as a transparent pill with no border colour.
+      "border-brand-200 bg-brand-50 text-brand-700 hover:border-brand-300 hover:bg-brand-100 active:bg-brand-200 dark:border-brand-800/80 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:border-brand-700 dark:hover:bg-brand-950 dark:active:bg-brand-900/60":
+        colorScheme === "brand" && variant === "outline",
 
       // Yellow filled
       "border-amber-600 bg-amber-600 text-white hover:border-amber-700 hover:bg-amber-700 active:bg-amber-800 dark:border-amber-500 dark:bg-amber-500 dark:hover:border-amber-400 dark:hover:bg-amber-400 dark:active:bg-amber-300":
         colorScheme === "yellow" && variant === "filled",
+      // Slate filled: a neutral solid, for a commit that should not borrow
+      // the brand's weight. Primary actions use brand.
+      "border-gray-700 bg-gray-700 text-white hover:border-gray-800 hover:bg-gray-800 active:bg-gray-900 dark:border-slate-300 dark:bg-slate-300 dark:text-slate-900 dark:hover:border-slate-200 dark:hover:bg-slate-200 dark:active:bg-slate-100":
+        colorScheme === "slate" && variant === "filled",
       // Brand filled: the one primary action per view. Confirmations and
       // warnings keep their own colours below.
       "border-brand-600 bg-brand-600 text-white hover:border-brand-700 hover:bg-brand-700 active:bg-brand-800 dark:border-brand-600 dark:bg-brand-600 dark:hover:border-brand-500 dark:hover:bg-brand-500 dark:active:bg-brand-700":

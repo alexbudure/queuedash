@@ -7,9 +7,10 @@ import {
   useEffect,
   useState,
 } from "react";
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { toast, Toaster } from "sonner";
 
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginLoading, LoginPage } from "./components/LoginPage";
 import { QueuedashAuthProvider } from "./components/QueuedashAuthProvider";
 import {
@@ -36,6 +37,27 @@ export type QueuedashAppProps = {
   auth?: {
     baseUrl: string;
   };
+};
+
+/**
+ * The boundary sits inside QueuedashRoot, so its fallback is themed and the
+ * toaster and the query cache outlive a crashed page, and inside the router,
+ * so going back or following a link clears it without a reload.
+ */
+const RoutedContent = () => {
+  const { pathname } = useLocation();
+
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/queues/:id" element={<QueuePage />} />
+        {/* Keep non-reserved v3 queue bookmarks working. */}
+        <Route path="/:id" element={<QueuePage />} />
+      </Routes>
+    </ErrorBoundary>
+  );
 };
 
 type QueuedashApplicationProps = Omit<QueuedashAppProps, "auth" | "ui"> & {
@@ -81,13 +103,7 @@ const QueuedashApplication = ({
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter basename={basename}>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/queues/:id" element={<QueuePage />} />
-            {/* Keep non-reserved v3 queue bookmarks working. */}
-            <Route path="/:id" element={<QueuePage />} />
-          </Routes>
+          <RoutedContent />
         </BrowserRouter>
       </QueryClientProvider>
     </trpc.Provider>
@@ -205,25 +221,41 @@ export const App = ({
   basename,
   headers,
   ui,
-}: QueuedashAppProps) => (
-  <QueuedashProvider basename={basename} ui={ui}>
-    <QueuedashRoot>
-      {auth ? (
-        <QueuedashWithAuth
-          apiUrl={apiUrl}
-          auth={auth}
-          basename={basename}
-          headers={headers}
-        />
-      ) : (
-        <QueuedashAuthProvider>
-          <QueuedashApplication
+}: QueuedashAppProps) => {
+  // Hosts server-render this too: a Next.js "use client" page still renders on
+  // the server, where BrowserRouter throws without a `document`, and where the
+  // root's theme and density can only be the defaults while the browser's come
+  // from localStorage and matchMedia - a mismatch React 19 does not patch up in
+  // production. Rendering nothing until mounted keeps the server markup and the
+  // first client render identical, for both the auth and no-auth trees, and
+  // keeps every browser-only read after mount.
+  const [isMounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isMounted) return null;
+
+  return (
+    <QueuedashProvider basename={basename} ui={ui}>
+      <QueuedashRoot>
+        {auth ? (
+          <QueuedashWithAuth
             apiUrl={apiUrl}
+            auth={auth}
             basename={basename}
             headers={headers}
           />
-        </QueuedashAuthProvider>
-      )}
-    </QueuedashRoot>
-  </QueuedashProvider>
-);
+        ) : (
+          <QueuedashAuthProvider>
+            <QueuedashApplication
+              apiUrl={apiUrl}
+              basename={basename}
+              headers={headers}
+            />
+          </QueuedashAuthProvider>
+        )}
+      </QueuedashRoot>
+    </QueuedashProvider>
+  );
+};

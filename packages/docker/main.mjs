@@ -20,6 +20,7 @@ const queueConfigSchema = z.object({
           faviconUrl: z.string().min(1).optional(),
         })
         .optional(),
+      documentTitle: z.boolean().optional(),
       defaults: z
         .object({
           theme: z.enum(["light", "dark", "system"]).optional(),
@@ -178,6 +179,10 @@ const getQueuesFromConfig = (config) => {
         ...(queueConfig.prefix !== undefined && {
           prefix: queueConfig.prefix,
         }),
+        // The queue belongs to the application being monitored. Left to its
+        // default, BullMQ's constructor rewrites that application's queue meta
+        // with the dashboard's: its events stream cap and its library version.
+        skipMetasUpdate: true,
       });
       return {
         queue,
@@ -204,6 +209,8 @@ const getQueuesFromConfig = (config) => {
         ...(queueConfig.prefix !== undefined && {
           prefix: queueConfig.prefix,
         }),
+        // As for cluster queues: leave the application's queue meta alone.
+        skipMetasUpdate: true,
       });
       return {
         queue,

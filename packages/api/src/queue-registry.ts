@@ -30,6 +30,11 @@ const DEFAULT_MAX_DISCOVERED_QUEUES = 100;
 const MAX_DISCOVERED_QUEUES = 1_000;
 const SCAN_COUNT = 1_000;
 const MAX_DISCOVERY_SCAN_ITERATIONS = 200;
+// A discovered BullMQ connection that has never been ready gives up after a
+// few quick retries; see createDiscoveredQueueRetryStrategy.
+const DISCOVERED_QUEUE_HANDSHAKE_RETRIES = 3;
+const DISCOVERED_QUEUE_HANDSHAKE_RETRY_DELAY_MS = 200;
+const DISCOVERED_QUEUE_CONNECT_TIMEOUT_MS = 3_000;
 
 const registryCache = new WeakMap<Context, QueueRegistry>();
 
@@ -77,6 +82,32 @@ export const getQueueNameFromMarker = (
   return name.length > 0 ? name : null;
 };
 
+/**
+ * ioredis retries a dropped connection forever, which is what a live queue
+ * wants. Before a discovered queue's first handshake, though, it means a
+ * connection that can never come up (Redis at `maxclients`, a network drop
+ * right after the SCAN) never settles the handshake the registry waits on, and
+ * every request waits with it. Until the first handshake succeeds the
+ * connection gives up after a few quick retries, which rejects the handshake
+ * on its own; after that it reconnects with BullMQ's default backoff.
+ */
+const createDiscoveredQueueRetryStrategy = () => {
+  let handshakeSucceeded = false;
+  return {
+    markHandshakeSucceeded: () => {
+      handshakeSucceeded = true;
+    },
+    retryStrategy: (attempt: number): number | null => {
+      if (handshakeSucceeded) {
+        return Math.max(Math.min(Math.exp(attempt), 20_000), 1_000);
+      }
+      return attempt > DISCOVERED_QUEUE_HANDSHAKE_RETRIES
+        ? null
+        : DISCOVERED_QUEUE_HANDSHAKE_RETRY_DELAY_MS;
+    },
+  };
+};
+
 const createDiscoveredQueue = async (
   name: string,
   discovery: QueuedashQueueDiscoveryConfig,
@@ -86,22 +117,60 @@ const createDiscoveredQueue = async (
 
   if (discovery.type === "bullmq") {
     const { Queue: BullMQQueue } = await import("bullmq");
-    return {
-      queue: new BullMQQueue(name, {
-        connection: { url: discovery.connectionUrl },
-        prefix,
-      }),
-      displayName,
-      type: "bullmq",
-    };
+    const retry = createDiscoveredQueueRetryStrategy();
+    const queue = new BullMQQueue(name, {
+      connection: {
+        url: discovery.connectionUrl,
+        connectTimeout: DISCOVERED_QUEUE_CONNECT_TIMEOUT_MS,
+        retryStrategy: retry.retryStrategy,
+      },
+      prefix,
+      // The queue belongs to another application. Left to its default,
+      // BullMQ's constructor rewrites that application's queue meta with this
+      // process's defaults: its events stream cap and its library version.
+      skipMetasUpdate: true,
+    });
+    // A handshake that gives up rejects here as well as for the registry,
+    // which settles it separately, so this copy needs its own handler.
+    void queue.waitUntilReady().then(retry.markHandshakeSucceeded, () => {});
+    return { queue, displayName, type: "bullmq" };
   }
 
   const { default: Bull } = await import("bull");
   return {
-    queue: new Bull(name, discovery.connectionUrl, { prefix }),
+    queue: new Bull(name, discovery.connectionUrl, {
+      prefix,
+      // Bull takes the host, port and credentials from the URL but ignores
+      // its scheme, so a `rediss://` URL would otherwise connect without TLS.
+      ...(/^rediss:/i.test(discovery.connectionUrl) && {
+        redis: { tls: {} },
+      }),
+    }),
     displayName,
     type: "bull",
   };
+};
+
+/**
+ * BullMQ removes its connection's own event listeners while closing, but a
+ * close that lands mid-handshake abandons the initialization rather than
+ * awaiting it. The abandoned handshake then rejects into a connection that no
+ * longer has an `error` listener, and BullMQ rethrows that rejection out of a
+ * promise nobody holds, which surfaces as an unhandled rejection. Discovered
+ * connections belong to the registry, so wait for the handshake before taking
+ * ownership; every later close then takes BullMQ's graceful QUIT path. The
+ * wait ends because the connection gives up a handshake that cannot succeed,
+ * not because of a timeout, which would close it mid-handshake after all.
+ */
+const waitForQueueHandshake = async (queue: QueuedashQueue): Promise<void> => {
+  const waitUntilReady = (
+    queue.queue as unknown as {
+      waitUntilReady?: () => Promise<unknown>;
+    }
+  ).waitUntilReady;
+  if (typeof waitUntilReady !== "function") return;
+
+  await waitUntilReady.call(queue.queue);
 };
 
 const closeQueue = async (queue: QueuedashQueue): Promise<boolean> => {
@@ -152,9 +221,9 @@ const closeQueueForShutdown = async (queue: QueuedashQueue): Promise<void> => {
 
 export class QueueRegistry {
   private readonly ctx: Context;
-  private readonly staticQueues: QueuedashQueue[];
   private readonly discovery?: QueuedashQueueDiscoveryConfig;
-  private readonly entries = new WeakMap<object, QueueRegistryEntry>();
+  private readonly entries = new WeakMap<QueuedashQueue, QueueRegistryEntry>();
+  private readonly entriesByQueue = new WeakMap<object, QueueRegistryEntry>();
   private discoveredQueues = new Map<string, QueuedashQueue>();
   private pendingCleanupQueues = new Set<QueuedashQueue>();
   private lastRefreshAt = 0;
@@ -164,7 +233,7 @@ export class QueueRegistry {
   private lastErrorAt?: number;
   private lastSuccessfulRefreshAt?: number;
   private truncated = false;
-  private scanCursor = 0;
+  private scanCursor = "0";
   private scanQueueNames = new Set<string>();
   private scanOverflow = false;
   private closePromise?: Promise<void>;
@@ -172,8 +241,14 @@ export class QueueRegistry {
 
   constructor(ctx: Context) {
     this.ctx = ctx;
-    this.staticQueues = ctx.queues ?? [];
     this.discovery = ctx.discovery;
+  }
+
+  // Read on every use rather than captured once: the registry outlives the
+  // request that created it, and a host may reassign ctx.queues after
+  // mounting, as the per-request contexts of v3 allowed.
+  private get staticQueues(): QueuedashQueue[] {
+    return this.ctx.queues ?? [];
   }
 
   async list(): Promise<QueueRegistryEntry[]> {
@@ -204,11 +279,10 @@ export class QueueRegistry {
     if (!this.closePromise) {
       this.closing = true;
       this.closePromise = (async () => {
-        try {
-          await this.refreshPromise;
-        } catch {
-          // Discovery failures are already reflected in registry health.
-        }
+        // A refresh may still be connecting queues, including one running in
+        // the background. They are only closeable once it has settled; it
+        // never rejects, since failures are recorded in discovery status.
+        await this.refreshPromise;
 
         const closeResults = await Promise.allSettled(
           Array.from(
@@ -236,7 +310,7 @@ export class QueueRegistry {
         this.lastErrorAt = undefined;
         this.lastSuccessfulRefreshAt = undefined;
         this.truncated = false;
-        this.scanCursor = 0;
+        this.scanCursor = "0";
         this.scanQueueNames.clear();
         this.scanOverflow = false;
 
@@ -277,15 +351,22 @@ export class QueueRegistry {
   }
 
   private getEntry(queue: QueuedashQueue): QueueRegistryEntry {
-    const key = queue.queue as object;
-    const cached = this.entries.get(key);
+    const cached = this.entries.get(queue);
     if (cached) return cached;
 
-    const entry = {
-      adapter: createAdapter(queue),
-      jobName: queue.jobName,
-    };
-    this.entries.set(key, entry);
+    // A rebuilt ctx.queues array brings new config objects around the same
+    // queue instances. Their adapters are reused, so concurrent health reads,
+    // which are de-duplicated per adapter, still share one Redis round trip,
+    // unless the presentation the adapter was built with has changed.
+    const previous = this.entriesByQueue.get(queue.queue);
+    const entry =
+      previous &&
+      previous.jobName === queue.jobName &&
+      previous.adapter.getDisplayName() === queue.displayName
+        ? previous
+        : { adapter: createAdapter(queue), jobName: queue.jobName };
+    this.entries.set(queue, entry);
+    this.entriesByQueue.set(queue.queue, entry);
     return entry;
   }
 
@@ -296,52 +377,36 @@ export class QueueRegistry {
     const refreshIntervalMs = normalizeDiscoveryRefreshInterval(
       discovery.refreshIntervalMs,
     );
-    if (this.refreshPromise) {
-      try {
-        await this.refreshPromise;
-      } catch (error) {
-        if (
-          this.discoveredQueues.size === 0 &&
-          this.staticQueues.length === 0
-        ) {
-          throw error;
-        }
-        // Keep the last known-good registry during a temporary Redis outage.
-        this.lastRefreshAt = Date.now();
-      }
-      return;
+    if (
+      !this.refreshPromise &&
+      Date.now() - this.lastRefreshAt >= refreshIntervalMs
+    ) {
+      this.refreshPromise = this.discover(discovery)
+        .catch((error: unknown) => {
+          // Keep the last known-good registry during a temporary Redis outage,
+          // report it through discovery status, and wait a full interval
+          // before trying again.
+          this.lastError = error;
+          this.lastErrorAt = Date.now();
+          this.lastRefreshAt = this.lastErrorAt;
+        })
+        .finally(() => {
+          this.refreshPromise = undefined;
+        });
     }
 
-    const refreshReferenceAt = this.lastRefreshAt || this.lastAttemptAt || 0;
-    if (Date.now() - refreshReferenceAt < refreshIntervalMs) {
-      if (
-        this.lastError &&
-        this.discoveredQueues.size === 0 &&
-        this.staticQueues.length === 0
-      ) {
-        throw this.lastError;
-      }
-      return;
-    }
+    // Once a discovery has succeeded, requests are served its result while a
+    // due refresh runs in the background. A refresh sweeps the keyspace and
+    // connects every new queue, which no request should wait for, least of
+    // all one for a static queue.
+    if (this.lastSuccessfulRefreshAt !== undefined) return;
 
-    this.refreshPromise = this.discover(discovery)
-      .catch((error) => {
-        this.lastError = error;
-        this.lastErrorAt = Date.now();
-        throw error;
-      })
-      .finally(() => {
-        this.refreshPromise = undefined;
-      });
-
-    try {
-      await this.refreshPromise;
-    } catch (error) {
-      if (this.discoveredQueues.size === 0 && this.staticQueues.length === 0) {
-        throw error;
-      }
-      // Keep the last known-good registry during a temporary Redis outage.
-      this.lastRefreshAt = Date.now();
+    // Until then only static queues could be served, so the first discovery
+    // is awaited. Discovered connections give up a handshake that cannot
+    // succeed (see createDiscoveredQueueRetryStrategy), which bounds this.
+    await this.refreshPromise;
+    if (this.lastError !== undefined && this.staticQueues.length === 0) {
+      throw this.lastError;
     }
   }
 
@@ -412,11 +477,11 @@ export class QueueRegistry {
           queueNames.add(queueName);
         }
 
-        if (iterations >= MAX_DISCOVERY_SCAN_ITERATIONS && cursor !== 0) {
+        if (iterations >= MAX_DISCOVERY_SCAN_ITERATIONS && cursor !== "0") {
           scanWorkTruncated = true;
           break;
         }
-      } while (cursor !== 0);
+      } while (cursor !== "0");
     } finally {
       if (client.isOpen) {
         await client.disconnect();
@@ -438,23 +503,54 @@ export class QueueRegistry {
         )
         .sort(),
     ];
-    const next = new Map<string, QueuedashQueue>();
+    // Candidates are selected first and their handshakes are all started
+    // before any is awaited: awaiting each in turn would cost one Redis round
+    // trip per queue, end to end, on the request that triggered the refresh.
+    const selected: Array<{
+      queueName: string;
+      queue: QueuedashQueue;
+      ready?: Promise<void>;
+    }> = [];
     let queueCapReached = eligibleQueueOverflow;
     for (const queueName of candidateNames) {
-      if (next.size >= maxQueues) {
+      if (selected.length >= maxQueues) {
         queueCapReached = true;
         break;
       }
       const existing = this.discoveredQueues.get(queueName);
       if (existing) {
-        next.set(queueName, existing);
+        selected.push({ queueName, queue: existing });
         continue;
       }
+      let discovered: QueuedashQueue;
       try {
-        next.set(queueName, await createDiscoveredQueue(queueName, discovery));
+        discovered = await createDiscoveredQueue(queueName, discovery);
       } catch {
-        // A stale or adapter-invalid marker must not hide healthy queues.
+        // A stale or adapter-invalid marker must not hide healthy queues, and
+        // nothing was constructed, so it does not consume a slot either.
+        continue;
       }
+      const ready = waitForQueueHandshake(discovered);
+      // Hold a handler from the moment the handshake starts. Awaiting it only
+      // in the next loop would leave a window in which its rejection is
+      // unhandled - the very failure this wait exists to prevent.
+      void ready.catch(() => {});
+      selected.push({ queueName, queue: discovered, ready });
+    }
+
+    const next = new Map<string, QueuedashQueue>();
+    for (const { queueName, queue, ready } of selected) {
+      if (ready) {
+        try {
+          await ready;
+        } catch {
+          // A queue whose connection never came up is still the registry's to
+          // close, and its handshake has settled, so cleanup is safe now.
+          this.pendingCleanupQueues.add(queue);
+          continue;
+        }
+      }
+      next.set(queueName, queue);
     }
 
     for (const [queueName, queue] of this.discoveredQueues) {
@@ -470,8 +566,8 @@ export class QueueRegistry {
     // Continue a bounded sweep on the next refresh. Only a completed sweep
     // may evict queues that were not seen, and failed scans retain their cursor.
     this.scanCursor = cursor;
-    this.scanQueueNames = cursor === 0 ? new Set() : queueNames;
-    this.scanOverflow = cursor !== 0 && eligibleQueueOverflow;
+    this.scanQueueNames = cursor === "0" ? new Set() : queueNames;
+    this.scanOverflow = cursor !== "0" && eligibleQueueOverflow;
     this.lastRefreshAt = Date.now();
     this.lastError = undefined;
     this.lastSuccessfulRefreshAt = this.lastRefreshAt;

@@ -13,7 +13,8 @@ type JobActionMenuProps = {
   status?: Status | null;
   queueName: string;
   queue?: Queue;
-  onRemove?: () => void;
+  /** Called with the job's id once an action has moved it out of this list. */
+  onRemove?: (jobId: string) => void;
 };
 
 type JobAction = {
@@ -32,18 +33,25 @@ export const JobActionMenu = ({
   queue,
   onRemove,
 }: JobActionMenuProps) => {
-  const [confirm, setConfirm] = useState<"remove" | null>(null);
+  // The id the confirmation was opened for, not a flag: the dialog must name
+  // and remove that job even if the panel behind it has moved on.
+  const [confirmRemoveJobId, setConfirmRemoveJobId] = useState<string | null>(
+    null,
+  );
 
   // Retry and promote move the job to a different status, so it drops out of
   // the list this panel was opened from. Closing keeps `?job=` from stranding -
   // a stale id there silently swallows the `/` and `j`/`k` shortcuts.
+  // The close names the job it is for, and the page only closes a panel that
+  // is still on it: a retry that landed after `j` had moved on used to close
+  // the next job's panel. It is passed per `mutate` call, so a menu the panel
+  // has since swapped out (it is keyed by job) drops it; the toasts stay on
+  // the hooks and still report the result.
   const retryMutation = trpc.job.retry.useMutation(
-    mutationToasts("Job moved back to waiting", {
-      onSuccess: () => onRemove?.(),
-    }),
+    mutationToasts("Job moved back to waiting"),
   );
   const promoteMutation = trpc.job.promote.useMutation(
-    mutationToasts("Job promoted", { onSuccess: () => onRemove?.() }),
+    mutationToasts("Job promoted"),
   );
   const discardMutation = trpc.job.discard.useMutation(
     mutationToasts("Job discarded"),
@@ -53,7 +61,7 @@ export const JobActionMenu = ({
   );
   // Discard and rerun leave the job where it is, so they correctly stay open.
   const removeMutation = trpc.job.remove.useMutation(
-    mutationToasts("Job removed", { onSuccess: () => onRemove?.() }),
+    mutationToasts("Job removed"),
   );
 
   const input = useMemo(
@@ -83,7 +91,10 @@ export const JobActionMenu = ({
       nextActions.push({
         key: "retry",
         label: "Retry",
-        onSelect: () => retryMutation.mutate(input),
+        onSelect: () =>
+          retryMutation.mutate(input, {
+            onSuccess: () => onRemove?.(input.jobId),
+          }),
         icon: <RotateCw className="size-4" />,
         isLoading: retryMutation.isPending,
       });
@@ -92,7 +103,10 @@ export const JobActionMenu = ({
       nextActions.push({
         key: "promote",
         label: "Promote",
-        onSelect: () => promoteMutation.mutate(input),
+        onSelect: () =>
+          promoteMutation.mutate(input, {
+            onSuccess: () => onRemove?.(input.jobId),
+          }),
         icon: <Rocket className="size-4" />,
         isLoading: promoteMutation.isPending,
       });
@@ -121,7 +135,7 @@ export const JobActionMenu = ({
         label: "Remove",
         // A MenuItem closes the menu as it fires, so the confirmation lives
         // outside the menu and is armed from here.
-        onSelect: () => setConfirm("remove"),
+        onSelect: () => setConfirmRemoveJobId(job.id),
         icon: <Trash2 className="size-4" />,
         isLoading: removeMutation.isPending,
         tone: "destructive" as const,
@@ -135,6 +149,8 @@ export const JobActionMenu = ({
     showRerun,
     showRemove,
     input,
+    job.id,
+    onRemove,
     retryMutation,
     promoteMutation,
     discardMutation,
@@ -183,25 +199,33 @@ export const JobActionMenu = ({
       ) : null}
 
       <Alert
-        isOpen={confirm === "remove"}
+        isOpen={confirmRemoveJobId !== null}
         onOpenChange={(isOpen) => {
-          if (!isOpen) setConfirm(null);
+          if (!isOpen) setConfirmRemoveJobId(null);
         }}
         isPending={removeMutation.isPending}
         title="Remove job?"
-        description={`This permanently removes job ${job.id} from ${
-          queue?.displayName ?? queueName
-        }. It cannot be undone.`}
+        // Falls back to this menu's job - the one it is keyed to - while the
+        // dialog fades out, rather than reading "job null".
+        description={`This permanently removes job ${
+          confirmRemoveJobId ?? job.id
+        } from ${queue?.displayName ?? queueName}. It cannot be undone.`}
         action={
           <Button
             variant="filled"
             colorScheme="red"
             label="Remove"
-            onClick={() =>
-              removeMutation.mutate(input, {
-                onSettled: () => setConfirm(null),
-              })
-            }
+            onClick={() => {
+              const jobId = confirmRemoveJobId;
+              if (jobId === null) return;
+              removeMutation.mutate(
+                { queueName, jobId },
+                {
+                  onSuccess: () => onRemove?.(jobId),
+                  onSettled: () => setConfirmRemoveJobId(null),
+                },
+              );
+            }}
           />
         }
       />

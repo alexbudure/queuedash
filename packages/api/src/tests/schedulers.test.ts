@@ -6,6 +6,7 @@ import { BullMQAdapter } from "../queue-adapters/bullmq.adapter";
 import { appRouter } from "../routers/_app";
 import {
   expectTRPCError,
+  getBullMQRedisClient,
   initRedisInstance,
   NUM_OF_SCHEDULERS,
 } from "./test.utils";
@@ -252,6 +253,53 @@ test("update scheduler uses BullMQ upsert semantics", async () => {
   });
 });
 
+test("scheduler mutations run their lock against a real Redis client", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  if (firstQueue.type !== "bullmq") return;
+
+  // The adapter skips the lock when it cannot reach a client, which would make
+  // the mutations below prove nothing. BullMQ 6 hides the client behind
+  // `getBackend()`; either way it must expose the Lua command API the lock uses.
+  const client = await getBullMQRedisClient(firstQueue.queue);
+  expect(typeof client.info).toBe("function");
+  expect(typeof client.defineCommand).toBe("function");
+
+  const caller = appRouter.createCaller(ctx);
+  const [scheduler] = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+
+  // Both mutations acquire, renew and release the lock through the named Lua
+  // commands: `runCommand` on BullMQ 6, the defined method on 5.
+  await expect(
+    caller.scheduler.update({
+      queueName: firstQueue.queue.name,
+      key: scheduler.key,
+      template: { data: { locked: true } },
+      opts: { every: 90_000 },
+    }),
+  ).resolves.toEqual({ success: true });
+
+  await expect(
+    caller.scheduler.remove({
+      queueName: firstQueue.queue.name,
+      jobSchedulerId: scheduler.key,
+    }),
+  ).resolves.toEqual({ success: true });
+
+  const remaining = await caller.scheduler.list({
+    queueName: firstQueue.queue.name,
+  });
+  expect(remaining.some((item) => item.key === scheduler.key)).toBe(false);
+
+  // Registering the Lua leaves the command callable on the client itself, so
+  // this is only true if the lock really ran here instead of being skipped.
+  expect(
+    typeof (client as unknown as Record<string, unknown>)
+      .queuedashReleaseSchedulerLock,
+  ).toBe("function");
+});
+
 test("update scheduler does not create a missing scheduler", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -300,10 +348,7 @@ test("bulk scheduler removal uses one list read and bounded targeted lookups", a
   });
   const queue = {
     name: "bulk-scheduler-removal",
-    client: Promise.resolve({
-      set: vi.fn().mockResolvedValue("OK"),
-      eval: vi.fn().mockResolvedValue(1),
-    }),
+    client: Promise.resolve(createLockClient(() => 1)),
     toKey: (key: string) => `bull:bulk-scheduler-removal:${key}`,
     getJobSchedulers,
     getJobScheduler,
@@ -332,10 +377,7 @@ test("legacy BullMQ repeatables reject updates and use legacy removal", async ()
   const removeRepeatableByKey = vi.fn().mockResolvedValue(true);
   const queue = {
     name: "legacy-repeatable",
-    client: Promise.resolve({
-      set: vi.fn().mockResolvedValue("OK"),
-      eval: vi.fn().mockResolvedValue(1),
-    }),
+    client: Promise.resolve(createLockClient(() => 1, "ioredis")),
     toKey: (key: string) => `bull:legacy-repeatable:${key}`,
     getJobScheduler: vi.fn().mockResolvedValue({
       key: legacyKey,
@@ -453,15 +495,16 @@ test("scheduler editing stays disabled when presentation would redact data", asy
 test("long scheduler mutations renew their Redis lock", async () => {
   vi.useFakeTimers();
   const continueUpsert = deferred();
-  const evalCommand = vi.fn(async (...args: unknown[]) =>
-    args.length === 5 ? 1 : 1,
-  );
+  const lockCommand = vi.fn((name: string, args: string[]) => {
+    void name;
+    void args;
+    return 1;
+  });
+  const ranCommands = () => lockCommand.mock.calls.map(([name]) => name);
   const queue = {
     name: "scheduler-lock-renewal",
-    client: Promise.resolve({
-      set: vi.fn().mockResolvedValue("OK"),
-      eval: evalCommand,
-    }),
+    // A bare ioredis instance, which is what BullMQ before 5.78 hands over.
+    client: Promise.resolve(createLockClient(lockCommand, "ioredis")),
     toKey: (key: string) => `bull:scheduler-lock-renewal:${key}`,
     getJobScheduler: vi.fn().mockResolvedValue({ key: "daily" }),
     upsertJobScheduler: vi.fn(async () => continueUpsert.promise),
@@ -477,11 +520,12 @@ test("long scheduler mutations renew their Redis lock", async () => {
     await vi.waitFor(() => {
       expect(queue.upsertJobScheduler).toHaveBeenCalled();
     });
+    expect(ranCommands()).toContain("queuedashAcquireSchedulerLock");
     await vi.advanceTimersByTimeAsync(10_001);
-    expect(evalCommand.mock.calls.some((args) => args.length === 5)).toBe(true);
+    expect(ranCommands()).toContain("queuedashExtendSchedulerLock");
     continueUpsert.resolve();
     await expect(update).resolves.toBe(true);
-    expect(evalCommand.mock.calls.some((args) => args.length === 4)).toBe(true);
+    expect(ranCommands()).toContain("queuedashReleaseSchedulerLock");
   } finally {
     vi.useRealTimers();
   }
@@ -495,25 +539,29 @@ test("scheduler removal cannot race an in-flight scheduler update", async () => 
   let heldLockToken: string | undefined;
   let removeCalls = 0;
 
-  const client = {
-    set: async (...args: unknown[]) => {
-      const token = String(args[1]);
-      if (heldLockToken) {
-        removalWaitingForLock.resolve();
-        return null;
+  // The BullMQ 6 shape: Lua registered with `defineCommand`, run by name
+  // through the client wrapper's `runCommand`.
+  const client = createLockClient((name, [, token]) => {
+    switch (name) {
+      case "queuedashAcquireSchedulerLock": {
+        if (heldLockToken) {
+          removalWaitingForLock.resolve();
+          return 0;
+        }
+        heldLockToken = token;
+        return 1;
       }
-      heldLockToken = token;
-      return "OK";
-    },
-    eval: async (...args: unknown[]) => {
-      const token = String(args[3]);
-      if (heldLockToken === token) {
+      case "queuedashExtendSchedulerLock":
+        return heldLockToken === token ? 1 : 0;
+      case "queuedashReleaseSchedulerLock": {
+        if (heldLockToken !== token) return 0;
         heldLockToken = undefined;
         return 1;
       }
-      return 0;
-    },
-  };
+      default:
+        throw new Error(`Unexpected scheduler lock command ${name}`);
+    }
+  });
   const queue = {
     name: "scheduler-race",
     client: Promise.resolve(client),
@@ -669,6 +717,54 @@ test("scheduler validation rejects cross-queue and internal options", async () =
       } as never),
     "BAD_REQUEST",
   );
+
+  expect(upsertJobScheduler).not.toHaveBeenCalled();
+});
+
+test("scheduler template options with a __proto__ key are refused", async () => {
+  const upsertJobScheduler = vi.fn();
+  const queue = {
+    name: "scheduler-prototype-options",
+    getJobScheduler: vi.fn().mockResolvedValue({ key: "daily" }),
+    upsertJobScheduler,
+  } as unknown as BullMQQueue;
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue,
+        displayName: "Scheduler prototype options",
+        type: "bullmq",
+      },
+    ],
+  });
+
+  // As JSON.parse hands them over, with "__proto__" as an own key.
+  for (const opts of [
+    '{"__proto__":{"attempts":5}}',
+    '{"backoff":{"type":"fixed","delay":1000,"__proto__":{"delay":0}}}',
+    '{"removeOnFail":{"count":[{"__proto__":{"age":1}}]}}',
+  ]) {
+    const template = { data: {}, opts: JSON.parse(opts) };
+    await expectTRPCError(
+      () =>
+        caller.queue.addJobScheduler({
+          queueName: queue.name,
+          template,
+          opts: { every: 60_000 },
+        }),
+      "BAD_REQUEST",
+    );
+    await expectTRPCError(
+      () =>
+        caller.scheduler.update({
+          queueName: queue.name,
+          key: "daily",
+          template,
+          opts: { every: 60_000 },
+        }),
+      "BAD_REQUEST",
+    );
+  }
 
   expect(upsertJobScheduler).not.toHaveBeenCalled();
 });
@@ -869,4 +965,46 @@ const deferred = () => {
     resolve = done;
   });
   return { promise, resolve };
+};
+
+type LockCommandRunner = (
+  name: string,
+  args: string[],
+) => unknown | Promise<unknown>;
+
+/**
+ * Models a Redis client the way BullMQ hands one over: Lua is registered once
+ * with `defineCommand` and then run by name. BullMQ 6 (and 5.78+) wraps the
+ * client and runs it through `runCommand`; older BullMQ 5 hands over a bare
+ * ioredis instance, where the defined command becomes a method that flattens
+ * its array argument. Both shapes are modelled so either path can be asserted.
+ */
+const createLockClient = (
+  run: LockCommandRunner,
+  style: "runCommand" | "ioredis" = "runCommand",
+) => {
+  const defined = new Map<string, { numberOfKeys: number; lua: string }>();
+  const client: Record<string, unknown> = {
+    info: async () => "redis_version:7.2.4\r\nmaxclients:10000\r\n",
+    defineCommand: (
+      name: string,
+      definition: { numberOfKeys: number; lua: string },
+    ) => {
+      expect(definition.numberOfKeys).toBe(1);
+      expect(definition.lua).toContain("redis.call");
+      defined.set(name, definition);
+      if (style === "ioredis") {
+        client[name] = async (args: string[]) => run(name, args);
+      }
+    },
+  };
+  if (style === "runCommand") {
+    client.runCommand = async (name: string, args: string[]) => {
+      if (!defined.has(name)) {
+        throw new Error(`Command ${name} was run before being defined`);
+      }
+      return run(name, args);
+    };
+  }
+  return client;
 };

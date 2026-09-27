@@ -90,8 +90,10 @@ export const OverviewQueueCard = ({
   const supportsMetrics =
     queue?.supports.metrics === true && preferences.showOverviewMetrics;
 
+  // The last hour of complete minutes: minute 0 is still filling, so starting
+  // there would drag every sparkline and rate down early in each minute.
   const { data: completedMetrics } = trpc.queue.metrics.useQuery(
-    { queueName, type: "completed", start: 0, end: 60 },
+    { queueName, type: "completed", start: 1, end: 61 },
     {
       enabled: inView && supportsMetrics,
       refetchInterval: preferences.refreshIntervalMs,
@@ -99,7 +101,7 @@ export const OverviewQueueCard = ({
   );
 
   const { data: failedMetrics } = trpc.queue.metrics.useQuery(
-    { queueName, type: "failed", start: 0, end: 60 },
+    { queueName, type: "failed", start: 1, end: 61 },
     {
       enabled: inView && supportsMetrics,
       refetchInterval: preferences.refreshIntervalMs,

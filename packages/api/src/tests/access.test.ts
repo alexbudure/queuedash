@@ -34,6 +34,50 @@ describe("queue access policy", () => {
     expect(access.actions["scheduler.update"]).toBe(true);
   });
 
+  it("matches pattern characters literally, however often a pattern is used", () => {
+    const access = {
+      rules: [{ queues: ["billing.(eu)+*"], mode: "hidden" as const }],
+    };
+
+    for (let call = 0; call < 3; call++) {
+      expect(resolveQueueAccess("billing.(eu)+retries", access).mode).toBe(
+        "hidden",
+      );
+      expect(resolveQueueAccess("billingX(eu)+retries", access).mode).toBe(
+        "full",
+      );
+      expect(resolveQueueAccess("billing.eu+retries", access).mode).toBe(
+        "full",
+      );
+    }
+  });
+
+  it("keeps resolving correctly past the compiled-pattern bound", () => {
+    const names = Array.from(
+      { length: 1_500 },
+      (_, index) => `tenant-${index}`,
+    );
+    const resolveAll = () =>
+      names.map(
+        (name) =>
+          resolveQueueAccess(name, {
+            rules: [
+              { queues: [`${name}*`], mode: "read-only" },
+              { queues: [`${name}-archive`], mode: "hidden" },
+            ],
+          }).mode,
+      );
+
+    // The second pass reads patterns the first one pushed out of the cache.
+    expect(resolveAll().every((mode) => mode === "read-only")).toBe(true);
+    expect(resolveAll().every((mode) => mode === "read-only")).toBe(true);
+    expect(
+      resolveQueueAccess("tenant-7-archive", {
+        rules: [{ queues: ["tenant-7-archive"], mode: "hidden" }],
+      }).mode,
+    ).toBe("hidden");
+  });
+
   it("rejects disabled actions at the server boundary", () => {
     const ctx = {
       queues: [

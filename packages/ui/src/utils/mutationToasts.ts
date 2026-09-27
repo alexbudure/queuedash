@@ -42,12 +42,26 @@ export const mutationToasts = <TData = unknown>(
 });
 
 /**
+ * A verb in both forms a bulk summary needs: "3 jobs retried" and "Could not
+ * retry 3 jobs". Deriving the second by trimming "ed" produced "retri",
+ * "remov" and "promot".
+ */
+export type BulkVerb = { base: string; past: string };
+
+export const BULK_VERBS = {
+  promote: { base: "promote", past: "promoted" },
+  remove: { base: "remove", past: "removed" },
+  rerun: { base: "rerun", past: "rerun" },
+  retry: { base: "retry", past: "retried" },
+} satisfies Record<string, BulkVerb>;
+
+/**
  * Reports the outcome of a bulk operation honestly - "48 retried, 2 failed"
  * rather than a bare success, which is what the per-job loop used to imply
  * even when half the jobs errored.
  */
 export const bulkResultToast = (
-  verbPastTense: string,
+  verb: BulkVerb,
   noun: string,
   result:
     | { succeeded?: number; failed?: number; partial?: boolean }
@@ -61,17 +75,15 @@ export const bulkResultToast = (
 
   if (failed > 0 && succeeded > 0) {
     toast.warning(
-      `${succeeded} ${nounLabel(succeeded)} ${verbPastTense}, ${failed} failed${more}`,
+      `${succeeded} ${nounLabel(succeeded)} ${verb.past}, ${failed} failed${more}`,
     );
     return;
   }
 
   if (failed > 0) {
-    toast.error(
-      `Could not ${verbPastTense.replace(/ed$/, "")} ${failed} ${nounLabel(failed)}`,
-    );
+    toast.error(`Could not ${verb.base} ${failed} ${nounLabel(failed)}`);
     return;
   }
 
-  toast.success(`${succeeded} ${nounLabel(succeeded)} ${verbPastTense}${more}`);
+  toast.success(`${succeeded} ${nounLabel(succeeded)} ${verb.past}${more}`);
 };

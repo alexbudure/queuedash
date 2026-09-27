@@ -88,9 +88,13 @@ export const CARD_BORDER = "border border-gray-100/60 dark:border-slate-800/60";
 /** A boxed section: border plus radius. */
 export const CARD = `rounded-xl ${CARD_BORDER}`;
 
-/** Dock for a table's floating bar, riding the bottom of the viewport. */
+/**
+ * Dock for a table's floating bar, riding the bottom of the viewport. The top
+ * padding only shows when the table is short enough that the bar is not
+ * floating: without it the pill sat flush against the table's bottom border.
+ */
 export const FLOATING_BAR_DOCK =
-  "pointer-events-none sticky bottom-0 flex w-full items-center justify-center pb-5";
+  "pointer-events-none sticky bottom-0 flex w-full items-center justify-center pt-4 pb-5";
 
 /**
  * The one overlay surface. In dark mode popovers used to be the same

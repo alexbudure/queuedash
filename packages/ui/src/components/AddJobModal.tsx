@@ -65,20 +65,44 @@ const SCHEDULE_HINT =
   "Provide exactly one: a cron pattern or an interval in milliseconds.";
 
 /**
- * The backend's own defaults, made explicit so the three options people
- * actually reach for are already in the editor instead of an empty `{}`.
- * `attempts: 1` means the backoff never fires until it is raised, so this is
- * the same behaviour an empty object produced.
+ * Starting values, so the three options people actually reach for are already
+ * in the editor instead of an empty `{}`. They are not the backends' defaults -
+ * a job added with `{}` has no backoff at all - but with `attempts: 1` the
+ * backoff never fires until attempts is raised, so an untouched form still
+ * behaves exactly like an empty object.
  */
-const DEFAULT_JOB_OPTIONS = JSON.stringify(
-  {
-    attempts: 1,
-    backoff: { type: "exponential", delay: 1000 },
-    delay: 0,
-  },
-  null,
-  2,
-);
+const STARTING_JOB_OPTIONS: Record<string, unknown> = {
+  attempts: 1,
+  backoff: { type: "exponential", delay: 1000 },
+  delay: 0,
+};
+
+/**
+ * The starting options narrowed to `keys`, as the editor shows them. The server
+ * rejects a whole request over one key it does not accept, so an untouched form
+ * may only ever carry keys the endpoint takes.
+ */
+const getStartingOptions = (keys: readonly string[]) =>
+  JSON.stringify(
+    Object.fromEntries(
+      Object.entries(STARTING_JOB_OPTIONS).filter(([key]) =>
+        keys.includes(key),
+      ),
+    ),
+    null,
+    2,
+  );
+
+/**
+ * A scheduler's template has no `delay` - the schedule decides when each job
+ * runs - and the server's template schema is strict, so leaving it in rejected
+ * every untouched Add scheduler form over a field the collapsed Advanced
+ * section kept out of sight.
+ */
+const STARTING_SCHEDULER_TEMPLATE_OPTIONS = getStartingOptions([
+  "attempts",
+  "backoff",
+]);
 
 const EMPTY_OPTIONS = "{}";
 
@@ -113,9 +137,10 @@ const countOptionKeys = (normalizedValue: string) =>
  * What the collapsed Advanced summary says, e.g. "Default options" or
  * "3 options set".
  *
- * "Default" is measured against the backend defaults, never against the values
- * the panel opened with: on the edit path those *are* the scheduler's existing
- * configuration, and calling that "default" would collapse it out of sight.
+ * "Default" is measured against the form's starting values, never against the
+ * values the panel opened with: on the edit path those *are* the scheduler's
+ * existing configuration, and calling that "default" would collapse it out of
+ * sight.
  */
 const describeAdvancedOptions = (
   templateOptions: string,
@@ -133,7 +158,7 @@ const describeAdvancedOptions = (
 
   if (
     (normalizedTemplateOptions === EMPTY_OPTIONS ||
-      normalizedTemplateOptions === DEFAULT_JOB_OPTIONS) &&
+      normalizedTemplateOptions === STARTING_SCHEDULER_TEMPLATE_OPTIONS) &&
     normalizedSchedulerOptions === EMPTY_OPTIONS
   ) {
     return DEFAULT_OPTIONS_SUMMARY;
@@ -258,9 +283,14 @@ const getCronDescription = (pattern: string) => {
   }
 };
 
-const getInitialFormValues = (scheduler: Scheduler | undefined) => ({
+const getInitialFormValues = (
+  scheduler: Scheduler | undefined,
+  addJobOptionKeys: readonly string[],
+) => ({
   dataValue: "{}",
-  optsValue: DEFAULT_JOB_OPTIONS,
+  // Only what this queue's adapter accepts: GroupMQ takes neither `attempts`
+  // nor `backoff`, and every untouched Add job there failed on them.
+  optsValue: getStartingOptions(addJobOptionKeys),
   schedulerName: scheduler?.name ?? "manual-scheduler",
   templateDataValue: JSON.stringify(
     scheduler?.template?.data ??
@@ -270,7 +300,7 @@ const getInitialFormValues = (scheduler: Scheduler | undefined) => ({
   ),
   templateOptsValue: scheduler
     ? JSON.stringify(scheduler.template?.opts ?? {}, null, 2)
-    : DEFAULT_JOB_OPTIONS,
+    : STARTING_SCHEDULER_TEMPLATE_OPTIONS,
   patternValue: scheduler?.pattern ?? (scheduler ? "" : "0 * * * *"),
   everyValue: scheduler?.every ? String(scheduler.every) : "",
   timezoneValue: getInitialSchedulerTimezone({
@@ -311,7 +341,10 @@ export const useJobForm = ({
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const isJob = variant === "job";
-  const supportsJobOptions = queue.supports.addJobOptions;
+  // An adapter that names no option keys accepts none, so there is nothing to
+  // edit and nothing to send.
+  const supportsJobOptions =
+    queue.supports.addJobOptions && queue.supports.addJobOptionKeys.length > 0;
   const isEditingScheduler = !isJob && !!scheduler;
 
   const { mutate: addJob, status: addJobStatus } =
@@ -349,7 +382,9 @@ export const useJobForm = ({
 
   // Dirtiness is measured against what the panel opened with - a literal "{}"
   // comparison would report every freshly-opened scheduler panel as dirty.
-  const [initialValues] = useState(() => getInitialFormValues(scheduler));
+  const [initialValues] = useState(() =>
+    getInitialFormValues(scheduler, queue.supports.addJobOptionKeys),
+  );
 
   const [showErrors, setShowErrors] = useState(false);
   const [isPatternTouched, setIsPatternTouched] = useState(false);
@@ -405,7 +440,7 @@ export const useJobForm = ({
       ),
     );
 
-  // Anything the panel opens with that is not a backend default is already
+  // Anything the panel opens with that is not a starting value is already
   // configuration someone wrote, so the disclosure starts open rather than
   // hiding it one click deep.
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(

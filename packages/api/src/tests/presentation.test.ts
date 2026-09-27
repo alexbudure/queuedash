@@ -567,4 +567,284 @@ describe("presentation redaction", () => {
       }),
     ).toBe("authorization=[REDACTED]");
   });
+
+  it("judges a key from the first character of its token", () => {
+    const longKey = `${"a.".repeat(2_048)}password`;
+    expect(redactText(`${longKey}=hunter2`, { redact: true })).toBe(
+      `${longKey}=[REDACTED]`,
+    );
+    for (const value of [
+      "--password=hunter2",
+      "-password: hunter2",
+      ".token=hunter2",
+      "x-api-key: hunter2",
+      "config.password=hunter2",
+      '"token": "hunter2"',
+      "'token': 'hunter2'",
+      'headers?.["token"]=hunter2',
+    ]) {
+      expect(redactText(value, { redact: true })).not.toContain("hunter2");
+    }
+    // A search resuming inside a token, right after a PEM footer, still
+    // takes the whole multi-word value.
+    expect(
+      redactText(
+        "privateKey=-----BEGIN PRIVATE KEY-----\nKEYDATA\n-----END PRIVATE KEY-----password=correct horse battery",
+        { redact: true },
+      ),
+    ).toBe("privateKey=[REDACTED]password=[REDACTED]");
+  });
+});
+
+describe("redaction cost", () => {
+  const size = 64 * 1_024;
+  const fill = (unit: string) => unit.repeat(Math.floor(size / unit.length));
+  const base64url = () => {
+    const alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let value = "";
+    for (let index = 0; index < size; index += 1) {
+      value += alphabet[(index * 2_654_435_761) % alphabet.length];
+    }
+    return value;
+  };
+  const timed = (run: () => unknown) => {
+    const startedAt = performance.now();
+    run();
+    return performance.now() - startedAt;
+  };
+
+  // Each shape used to take from one to tens of seconds, inside one
+  // synchronous presentJob on the host's event loop.
+  it.each([
+    // A key used to be tried from every dot or dash of a token.
+    ["dotted token", () => fill("a.")],
+    ["dashed token", () => fill("a-")],
+    ["base64url token", base64url],
+    ["quoted dotted key", () => `"${fill("a.")}`],
+    ["bracketed dotted key", () => `x[${fill("a.")}`],
+    // Adjacent optional blanks around `?.` split a run every possible way.
+    ["key before blanks", () => `a${" ".repeat(size)}x`],
+    // An unanchored /\s*$/ restarted at every inner blank.
+    ["quoted blanks", () => `"${" ".repeat(size)}x"`],
+    // A value's end was looked for again from every blank of a run.
+    ["value before blanks", () => `password=a${" ".repeat(size)}b`],
+    // Every escaped quote restarted a JSON key scan.
+    ["escaped quotes", () => `"${fill('\\"')}`],
+    ["escaped JSON", () => `{"a":"${fill('\\"')}"}`],
+    // Every unclosed wrapper was scanned to the end before falling back.
+    ["unclosed braces", () => fill("a={ ")],
+    ["unclosed brackets", () => fill("a=[ ")],
+    ["unclosed parentheses", () => fill("a=( ")],
+  ])("stays linear on 64KB of %s", (_, build) => {
+    const value = build();
+
+    expect(timed(() => redactText(value, { redact: true }))).toBeLessThan(250);
+    expect(
+      timed(() =>
+        presentJob({ ...createJob(), data: { note: value } }, { redact: true }),
+      ),
+    ).toBeLessThan(250);
+  });
+});
+
+// Shapes the adapters return for real jobs, captured from each library.
+const adaptedJob = (
+  job: Pick<AdaptedJob, "id" | "name"> & Partial<AdaptedJob>,
+): AdaptedJob => ({
+  data: {},
+  opts: {},
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+  processedAt: null,
+  finishedAt: null,
+  retriedAt: null,
+  ...job,
+});
+const options = (opts: Record<string, unknown>) => opts as AdaptedJob["opts"];
+
+describe("identifiers and traces inside job options", () => {
+  const bullmqParent = adaptedJob({
+    id: "alice-parent",
+    name: "parent",
+    opts: options({ attempts: 0, jobId: "alice-parent" }),
+  });
+  // [library, job, raw values that must not survive identity redaction]
+  const jobIdShapes: [string, AdaptedJob, string[]][] = [
+    [
+      "BullMQ custom id",
+      adaptedJob({
+        id: "alice@example.com",
+        name: "welcome",
+        opts: options({ attempts: 0, jobId: "alice@example.com" }),
+      }),
+      ["alice@example.com"],
+    ],
+    [
+      "BullMQ flow child",
+      adaptedJob({
+        id: "alice-child",
+        name: "child",
+        opts: options({
+          attempts: 0,
+          jobId: "alice-child",
+          parent: { id: "alice-parent", queue: "bull:emails" },
+        }),
+      }),
+      ["alice-child", "alice-parent"],
+    ],
+    [
+      "BullMQ job scheduler",
+      adaptedJob({
+        id: "repeat:alice-digest:1790264104736",
+        name: "digest",
+        opts: options({
+          attempts: 0,
+          jobId: "repeat:alice-digest:1790264104736",
+          repeat: { every: 600_000, count: 1 },
+        }),
+      }),
+      ["alice-digest"],
+    ],
+    [
+      "BullMQ 5 repeatable",
+      adaptedJob({
+        id: "repeat:005dd570324496274ef68f593e0e3dda:1790264400000",
+        name: "digest",
+        opts: options({
+          attempts: 0,
+          prevMillis: 1_790_264_400_000,
+          jobId: "repeat:005dd570324496274ef68f593e0e3dda:1790264400000",
+          repeat: { jobId: "alice-digest", count: 1, every: 600_000 },
+        }),
+      }),
+      ["alice-digest", "005dd570324496274ef68f593e0e3dda"],
+    ],
+    [
+      "Bull custom id",
+      adaptedJob({
+        id: "alice@example.com",
+        name: "Default",
+        opts: options({ jobId: "alice@example.com", attempts: 1, delay: 0 }),
+      }),
+      ["alice@example.com"],
+    ],
+    [
+      "Bull repeatable",
+      adaptedJob({
+        id: "repeat:c7a3fac61136ac70e7974655fa316365:1790264400000",
+        name: "digest",
+        opts: options({
+          repeat: {
+            count: 1,
+            key: "digest:alice-digest::600000",
+            every: 600_000,
+            jobId: "alice-digest",
+          },
+          jobId: "repeat:c7a3fac61136ac70e7974655fa316365:1790264400000",
+          prevMillis: 1_790_264_400_000,
+          attempts: 1,
+        }),
+      }),
+      ["alice-digest", "c7a3fac61136ac70e7974655fa316365"],
+    ],
+    [
+      "Bee-Queue custom id",
+      adaptedJob({
+        id: "alice@example.com",
+        name: "alice@example.com",
+        opts: options({ timestamp: 1_790_264_104_858 }),
+      }),
+      ["alice@example.com"],
+    ],
+    [
+      "GroupMQ",
+      adaptedJob({
+        id: "alice-job",
+        name: "sync",
+        groupId: "tenant-7",
+        opts: options({ attempts: 3 }),
+      }),
+      ["alice-job"],
+    ],
+  ];
+
+  it.each([{ keys: ["id"] }, { paths: ["id"] }])(
+    "hides every copy of a job id: %j",
+    (rules) => {
+      const privacy = { redact: { includeDefaultKeys: false, ...rules } };
+      for (const [library, job, rawValues] of jobIdShapes) {
+        const presented = presentJob(job, privacy);
+        const output = JSON.stringify(presented);
+        for (const raw of rawValues) {
+          expect(output, `${library} leaked ${raw}`).not.toContain(raw);
+        }
+        expect(presented.id, library).toMatch(/^\[REDACTED\]:[0-9a-f]{16}$/u);
+        // Every `jobId` above is the job's own id, so it gets the same
+        // pseudonym.
+        expect((presented.opts as Record<string, unknown>).jobId, library).toBe(
+          "jobId" in job.opts ? presented.id : undefined,
+        );
+      }
+
+      const [, child] = jobIdShapes[1]!;
+      expect(presentJob(child, privacy).opts).toMatchObject({
+        parent: {
+          id: presentJob(bullmqParent, privacy).id,
+          queue: "bull:emails",
+        },
+      });
+    },
+  );
+
+  it.each([{ keys: ["groupId"] }, { paths: ["groupId"] }, { paths: ["*.id"] }])(
+    "hides group ids kept in options: %j",
+    (rules) => {
+      const privacy = { redact: { includeDefaultKeys: false, ...rules } };
+      for (const job of [
+        adaptedJob({
+          id: "1",
+          name: "sync",
+          groupId: "tenant-alice",
+          opts: options({ attempts: 0, group: { id: "tenant-alice" } }),
+        }),
+        adaptedJob({
+          id: "job-1",
+          name: "tenant-alice",
+          groupId: "tenant-alice",
+          opts: options({ attempts: 3, groupId: "tenant-alice" }),
+        }),
+      ]) {
+        const presented = presentJob(job, privacy);
+        expect(JSON.stringify(presented)).not.toContain("tenant-alice");
+        expect(presented.groupId).toBe("[REDACTED]");
+      }
+    },
+  );
+
+  it("keeps stacks out of options and failure reasons when traces are hidden", () => {
+    const stack =
+      "Error: boom\n    at processJob (/srv/app/worker.js:42:15)\n    at Queue._runJob (/srv/app/node_modules/bee-queue/lib/queue.js:612:17)";
+    const failed = adaptedJob({
+      id: "7",
+      name: "charge",
+      opts: options({ timestamp: 1_790_264_104_858, stacktraces: [stack] }),
+      failedReason: stack,
+      stacktrace: [stack],
+    });
+
+    for (const privacy of [
+      { expose: { stacktraces: false } },
+      { redact: true, expose: { stacktraces: false } },
+    ]) {
+      const presented = presentJob(failed, privacy);
+      expect(presented.failedReason).toBe("Error: boom");
+      expect(presented.stacktrace).toBeUndefined();
+      expect(presented.opts).toEqual({ timestamp: 1_790_264_104_858 });
+      expect(JSON.stringify(presented)).not.toContain("worker.js");
+    }
+    expect(presentJob(failed, { expose: { jobData: false } })).toMatchObject({
+      failedReason: stack,
+      opts: { stacktraces: [stack] },
+    });
+  });
 });

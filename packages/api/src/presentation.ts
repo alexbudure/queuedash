@@ -1,3 +1,5 @@
+import { createHmac, randomBytes } from "node:crypto";
+
 import type { AdaptedJob, SchedulerInfo } from "./queue-adapters/base.adapter";
 import type { QueuedashPrivacyConfig, QueuedashRedactionConfig } from "./trpc";
 
@@ -149,7 +151,9 @@ const redactEncodedJsonString = (
   encodedJsonDepth: number,
 ): string => {
   const leadingWhitespace = value.match(/^\s*/u)?.[0] ?? "";
-  const trailingWhitespace = value.match(/\s*$/u)?.[0] ?? "";
+  // trimEnd strips exactly `\s`. An unanchored /\s*$/ restarted at every
+  // blank of an inner whitespace run and rescanned the rest of it.
+  const trailingWhitespace = value.slice(value.trimEnd().length);
   const candidate = value.slice(
     leadingWhitespace.length,
     value.length - trailingWhitespace.length,
@@ -567,6 +571,10 @@ const findTextValueEnd = (
         next += 1;
       }
       if (nextAssignment.test(value.slice(next))) break;
+      // Every blank of this run looks ahead to the same token; repeating the
+      // check from each of them made long runs quadratic.
+      end = Math.max(next, end + 1);
+      continue;
     }
     end += 1;
   }
@@ -595,19 +603,48 @@ const isSerializedReplacementJsonValue = (
   return /^"(?:\\.|[^"\\])*"\s*:/u.test(value.slice(after));
 };
 
+// The next `"key":` at or after `from`, exactly as a global search would find
+// it. When the string at one quote is not a key, the escaped quotes inside it
+// are not tried as starts: each would scan on to the same closing quote and
+// fail the same way, which made text full of `\"` quadratic.
+const findJsonKeyAssignment = (
+  value: string,
+  from: number,
+): RegExpExecArray | null => {
+  const assignment = /("(?:\\.|[^"\\])*")(\s*:\s*)/uy;
+  const stringBody = /"(?:\\.|[^"\\])*/uy;
+  for (let start = value.indexOf('"', from); start !== -1; ) {
+    assignment.lastIndex = start;
+    const match = assignment.exec(value);
+    if (match) return match;
+
+    stringBody.lastIndex = start;
+    stringBody.exec(value);
+    // A closing quote can open the next string; an unterminated scan stopped
+    // at a line-breaking escape or the end, and so would every quote in it.
+    start =
+      value[stringBody.lastIndex] === '"'
+        ? stringBody.lastIndex
+        : value.indexOf('"', stringBody.lastIndex);
+  }
+  return null;
+};
+
 const redactJsonStringKeyAssignments = (
   value: string,
   config: ResolvedRedactionConfig,
 ): string => {
-  const assignmentStart = /("(?:\\.|[^"\\])*")(\s*:\s*)/gu;
   let cursor = 0;
   let redacted = "";
+  let searchFrom = 0;
 
   for (
-    let match = assignmentStart.exec(value);
+    let match = findJsonKeyAssignment(value, searchFrom);
     match;
-    match = assignmentStart.exec(value)
+    match = findJsonKeyAssignment(value, searchFrom)
   ) {
+    const valueStart = match.index + match[0].length;
+    searchFrom = valueStart;
     const serializedKey = match[1];
     if (!serializedKey) continue;
 
@@ -619,7 +656,6 @@ const redactJsonStringKeyAssignments = (
     }
     if (typeof key !== "string" || !isSensitiveTextKey(key, config)) continue;
 
-    const valueStart = assignmentStart.lastIndex;
     const serializedReplacement = JSON.stringify(config.replacement);
     const serializedReplacementEnd = valueStart + serializedReplacement.length;
     const valueEnd =
@@ -646,37 +682,77 @@ const redactJsonStringKeyAssignments = (
       rawValue === config.replacement ||
       unwrappedValue === config.replacement
     ) {
-      assignmentStart.lastIndex = valueEnd;
+      searchFrom = valueEnd;
       continue;
     }
 
     redacted += value.slice(cursor, match.index);
     redacted += serializedKey + (match[2] ?? ":") + config.replacement;
     cursor = valueEnd;
-    assignmentStart.lastIndex = valueEnd;
+    searchFrom = valueEnd;
   }
 
   return cursor === 0 ? value : redacted + value.slice(cursor);
+};
+
+// The index after the key token that starts at `index`, or after the quote
+// when `index` is an opening quote.
+const skipTextKeyToken = (value: string, index: number): number => {
+  if (value[index] === '"' || value[index] === "'") return index + 1;
+  const token = /[a-z0-9_.-]*/iuy;
+  token.lastIndex = index;
+  token.exec(value);
+  return token.lastIndex;
+};
+
+// Runs a sticky `key=`/`key:` pattern as a global search from `from` would,
+// trying each key token once: from its first key character, or the quote
+// before it. A start after a later dot or dash of `a.b-c` reaches the same
+// separator and value, so it can only match where the token's first start
+// already did, and that start's longer key is the one sensitivity is judged
+// on. Retrying from every dot or dash made long tokens quadratic.
+const findTextAssignment = (
+  pattern: RegExp,
+  value: string,
+  from: number,
+): RegExpExecArray | null => {
+  const candidates = /["']|(?<![a-z0-9_])[a-z0-9_]/giu;
+  candidates.lastIndex = from;
+  for (
+    let candidate = candidates.exec(value);
+    candidate;
+    candidate = candidates.exec(value)
+  ) {
+    pattern.lastIndex = candidate.index;
+    const match = pattern.exec(value);
+    if (match) return match;
+    candidates.lastIndex = skipTextKeyToken(value, candidate.index);
+  }
+  return null;
 };
 
 const redactSensitiveAssignments = (
   value: string,
   config: ResolvedRedactionConfig,
 ): string => {
+  // `(?:\s*\?\.)?\s*` rather than `\s*(?:\?\.)?\s*`: two adjacent `\s*` split
+  // a whitespace run every possible way before failing.
   const assignmentStart =
-    /(["']?)(?<![a-z0-9_])([a-z0-9_][a-z0-9_.-]*(?:\s*(?:\?\.)?\s*\[\s*(?:["'][a-z0-9_][a-z0-9_.-]*["']|[a-z0-9_][a-z0-9_.-]*)\s*\])*)\1(\s*[:=]\s*)/giu;
+    /(["']?)(?<![a-z0-9_])([a-z0-9_][a-z0-9_.-]*(?:(?:\s*\?\.)?\s*\[\s*(?:["'][a-z0-9_][a-z0-9_.-]*["']|[a-z0-9_][a-z0-9_.-]*)\s*\])*)\1(\s*[:=]\s*)/iuy;
   let cursor = 0;
   let redacted = "";
+  let searchFrom = 0;
 
   for (
-    let match = assignmentStart.exec(value);
+    let match = findTextAssignment(assignmentStart, value, searchFrom);
     match;
-    match = assignmentStart.exec(value)
+    match = findTextAssignment(assignmentStart, value, searchFrom)
   ) {
+    const valueStart = match.index + match[0].length;
+    searchFrom = valueStart;
     const key = match[2];
     if (!key || !isSensitiveTextKey(key, config)) continue;
 
-    const valueStart = assignmentStart.lastIndex;
     const serializedReplacement = JSON.stringify(config.replacement);
     const serializedReplacementEnd = valueStart + serializedReplacement.length;
     const valueEnd =
@@ -703,17 +779,99 @@ const redactSensitiveAssignments = (
       rawValue === config.replacement ||
       unwrappedValue === config.replacement
     ) {
-      assignmentStart.lastIndex = valueEnd;
+      searchFrom = valueEnd;
       continue;
     }
 
     redacted += value.slice(cursor, match.index);
     redacted += value.slice(match.index, valueStart) + config.replacement;
     cursor = valueEnd;
-    assignmentStart.lastIndex = valueEnd;
+    searchFrom = valueEnd;
   }
 
   return cursor === 0 ? value : redacted + value.slice(cursor);
+};
+
+const ASSIGNMENT_VALUE_CLOSERS = new Map([
+  ['"', '"'],
+  ["'", "'"],
+  ["`", "`"],
+  ["(", ")"],
+  ["[", "]"],
+  ["{", "}"],
+]);
+
+// Where a free-form assignment's value ends, trying what used to be the
+// value alternatives of one regex, in its order: a wrapped value, an
+// authorization scheme with its credential, then a bare token. `unclosed`
+// remembers how far a failed wrapper scan got. A later value opening the same
+// wrapper before that point would scan to the same place and fail again, so
+// text full of `key=(` no longer rescans to its end for every one of them.
+const findAssignmentValueEnd = (
+  value: string,
+  start: number,
+  unclosed: Map<string, number>,
+): number | undefined => {
+  const opener = value[start] ?? "";
+  const closer = ASSIGNMENT_VALUE_CLOSERS.get(opener);
+  if (closer && start >= (unclosed.get(opener) ?? 0)) {
+    const wrapped =
+      /"(?:\\.|[^"\\])*|'(?:\\.|[^'\\])*|`(?:\\.|[^`\\])*|\((?:\\.|[^)\\])*|\[[^\]]*|\{[^}]*/uy;
+    wrapped.lastIndex = start;
+    wrapped.exec(value);
+    if (value[wrapped.lastIndex] === closer) return wrapped.lastIndex + 1;
+    unclosed.set(opener, wrapped.lastIndex);
+  }
+
+  const bare = /(?:Bearer|Basic)\s+[^\s}\]"']+|[^\s}\]"']+/iuy;
+  bare.lastIndex = start;
+  return bare.test(value) ? bare.lastIndex : undefined;
+};
+
+// String#replace over free-form assignments, minus its quadratic cases: each
+// key token is tried once and a value that never closes is scanned once.
+const replaceTextAssignments = (
+  value: string,
+  assignment: RegExp,
+  replace: (
+    match: string,
+    key: string,
+    separator: string,
+    rawValue: string,
+  ) => string,
+): string => {
+  const unclosed = new Map<string, number>();
+  let cursor = 0;
+  let replaced = "";
+  let searchFrom = 0;
+
+  for (
+    let match = findTextAssignment(assignment, value, searchFrom);
+    match;
+    match = findTextAssignment(assignment, value, searchFrom)
+  ) {
+    const [head, key = "", separator = ""] = match;
+    const valueStart = match.index + head.length;
+    const valueEnd = findAssignmentValueEnd(value, valueStart, unclosed);
+    if (valueEnd === undefined) {
+      // Every later start in this token reaches the same value.
+      searchFrom = skipTextKeyToken(value, match.index);
+      continue;
+    }
+
+    replaced +=
+      value.slice(cursor, match.index) +
+      replace(
+        value.slice(match.index, valueEnd),
+        key,
+        separator,
+        value.slice(valueStart, valueEnd),
+      );
+    cursor = valueEnd;
+    searchFrom = valueEnd;
+  }
+
+  return cursor === 0 ? value : replaced + value.slice(cursor);
 };
 
 const redactTextWithConfig = (
@@ -737,12 +895,14 @@ const redactTextWithConfig = (
     valueWithRedactedJsonKeys,
     config,
   );
+  // Up to the separator only; findAssignmentValueEnd measures the value.
   const assignment =
-    /(?<![a-z0-9_])([a-z0-9_][a-z0-9_.-]*(?:\s*(?:\?\.)?\s*\[\s*(?:["'][a-z0-9_][a-z0-9_.-]*["']|[a-z0-9_][a-z0-9_.-]*)\s*\])*)(\s*[:=]\s*)(?![a-z0-9_][a-z0-9_.-]*\s*[:=])("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\((?:\\.|[^)\\])*\)|\[[^\]]*\]|\{[^}]*\}|(?:Bearer|Basic)\s+[^\s}\]"']+|[^\s}\]"']+)/giu;
+    /(?<![a-z0-9_])([a-z0-9_][a-z0-9_.-]*(?:(?:\s*\?\.)?\s*\[\s*(?:["'][a-z0-9_][a-z0-9_.-]*["']|[a-z0-9_][a-z0-9_.-]*)\s*\])*)(\s*[:=]\s*)(?![a-z0-9_][a-z0-9_.-]*\s*[:=])/iuy;
 
-  return valueWithDirectRedaction.replace(
+  return replaceTextAssignments(
+    valueWithDirectRedaction,
     assignment,
-    (match, key: string, separator: string, rawValue: string) => {
+    (match, key, separator, rawValue) => {
       const isSensitive = isSensitiveTextKey(key, config);
       if (isSensitive) return `${key}${separator}${config.replacement}`;
       if (nestingDepth >= MAX_TEXT_NESTING_DEPTH) {
@@ -796,6 +956,80 @@ export const redactText = (
   return redactTextWithConfig(value, config, 0);
 };
 
+// Keyed per process: a hidden job id becomes a pseudonym that holds for as
+// long as the server runs, so rows, selection and j/k stepping still tell
+// jobs apart. Without the key, hashing guessed ids (sequential ones are easy)
+// would reveal which job is which.
+const JOB_ID_PSEUDONYM_KEY = randomBytes(32);
+
+const pseudonymizeJobId = (id: unknown, replacement: string): string =>
+  `${replacement}:${createHmac("sha256", JOB_ID_PSEUDONYM_KEY)
+    .update(String(id))
+    .digest("hex")
+    .slice(0, 16)}`;
+
+// Job options repeat identifiers, and key rules match names exactly, so hiding
+// `id` never reached them. Bull and BullMQ keep a custom id in `jobId`, and
+// repeatable jobs keep it in `repeat.jobId` (Bull also builds `repeat.key`
+// from it); flow children hold their parent's id.
+const JOB_ID_OPTION_PATHS = [
+  ["jobId"],
+  ["repeatJobKey"],
+  ["parent", "id"],
+  ["repeat", "jobId"],
+  ["repeat", "key"],
+];
+// BullMQ Pro keeps the group in `group.id`; `groupId` is GroupMQ's add option.
+const GROUP_ID_OPTION_PATHS = [["group", "id"], ["groupId"]];
+// Bee-Queue keeps every failed attempt's stack in the job's own options.
+const STACKTRACE_OPTION_KEYS = new Set(["stacktrace", "stacktraces"]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const withoutStacktraceOptions = (opts: AdaptedJob["opts"]) =>
+  isRecord(opts)
+    ? Object.fromEntries(
+        Object.entries(opts).filter(
+          ([key]) => !STACKTRACE_OPTION_KEYS.has(key),
+        ),
+      )
+    : opts;
+
+const firstLine = (text: string | undefined): string | undefined => {
+  if (typeof text !== "string") return text;
+  const end = text.search(/[\r\n]/u);
+  return end === -1 ? text : text.slice(0, end);
+};
+
+// Sets each path of the (freshly copied) redacted options from the raw value
+// there - but only where the redacted options still have that field, so a
+// parent another rule replaced wholesale keeps its replacement.
+const presentOptionIdentities = (
+  redacted: unknown,
+  raw: unknown,
+  paths: string[][],
+  present: (value: unknown) => unknown,
+): void => {
+  for (const path of paths) {
+    let target = redacted;
+    let source = raw;
+    for (const key of path.slice(0, -1)) {
+      target = isRecord(target) ? target[key] : undefined;
+      source = isRecord(source) ? source[key] : undefined;
+    }
+    const key = path.at(-1) ?? "";
+    if (
+      isRecord(target) &&
+      isRecord(source) &&
+      key in target &&
+      source[key] != null
+    ) {
+      target[key] = present(source[key]);
+    }
+  }
+};
+
 export const presentJob = (
   job: AdaptedJob,
   privacy?: QueuedashPrivacyConfig,
@@ -806,16 +1040,44 @@ export const presentJob = (
   const exposed: AdaptedJob = {
     ...job,
     data: exposure.jobData ? job.data : {},
-    opts: exposure.jobOptions ? job.opts : {},
+    opts: exposure.jobOptions
+      ? exposure.stacktraces
+        ? job.opts
+        : withoutStacktraceOptions(job.opts)
+      : {},
     returnValue: exposure.returnValues ? job.returnValue : undefined,
+    // A failure reason can carry a whole stack (Bee-Queue reports its first
+    // stored trace), so hidden traces leave only the message line.
+    failedReason: exposure.stacktraces
+      ? job.failedReason
+      : firstLine(job.failedReason),
     stacktrace: exposure.stacktraces ? job.stacktrace : undefined,
   };
   if (!privacy?.redact) return exposed;
 
   const redaction = resolveRedaction(privacy);
+  const replacement = redaction?.replacement ?? DEFAULT_REPLACEMENT;
   const redacted = redactValue(exposed, privacy) as AdaptedJob;
   const redactId = privacyRedactsJobIdentity(privacy);
   const redactGroupId = privacyRedactsGroupIdentity(privacy);
+  if (redactId) {
+    // The same pseudonym as the job it names, so `opts.jobId` matches `id`
+    // and a child's `parent.id` matches its parent's row.
+    presentOptionIdentities(
+      redacted.opts,
+      exposed.opts,
+      JOB_ID_OPTION_PATHS,
+      (id) => pseudonymizeJobId(id, replacement),
+    );
+  }
+  if (redactGroupId) {
+    presentOptionIdentities(
+      redacted.opts,
+      exposed.opts,
+      GROUP_ID_OPTION_PATHS,
+      () => replacement,
+    );
+  }
   // Bee-Queue and GroupMQ use an identifier as the default job name.
   // Hiding that identifier must also hide its generated display alias.
   const nameIsHiddenIdentity =
@@ -823,14 +1085,13 @@ export const presentJob = (
     (redactGroupId && exposed.name === exposed.groupId);
   return {
     ...redacted,
-    name: nameIsHiddenIdentity
-      ? (redaction?.replacement ?? DEFAULT_REPLACEMENT)
-      : redacted.name,
-    id: redactId ? redacted.id : exposed.id,
+    name: nameIsHiddenIdentity ? replacement : redacted.name,
+    // Unique per job: the UI keys rows, selection and j/k stepping by id.
+    id: redactId ? pseudonymizeJobId(exposed.id, replacement) : exposed.id,
     groupId: redactGroupId
       ? exposed.groupId === undefined
         ? undefined
-        : redaction?.replacement
+        : replacement
       : exposed.groupId,
     // Text is already sanitized by redactValue. Preserve explicit field and
     // element rules, keeping a wholly redacted trace an array on the wire.
@@ -839,7 +1100,7 @@ export const presentJob = (
         ? undefined
         : Array.isArray(redacted.stacktrace)
           ? redacted.stacktrace
-          : [redaction?.replacement ?? DEFAULT_REPLACEMENT],
+          : [replacement],
   };
 };
 

@@ -42,6 +42,12 @@ export type JobPageMeta = {
   exhausted?: boolean;
   scanned: number;
   scanLimit: number;
+  // The adapter could not see every job of this status, as GroupMQ can't past
+  // its first 5,000 groups, so a larger scan limit would not reach the rest.
+  // `capped` alone may only mean the caller's own limit was reached, which a
+  // scan that raises its limit a batch at a time hits on every page. A
+  // truncated page is also capped.
+  truncated?: boolean;
 };
 
 export type JobScanToken = symbol;
@@ -49,6 +55,7 @@ export type JobScanToken = symbol;
 // Per-operation feature support with details
 export type FeatureSupport<SupportedStatus extends string = string> = {
   addJobOptions: boolean;
+  addJobOptionKeys: readonly string[]; // The exact option keys a manually added job may set
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
@@ -94,9 +101,23 @@ export class UnsupportedSchedulerUpdateError extends Error {
   }
 }
 
+// Thrown by the by-id job operations when the id is not a job of this queue,
+// including ids that name one of the queue's own Redis keys ("meta",
+// "repeat:<id>", ...), so callers can answer "not found" rather than fail.
+export class JobNotFoundError extends Error {
+  constructor(message = "Job not found") {
+    super(message);
+    this.name = "JobNotFoundError";
+  }
+}
+
+// A window of `[start, end)` minutes ago, counted back from now.
 export type QueueMetrics = {
-  data: number[]; // Array of job counts per minute
-  count: number; // Total count in the time range
+  data: number[]; // One count per minute, newest first, zero when none finished
+  count: number; // Sum of `data`
+  previousCount: number | null; // Sum over the preceding equal window; null when history does not reach it
+  coveredMinutes: number; // Minutes of the window inside the queue's metrics history; the rate denominator
+  // Raw library values. `prevCount` is a lifetime total, not a trend baseline.
   meta: {
     count: number; // Total since queue started
     prevTS: number; // Previous timestamp
@@ -145,6 +166,11 @@ export abstract class QueueAdapter<
 
   // Queue operations
   abstract getJobCounts(): Promise<JobCounts>;
+  // Health polls need only this; adapters override the full count with a
+  // single cheap read where the library offers one.
+  async getFailedCount(): Promise<number> {
+    return (await this.getJobCounts()).failed ?? 0;
+  }
   abstract isPaused(): Promise<boolean>;
   abstract pause(): Promise<void>;
   abstract resume(): Promise<void>;
@@ -213,8 +239,10 @@ export abstract class QueueAdapter<
     return []; // Default: no groups
   }
 
-  // Worker inspection (optional - normalized to avoid returning raw Redis data)
-  async getWorkers(): Promise<WorkerInfo[]> {
+  // Worker inspection (optional - normalized to avoid returning raw Redis data).
+  // Null means this Redis cannot be asked (e.g. CLIENT is disabled), which must
+  // not read as "no workers".
+  async getWorkers(): Promise<WorkerInfo[] | null> {
     return [];
   }
 

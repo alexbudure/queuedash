@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.6",
-    "@queuedash/api": "^3.12.0",
+    "@queuedash/api": "^4.0.0",
     "bull": "^4.16.5",
     "hono": "^4.10.7"
   },

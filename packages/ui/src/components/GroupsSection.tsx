@@ -3,6 +3,7 @@ import { Search, X, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { formatCount, formatCountLabel } from "../utils/format";
+import { BULK_VERBS, bulkResultToast } from "../utils/mutationToasts";
 import { FOCUS_RING, SECTION_LABEL, TEXT_FAINT } from "../utils/styles";
 import { trpc } from "../utils/trpc";
 import { Alert } from "./Alert";
@@ -34,12 +35,10 @@ export const GroupsSection = ({
 
   const { mutate: bulkRemove, isPending: isDeleting } =
     trpc.job.bulkRemoveByGroup.useMutation({
+      // Active jobs are attempted and fail, so an all-failed result is real;
+      // it used to be announced as a success.
       onSuccess(data) {
-        toast.success(
-          `Removed ${formatCountLabel(data.succeeded, "job")}${
-            data.failed > 0 ? `, ${data.failed} failed` : ""
-          }${data.partial ? "; more jobs may remain in this group" : ""}`,
-        );
+        bulkResultToast(BULK_VERBS.remove, "job", data);
       },
       onError(error) {
         toast.error(error.message || "Failed to remove jobs from the group");
@@ -81,23 +80,27 @@ export const GroupsSection = ({
                 {selectedGroupId}
               </span>
             </span>
+            {/* GroupMQ counts a group's waiting jobs only, so the unit says so
+                - "(3 jobs)" read as the size of what Remove would delete. */}
             {selectedCount !== undefined ? (
               <span className="shrink-0 font-mono text-[10px] text-purple-600 dark:text-purple-400">
-                ({formatCountLabel(selectedCount, "job")})
+                ({formatCountLabel(selectedCount, "waiting job")})
               </span>
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {/* Group-wide, unlike the dock's status-scoped "Remove matches"
+                beside the same filtered list - so the copy has to say so. */}
             {selectedGroupId && canRemoveJobs ? (
               <Alert
                 isPending={isDeleting}
-                title="Remove eligible jobs in this group?"
-                description={`This action cannot be undone. It will permanently remove eligible jobs from group "${selectedGroupId}" found within the server scan limit.`}
+                title={`Remove every job in group "${selectedGroupId}"?`}
+                description={`This permanently removes the jobs in group "${selectedGroupId}" in every status, completed and failed included, not just the list below. Active jobs are skipped and count as failed. It stops at the server scan limit and cannot be undone.`}
                 action={
                   <Button
                     variant="filled"
                     colorScheme="red"
-                    label="Yes, remove eligible"
+                    label="Yes, remove from every status"
                     onClick={() =>
                       bulkRemove({ queueName, groupId: selectedGroupId })
                     }
@@ -108,7 +111,7 @@ export const GroupsSection = ({
                   as="span"
                   colorScheme="red"
                   icon={<Trash2 className="size-3" />}
-                  label="Remove eligible"
+                  label="Remove all in group"
                   size="sm"
                   isLoading={isDeleting}
                 />

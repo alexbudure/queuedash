@@ -5,6 +5,7 @@ import {
   LockKeyhole,
   Search,
   Settings,
+  Star,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import {
@@ -41,11 +42,26 @@ type QueueSummary = {
   access: { mode: "full" | "read-only" | "hidden" };
 };
 
+/**
+ * `decodeURIComponent` throws on a malformed escape: a v3 bookmark such as
+ * `/100%` (v3 did not encode queue names in its links) or a truncated `%2`.
+ * The palette is always mounted, so that one URL blanked the whole dashboard.
+ * The raw segment is what the router's own params fall back to, so the page
+ * and the palette still agree on the queue name.
+ */
+export const decodePathSegment = (segment: string): string => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 /** The queue the palette was opened on, from the same paths the router serves. */
 const getQueueNameFromPath = (pathname: string): string | null => {
   const path = pathname.replace(/\/+$/, "");
   if (path === "" || path === "/settings") return null;
-  return decodeURIComponent(path.replace(/^\/(queues\/)?/, ""));
+  return decodePathSegment(path.replace(/^\/(queues\/)?/, ""));
 };
 
 const ITEM_CLASS = ({
@@ -109,7 +125,7 @@ export const CommandPalette = ({
   onOpenChange: (open: boolean) => void;
   queues: QueueSummary[] | undefined;
 }) => {
-  const { portalContainer, preferences } = useQueuedash();
+  const { portalContainer, preferences, togglePinnedQueue } = useQueuedash();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { contains } = useFilter({ sensitivity: "base" });
@@ -130,9 +146,15 @@ export const CommandPalette = ({
     return pinnedDelta || left.displayName.localeCompare(right.displayName);
   });
   // Same order as the status pills, not the adapter's.
+  // BullMQ lists Paused on every queue so a backlog a BullMQ 5 producer parked
+  // there stays visible; like the status pills, offer it only when it holds jobs.
   const currentStatuses = currentQueue
-    ? STATUS_ORDER.filter((status) =>
-        (currentQueue.supports.statuses as readonly string[]).includes(status),
+    ? STATUS_ORDER.filter(
+        (status) =>
+          (currentQueue.supports.statuses as readonly string[]).includes(
+            status,
+          ) &&
+          (status !== "paused" || (currentQueue.counts.paused ?? 0) > 0),
       )
     : [];
 
@@ -145,6 +167,8 @@ export const CommandPalette = ({
       navigate(`${currentQueuePath}?status=${value}`);
     } else if (kind === "view" && currentQueuePath) {
       navigate(`${currentQueuePath}?view=${value}`);
+    } else if (kind === "action" && value === "pin" && currentQueueName) {
+      togglePinnedQueue(currentQueueName);
     }
     onOpenChange(false);
   };
@@ -237,6 +261,15 @@ export const CommandPalette = ({
                       icon={<Calendar className="size-3.5" />}
                     />
                   ) : null}
+                  <Item
+                    id="action:pin"
+                    label={
+                      preferences.pinnedQueues.includes(currentQueue.name)
+                        ? "Unpin this queue"
+                        : "Pin this queue"
+                    }
+                    icon={<Star className="size-3.5" />}
+                  />
                 </ListBoxSection>
               ) : null}
 

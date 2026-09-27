@@ -308,7 +308,13 @@ export const SchedulerTable = ({
   }, [data, selectedScheduler]);
 
   const { mutate: bulkRemove, isPending: isBulkRemoving } =
-    trpc.scheduler.bulkRemove.useMutation(mutationToasts("Schedulers removed"));
+    trpc.scheduler.bulkRemove.useMutation(
+      mutationToasts("Schedulers removed", {
+        // Kept until the request settles so a failure leaves the selection
+        // intact to try again.
+        onSuccess: () => table.resetRowSelection(),
+      }),
+    );
 
   const handleRowClick = (
     e: React.MouseEvent<HTMLDivElement>,
@@ -492,8 +498,6 @@ export const SchedulerTable = ({
                         .getSelectedRowModel()
                         .rows.map((row) => row.original.key),
                     });
-
-                    table.resetRowSelection();
                   }}
                 />
               }

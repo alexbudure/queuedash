@@ -1,22 +1,24 @@
 import * as trpcFastify from "@trpc/server/adapters/fastify";
 import type {
   FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
   onRequestHookHandler,
   preHandlerHookHandler,
+  RouteShorthandOptions,
 } from "fastify";
 
 import { closeQueuedashContext } from "../queue-registry";
 import { appRouter } from "../routers/_app";
 import type { Context } from "../trpc";
 import {
-  createQueuedashExpiredSessionCookie,
-  createQueuedashSessionCookie,
-  getQueuedashAuthMode,
-  isQueuedashBasicAuthorized,
-  isQueuedashSessionAuthorized,
-  QUEUEDASH_AUTH_CHALLENGE,
-  QUEUEDASH_AUTH_REQUIRED_MESSAGE,
+  getQueuedashRoute,
+  type QueuedashAuthMode,
   type QueuedashAuthOptions,
+  type QueuedashResponse,
+  type QueuedashRoute,
+  resolveQueuedashRequest,
+  validateQueuedashAuthOptions,
 } from "./auth";
 import { createQueuedashHtml } from "./utils";
 
@@ -27,6 +29,11 @@ export type FastifyQueuedashHooksOptions = Partial<{
 
 /** @deprecated Use FastifyQueuedashHooksOptions instead. */
 export type FastifyQueueDashHooksOptions = FastifyQueuedashHooksOptions;
+
+const send = (
+  res: FastifyReply,
+  { status, headers, body }: QueuedashResponse,
+) => res.headers(headers).code(status).send(body);
 
 export function fastifyQueuedashPlugin(
   fastify: FastifyInstance,
@@ -41,108 +48,77 @@ export function fastifyQueuedashPlugin(
     uiHooks?: FastifyQueuedashHooksOptions;
     auth?: QueuedashAuthOptions;
   },
-  done: () => void,
+  done: (error?: Error) => void,
 ): void {
-  const authMode = getQueuedashAuthMode(auth);
-  const sendUnauthorized = (
-    res: Parameters<onRequestHookHandler>[1],
-    challenge = false,
-  ) => {
-    res.header("Cache-Control", "no-store");
-    if (challenge) {
-      res.header("WWW-Authenticate", QUEUEDASH_AUTH_CHALLENGE);
-    }
-    return res.code(401).send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
-  };
+  let authMode: QueuedashAuthMode | undefined;
+  try {
+    authMode = validateQueuedashAuthOptions(auth);
+  } catch (error) {
+    // avvio does not catch a synchronous throw from a callback plugin, so it
+    // would escape as an uncaught exception instead of rejecting ready().
+    done(error as Error);
+    return;
+  }
+  // Routes are registered beneath any prefix the host mounted this plugin
+  // under, and the browser needs that full path for the dashboard's links,
+  // its API calls, and the session cookie.
+  const mountPath = `${fastify.prefix}${baseUrl}`;
+  const resolve = (req: FastifyRequest, route: QueuedashRoute) =>
+    resolveQueuedashRequest(auth, {
+      route,
+      method: req.method,
+      authorization: req.headers.authorization,
+      cookie: req.headers.cookie,
+      contentType: req.headers["content-type"],
+      baseUrl: mountPath,
+      isSecure: req.protocol === "https",
+    });
 
-  fastify.addHook("onRequest", async (req, res) => {
-    const registeredRoute = req.routeOptions.url ?? "";
-    const trpcRoute = `${baseUrl}/trpc`;
-    const isTrpcRoute =
-      registeredRoute === trpcRoute ||
-      registeredRoute.startsWith(`${trpcRoute}/`);
-    if (isTrpcRoute) {
-      res.header("Cache-Control", "private, no-store");
-    }
-
-    if (
-      authMode === "basic" &&
-      !isQueuedashBasicAuthorized(req.headers.authorization, auth)
-    ) {
-      return sendUnauthorized(res, true);
-    }
-
-    if (
-      authMode === "session" &&
-      isTrpcRoute &&
-      !isQueuedashSessionAuthorized(req.headers.cookie, auth)
-    ) {
-      return sendUnauthorized(res);
-    }
-  });
   fastify.addHook("onClose", async () => {
     await closeQueuedashContext(ctx);
   });
 
-  if (authMode === "session" && auth) {
-    fastify.get(`${baseUrl}/auth/session`, async (req, res) => {
-      if (!isQueuedashSessionAuthorized(req.headers.cookie, auth)) {
-        return sendUnauthorized(res);
-      }
-
-      return res.header("Cache-Control", "no-store").code(204).send();
-    });
-    fastify.post(`${baseUrl}/auth/login`, async (req, res) => {
-      if (!isQueuedashBasicAuthorized(req.headers.authorization, auth)) {
-        return sendUnauthorized(res);
-      }
-
-      return res
-        .header("Cache-Control", "no-store")
-        .header(
-          "Set-Cookie",
-          createQueuedashSessionCookie({
-            auth,
-            baseUrl,
-            requestIsSecure: req.protocol === "https",
-          }),
-        )
-        .code(204)
-        .send();
-    });
-    fastify.post(`${baseUrl}/auth/logout`, async (_, res) => {
-      return res
-        .header("Cache-Control", "no-store")
-        .header("Set-Cookie", createQueuedashExpiredSessionCookie(baseUrl))
-        .code(204)
-        .send();
-    });
-  }
-
-  fastify.get(`${baseUrl}/*`, { ...uiHooks }, (_, res) => {
+  const authorizeDashboard = async (req: FastifyRequest, res: FastifyReply) => {
+    const { "*": path = "" } = req.params as { "*"?: string };
+    const route = getQueuedashRoute(req.method, `/${path}`);
+    // The tRPC routes below own /trpc. Nothing that reaches these routes may
+    // run it, however the router happened to match the path.
+    const decision = resolve(req, route === "trpc" ? "not-found" : route);
+    if (decision.type === "respond") return send(res, decision);
+  };
+  // Every method is routed here so that each path under baseUrl gets the
+  // shared decision, and it runs before any hooks the host added for the UI.
+  const dashboardOptions = (): RouteShorthandOptions => {
+    const onRequest: onRequestHookHandler[] = [authorizeDashboard];
+    return {
+      ...uiHooks,
+      onRequest: onRequest.concat(uiHooks?.onRequest ?? []),
+    };
+  };
+  const serveApp = (_: FastifyRequest, res: FastifyReply) => {
     res
       .type("text/html")
       .send(
         createQueuedashHtml(
-          baseUrl,
+          mountPath,
           ctx.ui,
-          authMode === "session" ? { baseUrl: `${baseUrl}/auth` } : undefined,
+          authMode === "session" ? { baseUrl: `${mountPath}/auth` } : undefined,
         ),
       );
-  });
-  fastify.get(baseUrl, { ...uiHooks }, (_, res) => {
-    res
-      .type("text/html")
-      .send(
-        createQueuedashHtml(
-          baseUrl,
-          ctx.ui,
-          authMode === "session" ? { baseUrl: `${baseUrl}/auth` } : undefined,
-        ),
-      );
-  });
+  };
+  fastify.all(baseUrl, dashboardOptions(), serveApp);
+  fastify.all(`${baseUrl}/*`, dashboardOptions(), serveApp);
+
   fastify.register(
     (rpc, _options, ready) => {
+      // A hook in this encapsulated context covers exactly the tRPC routes
+      // below, whatever prefix the host mounted the plugin under. Matching the
+      // registered URL instead missed them beneath a prefix.
+      rpc.addHook("onRequest", async (req, res) => {
+        const decision = resolve(req, "trpc");
+        if (decision.type === "respond") return send(res, decision);
+        if (decision.type === "trpc") res.headers(decision.headers);
+      });
       // tRPC reads JSON itself. Keep this parser scoped to the API routes.
       rpc.removeContentTypeParser("application/json");
       rpc.addContentTypeParser(
@@ -150,23 +126,22 @@ export function fastifyQueuedashPlugin(
         { parseAs: "string" },
         (_req, body, parsed) => parsed(null, body),
       );
-      rpc.removeContentTypeParser("multipart/form-data");
-      rpc.addContentTypeParser(
-        "multipart/form-data",
-        {},
-        (_req, body, parsed) => parsed(null, body),
-      );
-      // A batch of eight queue.byName calls exceeds Fastify's default
-      // 100-character named-parameter limit. Wildcards are not subject to it.
-      rpc.all<{ Params: { "*": string } }>("/*", async (req, res) => {
+      const handleTrpc = async (
+        req: FastifyRequest<{ Params: { "*"?: string } }>,
+        res: FastifyReply,
+      ) => {
         await trpcFastify.fastifyRequestHandler({
           router: appRouter,
           createContext: () => ctx,
           req,
           res,
-          path: req.params["*"],
+          path: req.params["*"] ?? "",
         });
-      });
+      };
+      rpc.all<{ Params: { "*"?: string } }>("/", handleTrpc);
+      // A batch of eight queue.byName calls exceeds Fastify's default
+      // 100-character named-parameter limit. Wildcards are not subject to it.
+      rpc.all<{ Params: { "*"?: string } }>("/*", handleTrpc);
       ready();
     },
     { prefix: `${baseUrl}/trpc` },

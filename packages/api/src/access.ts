@@ -37,12 +37,28 @@ export type ResolvedQueueAccess = {
 const escapeRegExp = (value: string): string =>
   value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Access is resolved on every procedure call, so each pattern is compiled
+// once rather than per queue per call. The patterns come from the host's
+// config, but a bound keeps a long-lived server from growing without limit;
+// the oldest pattern goes first.
+const MAX_COMPILED_QUEUE_PATTERNS = 1_000;
+const compiledQueuePatterns = new Map<string, RegExp>();
+
 const matchesQueuePattern = (queueName: string, pattern: string): boolean => {
-  const expression = pattern
-    .split("*")
-    .map((part) => escapeRegExp(part))
-    .join(".*");
-  return new RegExp(`^${expression}$`, "u").test(queueName);
+  let compiled = compiledQueuePatterns.get(pattern);
+  if (!compiled) {
+    const expression = pattern
+      .split("*")
+      .map((part) => escapeRegExp(part))
+      .join(".*");
+    compiled = new RegExp(`^${expression}$`, "u");
+    if (compiledQueuePatterns.size >= MAX_COMPILED_QUEUE_PATTERNS) {
+      const oldest = compiledQueuePatterns.keys().next().value;
+      if (oldest !== undefined) compiledQueuePatterns.delete(oldest);
+    }
+    compiledQueuePatterns.set(pattern, compiled);
+  }
+  return compiled.test(queueName);
 };
 
 export const resolveQueueAccess = (

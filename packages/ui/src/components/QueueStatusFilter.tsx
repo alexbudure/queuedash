@@ -75,7 +75,12 @@ export const QueueStatusFilter = ({
       ? [{ name: "Waiting children", status: "waiting-children" as const }]
       : []),
     { name: "Delayed", status: "delayed" },
-    ...(queue?.supports.statuses.includes("paused")
+    // BullMQ lists "paused" on every queue, for the legacy list an older
+    // producer can still fill. Empty, it is a permanent "Paused 0" beside a
+    // queue that is running - so it only shows when it holds jobs, or when a
+    // link selected it.
+    ...(queue?.supports.statuses.includes("paused") &&
+    ((queue.counts.paused ?? 0) > 0 || status === "paused")
       ? [{ name: "Paused", status: "paused" as const }]
       : []),
   ];

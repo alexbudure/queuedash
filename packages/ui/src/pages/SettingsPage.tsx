@@ -300,6 +300,7 @@ export const SettingsPage = () => {
   const {
     branding,
     defaultPreferences,
+    overrides,
     preferenceScope,
     preferences,
     resetPreferences,
@@ -315,15 +316,17 @@ export const SettingsPage = () => {
   const server = trpc.settings.get.useQuery();
   const pinnedCount = preferences.pinnedQueues.length;
   // The question this page exists to answer, answered once at the top rather
-  // than by scanning eight rows for the ones that differ.
+  // than by scanning eight rows for the ones that differ. It counts what this
+  // browser chose, not values that happen to differ: a setting left alone
+  // keeps following the server default.
   const overrideCount = [
-    preferences.theme !== defaultPreferences.theme,
-    preferences.refreshIntervalMs !== defaultPreferences.refreshIntervalMs,
-    preferences.jobsPerPage !== defaultPreferences.jobsPerPage,
-    preferences.defaultJobStatus !== defaultPreferences.defaultJobStatus,
-    preferences.density !== defaultPreferences.density,
-    preferences.timestamps !== defaultPreferences.timestamps,
-    preferences.showOverviewMetrics !== defaultPreferences.showOverviewMetrics,
+    overrides.theme !== undefined,
+    overrides.refreshIntervalMs !== undefined,
+    overrides.jobsPerPage !== undefined,
+    overrides.defaultJobStatus !== undefined,
+    overrides.density !== undefined,
+    overrides.timestamps !== undefined,
+    overrides.showOverviewMetrics !== undefined,
     pinnedCount > 0,
   ].filter(Boolean).length;
   // The pins are the only reset casualty a user cannot rebuild from this page,
@@ -363,7 +366,7 @@ export const SettingsPage = () => {
                 THEME_OPTIONS,
                 defaultPreferences.theme,
               )}
-              isOverridden={preferences.theme !== defaultPreferences.theme}
+              isOverridden={overrides.theme !== undefined}
               onReset={() => setTheme(defaultPreferences.theme)}
             >
               <Select
@@ -380,10 +383,7 @@ export const SettingsPage = () => {
               defaultLabel={formatRefreshIntervalLabel(
                 defaultPreferences.refreshIntervalMs,
               )}
-              isOverridden={
-                preferences.refreshIntervalMs !==
-                defaultPreferences.refreshIntervalMs
-              }
+              isOverridden={overrides.refreshIntervalMs !== undefined}
               onReset={() =>
                 setRefreshInterval(defaultPreferences.refreshIntervalMs)
               }
@@ -409,9 +409,7 @@ export const SettingsPage = () => {
               label="Jobs per load"
               hint="Rows fetched each time a job table loads more"
               defaultLabel={String(defaultPreferences.jobsPerPage)}
-              isOverridden={
-                preferences.jobsPerPage !== defaultPreferences.jobsPerPage
-              }
+              isOverridden={overrides.jobsPerPage !== undefined}
               onReset={() => setJobsPerPage(defaultPreferences.jobsPerPage)}
             >
               <Select
@@ -433,10 +431,7 @@ export const SettingsPage = () => {
                 JOB_STATUS_OPTIONS,
                 defaultPreferences.defaultJobStatus,
               )}
-              isOverridden={
-                preferences.defaultJobStatus !==
-                defaultPreferences.defaultJobStatus
-              }
+              isOverridden={overrides.defaultJobStatus !== undefined}
               onReset={() =>
                 setDefaultJobStatus(defaultPreferences.defaultJobStatus)
               }
@@ -456,7 +451,7 @@ export const SettingsPage = () => {
                 DENSITY_OPTIONS,
                 defaultPreferences.density,
               )}
-              isOverridden={preferences.density !== defaultPreferences.density}
+              isOverridden={overrides.density !== undefined}
               onReset={() => setDensity(defaultPreferences.density)}
             >
               <Select
@@ -474,9 +469,7 @@ export const SettingsPage = () => {
                 TIMESTAMP_OPTIONS,
                 defaultPreferences.timestamps,
               )}
-              isOverridden={
-                preferences.timestamps !== defaultPreferences.timestamps
-              }
+              isOverridden={overrides.timestamps !== undefined}
               onReset={() => setTimestamps(defaultPreferences.timestamps)}
             >
               <Select
@@ -494,10 +487,7 @@ export const SettingsPage = () => {
                 TOGGLE_OPTIONS,
                 defaultPreferences.showOverviewMetrics ? "on" : "off",
               )}
-              isOverridden={
-                preferences.showOverviewMetrics !==
-                defaultPreferences.showOverviewMetrics
-              }
+              isOverridden={overrides.showOverviewMetrics !== undefined}
               onReset={() =>
                 setShowOverviewMetrics(defaultPreferences.showOverviewMetrics)
               }

@@ -4,13 +4,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { assertQueueActionAllowed } from "../access";
-import {
-  presentErrorMessage,
-  presentScheduler,
-  resolvePrivacyExposure,
-} from "../presentation";
+import { presentScheduler, resolvePrivacyExposure } from "../presentation";
 import type { SchedulerInfo } from "../queue-adapters/base.adapter";
-import { UnsupportedSchedulerUpdateError } from "../queue-adapters/base.adapter";
 import {
   schedulerOptionsSchema,
   schedulerTemplateSchema,
@@ -134,32 +129,20 @@ export const schedulerRouter = router({
         });
       }
 
-      try {
-        const updated = await queueInCtx.adapter.updateScheduler(
-          key,
-          opts,
-          template,
-        );
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Job scheduler not found",
-          });
-        }
-        return { success: true };
-      } catch (e) {
-        if (e instanceof TRPCError) throw e;
-        if (e instanceof UnsupportedSchedulerUpdateError) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: presentErrorMessage(e, internalCtx.privacy),
-          });
-        }
+      // A legacy repeatable's UnsupportedSchedulerUpdateError becomes
+      // BAD_REQUEST in the procedure error middleware.
+      const updated = await queueInCtx.adapter.updateScheduler(
+        key,
+        opts,
+        template,
+      );
+      if (!updated) {
         throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: presentErrorMessage(e, internalCtx.privacy),
+          code: "NOT_FOUND",
+          message: "Job scheduler not found",
         });
       }
+      return { success: true };
     }),
 
   remove: procedure
@@ -184,15 +167,8 @@ export const schedulerRouter = router({
         });
       }
 
-      try {
-        await queueInCtx.adapter.removeScheduler?.(jobSchedulerId);
-        return { success: true };
-      } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: presentErrorMessage(e, internalCtx.privacy),
-        });
-      }
+      await queueInCtx.adapter.removeScheduler?.(jobSchedulerId);
+      return { success: true };
     }),
 
   bulkRemove: procedure
@@ -221,49 +197,38 @@ export const schedulerRouter = router({
           });
         }
 
-        try {
-          const schedulers = await queueInCtx.adapter.getSchedulers?.();
-          const requestedIds = new Set(jobSchedulerIds);
-          const schedulersToRemove = schedulers?.filter((s) =>
-            requestedIds.has(s.key),
-          );
+        const schedulers = await queueInCtx.adapter.getSchedulers?.();
+        const requestedIds = new Set(jobSchedulerIds);
+        const schedulersToRemove = schedulers?.filter((s) =>
+          requestedIds.has(s.key),
+        );
 
-          if (!schedulersToRemove || schedulersToRemove.length === 0) {
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              message: "No schedulers found with provided IDs",
-            });
-          }
-
-          for (
-            let start = 0;
-            start < schedulersToRemove.length;
-            start += BULK_SCHEDULER_CONCURRENCY
-          ) {
-            const results = await Promise.allSettled(
-              schedulersToRemove
-                .slice(start, start + BULK_SCHEDULER_CONCURRENCY)
-                .map(({ key }) => queueInCtx.adapter.removeScheduler?.(key)),
-            );
-            const failure = results.find(
-              (result) => result.status === "rejected",
-            );
-            if (failure?.status === "rejected") throw failure.reason;
-          }
-
-          return schedulersToRemove.map((scheduler) =>
-            presentScheduler(scheduler, internalCtx.privacy),
-          );
-        } catch (e) {
-          if (e instanceof TRPCError) {
-            throw e;
-          } else {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: presentErrorMessage(e, internalCtx.privacy),
-            });
-          }
+        if (!schedulersToRemove || schedulersToRemove.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No schedulers found with provided IDs",
+          });
         }
+
+        for (
+          let start = 0;
+          start < schedulersToRemove.length;
+          start += BULK_SCHEDULER_CONCURRENCY
+        ) {
+          const results = await Promise.allSettled(
+            schedulersToRemove
+              .slice(start, start + BULK_SCHEDULER_CONCURRENCY)
+              .map(({ key }) => queueInCtx.adapter.removeScheduler?.(key)),
+          );
+          const failure = results.find(
+            (result) => result.status === "rejected",
+          );
+          if (failure?.status === "rejected") throw failure.reason;
+        }
+
+        return schedulersToRemove.map((scheduler) =>
+          presentScheduler(scheduler, internalCtx.privacy),
+        );
       },
     ),
 });

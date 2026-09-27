@@ -1,6 +1,15 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+
 import { version } from "../../package.json";
-import type { QueuedashUiConfig } from "../trpc";
-import type { QueuedashPublicAuthConfig } from "./auth";
+import { appRouter } from "../routers/_app";
+import type { Context, QueuedashUiConfig } from "../trpc";
+import {
+  getQueuedashRoute,
+  type QueuedashAuthOptions,
+  type QueuedashPublicAuthConfig,
+  resolveQueuedashRequest,
+  validateQueuedashAuthOptions,
+} from "./auth";
 import { QUEUEDASH_FAVICON } from "./favicon";
 
 const DEFAULT_PRODUCT_NAME = "Queuedash";
@@ -71,3 +80,96 @@ export const createQueuedashHtml = (
         ></script>
       </body>
     </html>`;
+
+/** The pathname beneath `baseUrl`, or undefined when it lies outside it. */
+const getPathBeneath = (
+  pathname: string,
+  baseUrl: string,
+): string | undefined => {
+  const base = baseUrl.replace(/\/+$/, "");
+  if (pathname === base) return "/";
+  return pathname.startsWith(`${base}/`)
+    ? pathname.slice(base.length)
+    : undefined;
+};
+
+/**
+ * Serves the dashboard from Fetch API requests. The Hono and Elysia adapters
+ * differ only in how they mount it.
+ */
+export const createQueuedashFetchHandler = ({
+  auth,
+  baseUrl,
+  ctx,
+}: {
+  auth?: QueuedashAuthOptions;
+  baseUrl: string;
+  ctx: Context;
+}): ((request: Request) => Promise<Response>) => {
+  const authMode = validateQueuedashAuthOptions(auth);
+
+  const handle = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    // The raw pathname, which is also what tRPC resolves procedures from.
+    const path = getPathBeneath(url.pathname, baseUrl);
+    const decision = resolveQueuedashRequest(auth, {
+      route:
+        path === undefined
+          ? "not-found"
+          : getQueuedashRoute(request.method, path),
+      method: request.method,
+      authorization: request.headers.get("Authorization"),
+      cookie: request.headers.get("Cookie"),
+      contentType: request.headers.get("Content-Type"),
+      baseUrl,
+      isSecure: url.protocol === "https:",
+    });
+
+    if (decision.type === "respond") {
+      return new Response(decision.body ?? null, {
+        status: decision.status,
+        headers: decision.headers,
+      });
+    }
+
+    if (decision.type === "trpc") {
+      const response = await fetchRequestHandler({
+        endpoint: `${baseUrl}/trpc`,
+        router: appRouter,
+        req: request,
+        // The same object on every request: the queue registry, and the Redis
+        // connections discovery opens, are cached per context.
+        createContext: () => ctx,
+      });
+      const headers = new Headers(response.headers);
+      for (const [name, value] of Object.entries(decision.headers)) {
+        headers.set(name, value);
+      }
+      return new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+
+    return new Response(
+      createQueuedashHtml(
+        baseUrl,
+        ctx.ui,
+        authMode === "session" ? { baseUrl: `${baseUrl}/auth` } : undefined,
+      ),
+      { headers: { "Content-Type": "text/html; charset=utf-8" } },
+    );
+  };
+
+  return async (request) => {
+    const response = await handle(request);
+    // Elysia sends a HEAD response's body as given.
+    return request.method === "HEAD"
+      ? new Response(null, {
+          status: response.status,
+          headers: response.headers,
+        })
+      : response;
+  };
+};

@@ -16,7 +16,13 @@ prebuilt dashboard automatically.
 npm install @queuedash/api @queuedash/ui
 ```
 
-`@queuedash/ui` supports React and React DOM 18 or newer.
+`@queuedash/ui` supports React and React DOM 18 or newer, and requires Node 22
+or newer to build against.
+
+The UI does not depend on `@queuedash/api`, and its types are self-contained.
+When the dashboard and the API live in separate packages, install
+`@queuedash/ui` in the frontend and `@queuedash/api` in the backend only: the
+frontend never resolves a queue library or a web framework.
 
 ## Basic usage
 
@@ -107,20 +113,24 @@ const reports = new Queue("reports", {
   },
 });
 
+// Build the context once. Queuedash caches its queue registry per context
+// object, so a new object per request would rebuild it on every call.
+const ctx = {
+  queues: [
+    {
+      queue: reports,
+      displayName: "Reports",
+      type: "bullmq" as const,
+    },
+  ],
+};
+
 const handler = (request: Request) =>
   fetchRequestHandler({
     endpoint: "/api/queuedash",
     req: request,
     router: appRouter,
-    createContext: () => ({
-      queues: [
-        {
-          queue: reports,
-          displayName: "Reports",
-          type: "bullmq" as const,
-        },
-      ],
-    }),
+    createContext: () => ctx,
   });
 
 export { handler as GET, handler as POST };

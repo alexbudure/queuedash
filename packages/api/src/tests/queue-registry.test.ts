@@ -137,4 +137,50 @@ describe("queue registry", () => {
     expect(first[0]?.adapter.getDisplayName()).toBe("Emails");
     expect(second[0]?.adapter).toBe(first[0]?.adapter);
   });
+
+  it("picks up ctx.queues when the host changes it after mounting", async () => {
+    const emails = { name: "emails" };
+    const reports = { name: "reports" };
+    const audits = { name: "audits" };
+    const ctx: Context = {};
+    const registry = getQueueRegistry(ctx);
+    const names = async () =>
+      (await registry.list()).map(({ adapter }) => adapter.getName());
+
+    expect(await names()).toEqual([]);
+    ctx.queues = [
+      { queue: emails, displayName: "Emails", type: "bull" },
+    ] as unknown as Context["queues"];
+    const [emailsEntry] = await registry.list();
+    expect(emailsEntry?.adapter.getName()).toBe("emails");
+
+    // Rebuilt around the same queue instance, which keeps its adapter and so
+    // keeps sharing that adapter's de-duplicated health reads.
+    ctx.queues = [
+      { queue: emails, displayName: "Emails", type: "bull" },
+      { queue: reports, displayName: "Reports", type: "bull" },
+    ] as unknown as Context["queues"];
+    const entries = await registry.list();
+    expect(entries.map(({ adapter }) => adapter.getName())).toEqual([
+      "emails",
+      "reports",
+    ]);
+    expect(entries[0]?.adapter).toBe(emailsEntry?.adapter);
+
+    ctx.queues?.push({
+      queue: audits,
+      displayName: "Audits",
+      type: "bull",
+    } as unknown as NonNullable<Context["queues"]>[number]);
+    expect(await names()).toEqual(["emails", "reports", "audits"]);
+
+    // The adapter carries the display name, so a renamed queue gets a new one.
+    ctx.queues = [
+      { queue: emails, displayName: "Outbound email", type: "bull" },
+    ] as unknown as Context["queues"];
+    const [renamed] = await registry.list();
+    expect(renamed?.adapter.getDisplayName()).toBe("Outbound email");
+    expect(renamed?.adapter).not.toBe(emailsEntry?.adapter);
+    await closeQueuedashContext(ctx);
+  });
 });

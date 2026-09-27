@@ -24,8 +24,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 
 import { formatCount, formatCountLabel, formatDuration } from "../utils/format";
-import { bulkResultToast, mutationToasts } from "../utils/mutationToasts";
 import {
+  BULK_VERBS,
+  bulkResultToast,
+  mutationToasts,
+} from "../utils/mutationToasts";
+import {
+  CARD_BORDER,
   FLOATING_BAR_DOCK,
   FOCUS_RING,
   HIT_AREA,
@@ -47,6 +52,7 @@ import {
   getTableHeaderPaddingClassName,
   getTableMinWidthClassName,
   isJobListPollingPaused,
+  isShortcutExemptTarget,
 } from "../utils/viewState";
 import { AddJobModal } from "./AddJobModal";
 import { Alert } from "./Alert";
@@ -213,7 +219,16 @@ const createColumns = (onCheckboxClick: (jobId: string) => void) => [
   }),
   columnHelper.display({
     id: "lifecycle",
-    header: () => "Lifecycle",
+    // One label per segment, at the segments' own fixed widths, so the chips
+    // say what they are without a hover: icon + date, then chip + time twice.
+    header: () => (
+      <span className="flex items-center gap-10">
+        <span className="sr-only">Lifecycle: </span>
+        <span className="w-[8.625rem]">Added</span>
+        <span className="w-[9.125rem]">Waited</span>
+        <span>Ran</span>
+      </span>
+    ),
     cell: ({ row: { original: job } }) => {
       const added = job.createdAt ? new Date(job.createdAt) : null;
       const processed = job.processedAt ? new Date(job.processedAt) : null;
@@ -560,6 +575,11 @@ type JobTableProps = {
   /** Controlled open job. Omit to let the table own it. */
   selectedJobId?: string | null;
   onSelectJob?: (jobId: string | null) => void;
+  /** Closes the panel only if it is still on `jobId`. For an action that
+   *  settles after the reader may have moved on to another job. */
+  onJobLeft?: (jobId: string) => void;
+  /** Steps the open job without growing history; the page owns how. */
+  onStepJob?: (delta: 1 | -1) => void;
 };
 export const JobTable = ({
   jobs,
@@ -579,6 +599,8 @@ export const JobTable = ({
   onClearFilters,
   selectedJobId,
   onSelectJob,
+  onJobLeft,
+  onStepJob,
 }: JobTableProps) => {
   const { preferences, portalContainer } = useQueuedash();
   const [rowSelection, setRowSelection] = useState({});
@@ -623,17 +645,78 @@ export const JobTable = ({
   const openJobId = selectedJobId === undefined ? ownedJobId : selectedJobId;
   // A job that changes status drops out of `jobs` on the next poll. Deriving
   // straight from the list would unmount the panel under the reader mid-read,
-  // so the last resolved job is retained until the panel is actually closed.
-  const lastOpenJobRef = useRef<(Job & { status: Status }) | null>(null);
-  const foundJob = openJobId
+  // so the last resolved job is retained until the panel is actually closed -
+  // but only for the id it was resolved for, or a `?job=` changed by Back or a
+  // link kept showing the previous job under the new id.
+  const lastOpenJobRef = useRef<(Job & { status: Status | null }) | null>(null);
+  const listedJob = openJobId
     ? (jobs.find((job) => job.id === openJobId) ?? null)
     : null;
-  if (foundJob) lastOpenJobRef.current = foundJob;
-  if (!openJobId) lastOpenJobRef.current = null;
-  const selectedJob = openJobId ? (foundJob ?? lastOpenJobRef.current) : null;
+  if (listedJob) lastOpenJobRef.current = listedJob;
+  if (lastOpenJobRef.current?.id !== openJobId) lastOpenJobRef.current = null;
+  // An open job the loaded pages don't reach - a "Search all statuses" result,
+  // or a shared link deeper than page one - is fetched by id, where it used to
+  // open nothing. The panel's live query shares this key, so it is the request
+  // the panel makes anyway.
+  const jobLookup = trpc.job.byId.useQuery(
+    { queueName, jobId: openJobId ?? "" },
+    {
+      enabled: !!openJobId && !lastOpenJobRef.current && !isLoading,
+      retry: false,
+    },
+  );
+  if (
+    !lastOpenJobRef.current &&
+    openJobId &&
+    jobLookup.data?.id === openJobId
+  ) {
+    lastOpenJobRef.current = {
+      ...jobLookup.data,
+      status: jobLookup.data.status ?? null,
+    };
+  }
+  const selectedJob = lastOpenJobRef.current;
+  // Still unresolved once the list has loaded. Under identity redaction the
+  // lookup is refused outright, so this is the only answer the link gets.
+  const jobLookupNotice =
+    openJobId && !selectedJob && !isLoading
+      ? jobLookup.error?.data?.code === "FORBIDDEN"
+        ? {
+            title: "Not in the loaded list",
+            message: `Job ${openJobId} isn't among the ${statusLabel} jobs loaded so far, and jobs can't be looked up by id while their ids are redacted. Scroll to load more, or change the filter.`,
+          }
+        : jobLookup.isError
+          ? {
+              title: "Could not load this job",
+              message: jobLookup.error.message,
+            }
+          : jobLookup.data === null
+            ? {
+                title: "Job not found",
+                message: `There is no job ${openJobId} in this queue. It may have been removed, or the link may be out of date.`,
+              }
+            : null
+      : null;
   const selectJob = (jobId: string | null) => {
     if (onSelectJob) onSelectJob(jobId);
     else setOwnedJobId(jobId);
+  };
+  const leaveJob = (jobId: string) => {
+    if (onJobLeft) onJobLeft(jobId);
+    else if (onSelectJob) {
+      if (openJobId === jobId) onSelectJob(null);
+    } else setOwnedJobId((current) => (current === jobId ? null : current));
+  };
+  const openJobIndex = openJobId
+    ? jobs.findIndex((job) => job.id === openJobId)
+    : -1;
+  const stepJob = (delta: 1 | -1) => {
+    if (onStepJob) {
+      onStepJob(delta);
+      return;
+    }
+    const neighbour = jobs[openJobIndex + delta];
+    if (openJobIndex >= 0 && neighbour) selectJob(neighbour.id);
   };
 
   // No per-job toasts: `handleBulkRerun` reports one summary for the whole
@@ -647,7 +730,7 @@ export const JobTable = ({
         showSuccessToast: false,
         errorMessage: "Could not retry the selected jobs",
         onSuccess(result) {
-          bulkResultToast("retried", "job", result);
+          bulkResultToast(BULK_VERBS.retry, "job", result);
           // Kept until the request settles so a failure leaves the selection
           // intact to try again.
           table.resetRowSelection();
@@ -660,11 +743,10 @@ export const JobTable = ({
       mutationToasts<RouterOutput["job"]["bulkRemove"]>("Jobs removed", {
         showSuccessToast: false,
         errorMessage: "Could not remove the selected jobs",
-        onSuccess(removed) {
-          bulkResultToast("removed", "job", {
-            succeeded: removed.length,
-            failed: 0,
-          });
+        // The server's own tally: every id sent used to be reported removed,
+        // including ones that were already gone.
+        onSuccess(result) {
+          bulkResultToast(BULK_VERBS.remove, "job", result);
           table.resetRowSelection();
         },
       }),
@@ -678,7 +760,7 @@ export const JobTable = ({
           showSuccessToast: false,
           errorMessage: "Could not remove the jobs",
           onSuccess(result) {
-            bulkResultToast("removed", "job", result);
+            bulkResultToast(BULK_VERBS.remove, "job", result);
           },
         },
       ),
@@ -692,7 +774,7 @@ export const JobTable = ({
           showSuccessToast: false,
           errorMessage: "Could not promote the jobs",
           onSuccess(result) {
-            bulkResultToast("promoted", "job", result);
+            bulkResultToast(BULK_VERBS.promote, "job", result);
           },
         },
       ),
@@ -711,7 +793,7 @@ export const JobTable = ({
         showSuccessToast: false,
         errorMessage: "Could not retry the jobs",
         onSuccess(result) {
-          bulkResultToast("retried", "job", result);
+          bulkResultToast(BULK_VERBS.retry, "job", result);
         },
       }),
     );
@@ -785,6 +867,12 @@ export const JobTable = ({
   // Without queue metadata there is no count to gate on yet, and skipping the
   // skeleton here is what used to flash "No jobs found" on every cold load.
   const showSkeleton = isLoading && (knownCount === null || knownCount > 0);
+  // A list of at least a page ends in a 48px row - the load-more sentinel or
+  // the terminus. The skeleton reserves the same row, or the frame grew by
+  // that much (and the dock jumped) every time a status finished loading.
+  const hasFooterRow =
+    (isLoading ? (knownCount ?? preferences.jobsPerPage) : jobs.length) >=
+    preferences.jobsPerPage;
 
   useEffect(() => {
     setRowSelection({});
@@ -807,7 +895,16 @@ export const JobTable = ({
     if (!root) return;
     const doc = root.ownerDocument;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // An Escape another handler already acted on is spent, and one pressed
+      // in a text field belongs to the field: clearing "Filter jobs" with it
+      // used to wipe a selection built up row by row.
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        isShortcutExemptTarget(event.target)
+      ) {
+        return;
+      }
       const target = event.target as HTMLElement | null;
       const isOurs =
         !target ||
@@ -852,7 +949,7 @@ export const JobTable = ({
     const failed = results.filter(
       (result) => result.status === "rejected",
     ).length;
-    bulkResultToast("rerun", "job", {
+    bulkResultToast(BULK_VERBS.rerun, "job", {
       succeeded: jobIds.length - failed,
       failed,
     });
@@ -867,6 +964,10 @@ export const JobTable = ({
           job={selectedJob}
           status={selectedJob.status}
           onDismiss={() => selectJob(null)}
+          onJobLeft={leaveJob}
+          onStep={stepJob}
+          canStepPrevious={openJobIndex > 0}
+          canStepNext={openJobIndex >= 0 && openJobIndex < jobs.length - 1}
         />
       ) : null}
       {showAddJobModal && queue ? (
@@ -875,6 +976,25 @@ export const JobTable = ({
           variant="job"
           onDismiss={() => setShowAddJobModal(false)}
         />
+      ) : null}
+      {jobLookupNotice ? (
+        <div
+          role="status"
+          className={clsx(
+            "mb-3 flex items-start justify-between gap-3 rounded-xl px-4 py-3",
+            CARD_BORDER,
+          )}
+        >
+          <div className="min-w-0 text-sm">
+            <p className="font-medium text-gray-900 dark:text-white">
+              {jobLookupNotice.title}
+            </p>
+            <p className={clsx("mt-0.5 break-words", TEXT_MUTED)}>
+              {jobLookupNotice.message}
+            </p>
+          </div>
+          <Button size="sm" label="Dismiss" onClick={() => selectJob(null)} />
+        </div>
       ) : null}
       <TableFrame
         skeleton={
@@ -885,6 +1005,7 @@ export const JobTable = ({
                 knownCount ?? preferences.jobsPerPage,
               )}
               selectable={canSelectRows}
+              withFooterRow={hasFooterRow}
             />
           ) : undefined
         }
@@ -951,14 +1072,18 @@ export const JobTable = ({
               ) : null}
             </div>
           ) : hasReachedEnd ? (
-            // A capped search cannot promise there is nothing further, and
-            // the footer directly below says "At least N" - so the terminus
-            // has to stop claiming otherwise.
-            <p className={clsx("py-4 text-center text-xs", TEXT_MUTED)}>
-              {searchIsPartial
-                ? "End of the results scanned so far"
-                : "End of list"}
-            </p>
+            // "End of list" under a single row is a caption for nothing: the
+            // terminus only appears once the list ran at least a page. A
+            // capped search cannot promise there is nothing further, and the
+            // footer directly below says "At least N" - so it has to stop
+            // claiming otherwise.
+            hasFooterRow ? (
+              <p className={clsx("py-4 text-center text-xs", TEXT_MUTED)}>
+                {searchIsPartial
+                  ? "End of the results scanned so far"
+                  : "End of list"}
+              </p>
+            ) : null
           ) : (
             // Right after the last row, so the page only scrolls it into
             // view once the reader actually gets there.
@@ -1202,7 +1327,7 @@ export const JobTable = ({
                   action={
                     <Button
                       variant="filled"
-                      colorScheme="slate"
+                      colorScheme="brand"
                       label="Yes, promote"
                       onClick={() =>
                         bulkPromote({

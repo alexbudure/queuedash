@@ -6,8 +6,10 @@ import { Queue as BullMQQueue } from "bullmq";
 import { expect, test, vi } from "vitest";
 
 import { appRouter } from "../routers/_app";
+import { transformContext } from "../trpc";
 import {
   expectTRPCError,
+  getBullMQRedisClient,
   initRedisInstance,
   sleep,
   type,
@@ -89,6 +91,29 @@ test("manual job options cannot create schedulers or cross-queue dependencies", 
   expect(add).not.toHaveBeenCalled();
 });
 
+test("adapter failures reach the client redacted and keep the original cause", async () => {
+  const failure = new Error("access_token=raw-secret");
+  const add = vi.fn().mockRejectedValue(failure);
+  const queueName = "adapter-failure-cause";
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue: { name: queueName, add },
+        displayName: "Adapter failure cause",
+        type: "bullmq" as const,
+      },
+    ],
+    privacy: { redact: true },
+  } as never);
+
+  const error = await expectTRPCError(
+    () => caller.queue.addJob({ queueName, data: {} }),
+    "INTERNAL_SERVER_ERROR",
+  );
+  expect(error.message).toBe("access_token=[REDACTED]");
+  expect(error.cause).toBe(failure);
+});
+
 test("manual Bull and BullMQ job IDs cannot alias queue keys", async () => {
   if (type !== "bull" && type !== "bullmq") return;
 
@@ -102,7 +127,7 @@ test("manual Bull and BullMQ job IDs cannot alias queue keys", async () => {
     const client =
       type === "bull"
         ? (queue as Bull.Queue).client
-        : await (queue as BullMQQueue).client;
+        : await getBullMQRedisClient(queue as BullMQQueue);
     const waitKey = queue.toKey("wait");
     expect(await client.type(waitKey)).toBe("none");
 
@@ -138,6 +163,154 @@ test("manual Bull and BullMQ job IDs cannot alias queue keys", async () => {
     await queue.obliterate({ force: true });
     await queue.close();
   }
+});
+
+test("manual job options cannot smuggle a job ID through __proto__", async () => {
+  if (type !== "bull" && type !== "bullmq") return;
+
+  const queueName = `proto-option-boundary-${randomUUID()}`;
+  const queue =
+    type === "bull" ? new Bull(queueName) : new BullMQQueue(queueName);
+  const waitKey = queue.toKey("wait");
+  const getClient = async () =>
+    type === "bull"
+      ? (queue as Bull.Queue).client
+      : await getBullMQRedisClient(queue as BullMQQueue);
+
+  try {
+    if (type === "bull") await (queue as Bull.Queue).isReady();
+    else await (queue as BullMQQueue).waitUntilReady();
+    const client = await getClient();
+    expect(await client.type(waitKey)).toBe("none");
+
+    const caller = appRouter.createCaller({
+      queues: [
+        {
+          queue,
+          displayName: "Prototype option boundary",
+          type,
+        },
+      ],
+    } as never);
+
+    // The request body as JSON.parse hands it over, with "__proto__" as an
+    // own key. On BullMQ it used to reach `opts.jobId` through the prototype
+    // and turn the idle queue's wait list into a job hash.
+    const smuggled = JSON.parse(
+      `{"queueName":${JSON.stringify(queueName)},"data":{"hello":"world"},"opts":{"__proto__":{"jobId":"wait"}}}`,
+    );
+    await expectTRPCError(() => caller.queue.addJob(smuggled), "BAD_REQUEST");
+    expect(await client.type(waitKey)).toBe("none");
+
+    await caller.queue.addJob({
+      queueName,
+      data: { healthy: true },
+      opts: { attempts: 2 },
+    });
+    expect(await client.type(waitKey)).toBe("list");
+  } finally {
+    // Were the guard to regress, the wait "list" would be a job hash, which
+    // obliterate() cannot clear.
+    const client = await getClient();
+    if ((await client.type(waitKey)) === "hash") await client.del(waitKey);
+    await queue.obliterate({ force: true });
+    await queue.close();
+  }
+});
+
+test("manual job options with a __proto__ key at any depth are refused", async () => {
+  const add = vi.fn(async () => ({
+    id: "1",
+    name: "Manual add",
+    data: {},
+    opts: {},
+    timestamp: Date.now(),
+  }));
+  const queueName = "nested-proto-option-boundary";
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue: { name: queueName, add },
+        displayName: "Nested prototype option boundary",
+        type: "bullmq" as const,
+      },
+    ],
+  } as never);
+
+  for (const opts of [
+    '{"__proto__":{"jobId":"wait"}}',
+    '{"backoff":{"type":"fixed","delay":1000,"__proto__":{"delay":0}}}',
+    '{"removeOnFail":{"count":[{"__proto__":{"age":1}}]}}',
+  ]) {
+    await expectTRPCError(
+      () =>
+        caller.queue.addJob({ queueName, data: {}, opts: JSON.parse(opts) }),
+      "BAD_REQUEST",
+    );
+  }
+  expect(add).not.toHaveBeenCalled();
+
+  const opts = { attempts: 2, backoff: { type: "fixed", delay: 1_000 } };
+  await caller.queue.addJob({ queueName, data: { safe: true }, opts });
+  expect(add).toHaveBeenCalledWith("Manual add", { safe: true }, opts);
+});
+
+test("manual job options are the adapter's own option keys", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+  const caller = appRouter.createCaller(ctx);
+
+  const queue = await caller.queue.byName({ queueName });
+  expect(queue.supports.addJobOptionKeys).toEqual(
+    {
+      bee: [],
+      bull: [
+        "attempts",
+        "backoff",
+        "delay",
+        "lifo",
+        "priority",
+        "removeOnComplete",
+        "removeOnFail",
+        "timeout",
+      ],
+      bullmq: [
+        "attempts",
+        "backoff",
+        "delay",
+        "keepLogs",
+        "lifo",
+        "priority",
+        "removeOnComplete",
+        "removeOnFail",
+        "sizeLimit",
+        "stackTraceLimit",
+      ],
+      groupmq: ["delay", "groupId", "jobId", "maxAttempts", "orderMs", "runAt"],
+    }[type],
+  );
+  if (type === "bee") return;
+
+  // The router enforces whatever the adapter declares, not a copy of it.
+  const [{ adapter }] = (await transformContext(ctx)).queues;
+  adapter.supports.addJobOptionKeys = ["delay"];
+  await expectTRPCError(
+    () =>
+      caller.queue.addJob({
+        queueName,
+        data: {},
+        opts: {
+          delay: 60_000,
+          [type === "groupmq" ? "maxAttempts" : "attempts"]: 2,
+        },
+      }),
+    "BAD_REQUEST",
+  );
+  await caller.queue.addJob({
+    queueName,
+    data: { narrowed: true },
+    opts: { delay: 60_000 },
+  });
 });
 
 test("manual GroupMQ group IDs cannot collide with internal Redis keys", async () => {
@@ -261,16 +434,40 @@ test("worker inspection is capability-gated and normalized", async () => {
 
   if (type === "bull" || type === "bullmq") {
     expect(queue.supports.workers).toBe(true);
-    expect(workers.length).toBeGreaterThan(0);
-    expect(workers[0]).toMatchObject({
+    // The test Redis answers CLIENT LIST, so inspection is available.
+    expect(workers).not.toBeNull();
+    expect(workers?.length).toBeGreaterThan(0);
+    expect(workers?.[0]).toMatchObject({
       id: expect.any(String),
     });
-    expect(workers[0]).not.toHaveProperty("addr");
-    expect(workers[0]).not.toHaveProperty("rawname");
+    expect(workers?.[0]).not.toHaveProperty("addr");
+    expect(workers?.[0]).not.toHaveProperty("rawname");
   } else {
     expect(queue.supports.workers).toBe(false);
     expect(workers).toEqual([]);
   }
+});
+
+test("worker inspection Redis refuses reads as unavailable, not as no workers", async () => {
+  const queueName = "workers-unavailable";
+  const caller = appRouter.createCaller({
+    queues: [
+      {
+        queue: {
+          name: queueName,
+          // BullMQ's answer when CLIENT LIST is refused: a placeholder entry
+          // that is no client.
+          getWorkers: vi
+            .fn()
+            .mockResolvedValue([{ name: "GCP does not support client list" }]),
+        },
+        displayName: "Workers unavailable",
+        type: "bullmq" as const,
+      },
+    ],
+  } as never);
+
+  await expect(caller.queue.workers({ queueName })).resolves.toBeNull();
 });
 
 test("list queues", async () => {
@@ -933,6 +1130,13 @@ test("get queue by name returns correct supports flags", async () => {
     expect(queue.supports.schedulerUpdate).toBe(true);
     expect(queue.supports.logs).toBe(true);
     expect(queue.supports.groups).toBe(false);
+    // Both majors offer the paused status: BullMQ 6 keeps a paused queue's
+    // jobs in `wait`, but a BullMQ 5 producer can still fill the legacy list.
+    expect(queue.supports.statuses).toContain("paused");
+    expect(typeof queue.supports.clean).toBe("object");
+    if (typeof queue.supports.clean === "object") {
+      expect(queue.supports.clean.supportedStatuses).toContain("paused");
+    }
   } else if (type === "groupmq") {
     expect(queue.supports.groups).toBe(true);
     expect(queue.supports.retry).toBe(false);
@@ -969,11 +1173,62 @@ test("get queue by name returns redis info", async () => {
     queueName: firstQueue.queue.name,
   });
 
-  expect(queue.client).toBeDefined();
-  expect(queue.client.version).toBeDefined();
-  expect(typeof queue.client.connectedClients).toBe("number");
-  expect(typeof queue.client.uptimeInSeconds).toBe("number");
-  expect(queue.client.usedMemoryHuman).toBeDefined();
+  expect(queue.client).not.toBeNull();
+  expect(queue.client?.version).toBeDefined();
+  expect(typeof queue.client?.connectedClients).toBe("number");
+  expect(typeof queue.client?.uptimeInSeconds).toBe("number");
+  expect(queue.client?.usedMemoryHuman).toBeDefined();
+});
+
+test("get queue by name still loads when Redis refuses INFO", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const queueName = firstQueue.queue.name;
+  const caller = appRouter.createCaller(ctx);
+  // What a Redis ACL user without the @dangerous category gets for INFO.
+  const noPermission = Object.assign(
+    new Error(
+      "NOPERM User queuedash has no permissions to run the 'info' command",
+    ),
+    { name: "ReplyError" },
+  );
+  const refuseInfo = async () => {
+    switch (firstQueue.type) {
+      case "bull":
+        return vi
+          .spyOn(firstQueue.queue.client, "info")
+          .mockRejectedValue(noPermission);
+      case "bullmq":
+        return vi
+          .spyOn(await getBullMQRedisClient(firstQueue.queue), "info")
+          .mockRejectedValue(noPermission);
+      case "groupmq":
+        return vi
+          .spyOn(firstQueue.queue.redis, "info")
+          .mockRejectedValue(noPermission);
+      case "bee": {
+        // Bee-Queue reports the INFO its client ran on connecting, so the
+        // refusal is simulated where the adapter reads it.
+        const [{ adapter }] = (await transformContext(ctx)).queues;
+        return vi
+          .spyOn(adapter, "getRedisInfo")
+          .mockRejectedValue(noPermission);
+      }
+    }
+  };
+
+  const info = await refuseInfo();
+  try {
+    const queue = await caller.queue.byName({ queueName });
+    expect(info).toHaveBeenCalled();
+    expect(queue).toMatchObject({ name: queueName, paused: false });
+    expect(typeof queue.counts.failed).toBe("number");
+    expect(queue.client).toBeNull();
+  } finally {
+    info.mockRestore();
+  }
+
+  const restored = await caller.queue.byName({ queueName });
+  expect(restored.client?.version).toBeDefined();
 });
 
 test("list queues returns all queues", async () => {
@@ -1081,6 +1336,70 @@ test("get metrics with different time ranges", async () => {
     });
     expect(twentyFourHours).toBeDefined();
   }
+});
+
+test("metrics serves every window the dashboard asks for", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  if (firstQueue.type !== "bullmq") return;
+  const caller = appRouter.createCaller(ctx);
+
+  // The last minute, hour, day and week, with and without the current,
+  // still-filling minute.
+  for (const minutes of [1, 60, 1_440, 10_080]) {
+    for (const start of [0, 1]) {
+      const metrics = await caller.queue.metrics({
+        queueName: firstQueue.queue.name,
+        type: "completed",
+        start,
+        end: start + minutes,
+      });
+      expect(metrics.data).toHaveLength(minutes);
+      expect(metrics.count).toBe(
+        metrics.data.reduce((sum: number, count: number) => sum + count, 0),
+      );
+      expect(metrics.coveredMinutes).toBeGreaterThanOrEqual(0);
+      expect(metrics.coveredMinutes).toBeLessThanOrEqual(minutes);
+      expect(
+        metrics.previousCount === null ||
+          Number.isInteger(metrics.previousCount),
+      ).toBe(true);
+    }
+  }
+});
+
+test("metrics refuses windows the adapters cannot serve as bad requests", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  for (const [start, end] of [
+    [-1, 60],
+    [60, 60],
+    [60, 0],
+    [0.5, 60],
+    [0, 60.5],
+    [0, 80_641],
+    [1, 80_642],
+  ]) {
+    await expectTRPCError(
+      () =>
+        caller.queue.metrics({
+          queueName: firstQueue.queue.name,
+          type: "completed",
+          start,
+          end,
+        }),
+      "BAD_REQUEST",
+    );
+  }
+
+  if (firstQueue.type !== "bullmq") return;
+  const longest = await caller.queue.metrics({
+    queueName: firstQueue.queue.name,
+    type: "failed",
+    start: 0,
+    end: 80_640,
+  });
+  expect(longest.data).toHaveLength(80_640);
 });
 
 test("metrics endpoint validates queue name", async () => {

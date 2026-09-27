@@ -6,6 +6,7 @@ import {
 import { parse } from "redis-info";
 
 import {
+  JobNotFoundError,
   QueueAdapter,
   type AdaptedJob,
   type JobCounts,
@@ -13,6 +14,7 @@ import {
   type GroupInfo,
   type JobPageMeta,
   type JobScanToken,
+  type WorkerInfo,
 } from "./base.adapter";
 
 type GroupMQStatus = "waiting" | "active" | "completed" | "failed" | "delayed";
@@ -31,6 +33,7 @@ type WaitingSnapshot = {
   candidates: WaitingCandidate[];
   candidatesInspected: number;
   exhausted: boolean;
+  groupsTruncated: boolean;
   jobs: AdaptedJob[];
   jobsOffset: number;
   lastAccessedAt: number;
@@ -42,8 +45,12 @@ const WAITING_SNAPSHOT_IDLE_TTL_MS = 60_000;
 const WAITING_PAGE_LIMIT = 5_000;
 const WAITING_SCAN_LIMIT = WAITING_PAGE_LIMIT + 1;
 const WAITING_SNAPSHOT_RETAIN_BEHIND = 100;
+// Past this many groups, the waiting list and the Groups panel inspect only
+// the first groups SSCAN yields from cursor 0, in batches of the same size,
+// so an unchanged group set gives both the same slice.
 const MAX_WAITING_GROUPS = WAITING_PAGE_LIMIT;
 const MAX_INSPECTABLE_GROUPS = WAITING_PAGE_LIMIT;
+const GROUP_SCAN_BATCH_SIZE = 1_000;
 
 // GroupMQ's public remove() intentionally deletes jobs in every state. Keep
 // Queuedash's operator removal safe by combining the active-state check and
@@ -157,7 +164,7 @@ end
 
 local groupId = redis.call("HGET", jobKey, "groupId")
 if not groupId then
-  return 0
+  return -2
 end
 
 if not redis.call("ZSCORE", delayedKey, jobId) then
@@ -180,13 +187,32 @@ return 1
 // Redis operation. GroupMQ accepts arbitrary ordering timestamps, while its
 // job timestamp comes from the producer host, so neither score boundaries nor
 // wall-clock comparisons can distinguish a backdated insertion reliably.
+// Beyond MAX_WAITING_GROUPS groups the view covers only the first slice of
+// groups, and says so, instead of failing every waiting read on the queue.
 const CAPTURE_WAITING_SNAPSHOT_LUA = `
 local ns = KEYS[1]
 local rawLimit = tonumber(ARGV[1])
 local validLimit = tonumber(ARGV[2])
-local groupIds = redis.call("SMEMBERS", ns .. ":groups")
-if #groupIds > ${MAX_WAITING_GROUPS} then
-  return redis.error_reply("GroupMQ waiting pagination supports at most ${MAX_WAITING_GROUPS} groups per queue")
+local groupsKey = ns .. ":groups"
+local groupIds
+local groupsTruncated = false
+if redis.call("SCARD", groupsKey) <= ${MAX_WAITING_GROUPS} then
+  groupIds = redis.call("SMEMBERS", groupsKey)
+else
+  groupsTruncated = true
+  groupIds = {}
+  local seenGroups = {}
+  local groupsCursor = "0"
+  repeat
+    local groupsPage = redis.call("SSCAN", groupsKey, groupsCursor, "COUNT", ${GROUP_SCAN_BATCH_SIZE})
+    groupsCursor = groupsPage[1]
+    for _, groupId in ipairs(groupsPage[2]) do
+      if #groupIds < ${MAX_WAITING_GROUPS} and not seenGroups[groupId] then
+        seenGroups[groupId] = true
+        table.insert(groupIds, groupId)
+      end
+    end
+  until groupsCursor == "0" or #groupIds >= ${MAX_WAITING_GROUPS}
 end
 
 local function byteLess(left, right)
@@ -307,7 +333,9 @@ while #heap > 0 and inspected < rawLimit and captured < validLimit do
 end
 
 result[1] = tostring(inspected)
-result[2] = #heap == 0 and "1" or "0"
+-- Bit 1: every captured group's jobs were considered. Bit 2: the group set
+-- was cut short, so jobs in the groups left out were never seen.
+result[2] = tostring((#heap == 0 and 1 or 0) + (groupsTruncated and 2 or 0))
 return result
 `;
 
@@ -330,6 +358,14 @@ export class GroupMQAdapter extends QueueAdapter<
 
   supports: FeatureSupport<GroupMQStatus> = {
     addJobOptions: true,
+    addJobOptionKeys: [
+      "delay",
+      "groupId",
+      "jobId",
+      "maxAttempts",
+      "orderMs",
+      "runAt",
+    ],
     pause: true,
     resume: true,
     clean: false,
@@ -403,6 +439,12 @@ export class GroupMQAdapter extends QueueAdapter<
       paused: counts.paused || 0,
       prioritized: counts.prioritized || 0,
     };
+  }
+
+  // GroupMQ's full count walks every group inside one Lua script, blocking
+  // Redis for longer as groups grow; the failed total is one ZCARD.
+  async getFailedCount(): Promise<number> {
+    return this.queue.redis.zcard(`${this.queue.namespace}:failed`);
   }
 
   async isPaused(): Promise<boolean> {
@@ -495,6 +537,7 @@ export class GroupMQAdapter extends QueueAdapter<
       exhausted: jobIds.length < requested,
       scanned: start + jobIds.length,
       scanLimit: scanLimit ?? Math.max(end + 1, 1),
+      truncated: false,
     });
     return adapted;
   }
@@ -580,6 +623,7 @@ export class GroupMQAdapter extends QueueAdapter<
     if (result === -1) {
       throw new Error("GroupMQ cannot safely remove an active job");
     }
+    if (result === 0) throw new JobNotFoundError();
     if (result !== 1) {
       throw new Error(`GroupMQ could not remove job "${jobId}"`);
     }
@@ -601,6 +645,7 @@ export class GroupMQAdapter extends QueueAdapter<
     if (result === -1) {
       throw new Error(`GroupMQ job "${jobId}" is no longer delayed`);
     }
+    if (result === 0) throw new JobNotFoundError();
     if (result !== 1) {
       throw new Error(`GroupMQ could not promote job "${jobId}"`);
     }
@@ -613,6 +658,12 @@ export class GroupMQAdapter extends QueueAdapter<
 
   async getJobLogs(): Promise<string[] | null> {
     return null; // GroupMQ doesn't support job logs
+  }
+
+  // GroupMQ workers leave nothing in Redis to recognize them by, so worker
+  // inspection is unavailable, which is not the same as "no workers".
+  async getWorkers(): Promise<WorkerInfo[] | null> {
+    return null;
   }
 
   private adaptJob(job: GroupMQJob): AdaptedJob {
@@ -715,15 +766,6 @@ export class GroupMQAdapter extends QueueAdapter<
     rawLimit: number,
     validLimit: number,
   ): Promise<WaitingSnapshot> {
-    const groupCount = await this.queue.redis.scard(
-      `${this.queue.namespace}:groups`,
-    );
-    if (groupCount > MAX_WAITING_GROUPS) {
-      throw new Error(
-        `GroupMQ waiting pagination supports at most ${MAX_WAITING_GROUPS.toLocaleString()} groups per queue`,
-      );
-    }
-
     const capturedValues = (await this.queue.redis.eval(
       CAPTURE_WAITING_SNAPSHOT_LUA,
       1,
@@ -742,12 +784,18 @@ export class GroupMQAdapter extends QueueAdapter<
     }
 
     const captureScanned = Number(capturedValues[0]);
-    const exhausted = capturedValues[1] === "1";
-    if (!Number.isSafeInteger(captureScanned) || captureScanned < 0) {
+    const captureState = Number(capturedValues[1]);
+    if (
+      !Number.isSafeInteger(captureScanned) ||
+      captureScanned < 0 ||
+      ![0, 1, 2, 3].includes(captureState)
+    ) {
       throw new Error(
         "GroupMQ waiting snapshot returned invalid scan metadata",
       );
     }
+    const exhausted = (captureState & 1) === 1;
+    const groupsTruncated = (captureState & 2) === 2;
 
     const candidates: WaitingCandidate[] = [];
     for (let index = 2; index < capturedValues.length; index += 4) {
@@ -777,6 +825,7 @@ export class GroupMQAdapter extends QueueAdapter<
       candidates,
       candidatesInspected: 0,
       exhausted,
+      groupsTruncated,
       jobs: [],
       jobsOffset: 0,
       lastAccessedAt: createdAt,
@@ -825,6 +874,7 @@ export class GroupMQAdapter extends QueueAdapter<
         requestedScanLimit,
         snapshotRawLimit,
         snapshotValidLimit,
+        persistentSnapshot,
       );
     } finally {
       const snapshot = this.waitingSnapshots.get(snapshotKey);
@@ -847,6 +897,7 @@ export class GroupMQAdapter extends QueueAdapter<
     scanLimit: number,
     snapshotRawLimit: number,
     snapshotValidLimit: number,
+    persistentSnapshot: boolean,
   ): Promise<AdaptedJob[]> {
     if (
       !Number.isSafeInteger(start) ||
@@ -946,17 +997,27 @@ export class GroupMQAdapter extends QueueAdapter<
     const page = snapshot.jobs.slice(relativeStart, relativeEnd);
     const inspectedSnapshot =
       snapshot.candidatesInspected >= snapshot.candidates.length;
-    const exhausted =
+    const drained =
       snapshot.exhausted &&
       inspectedSnapshot &&
       snapshot.scanned >= snapshot.captureScanned;
+    const exhausted = drained && !snapshot.groupsTruncated;
+    // Jobs in the groups a cut group set left out were never seen, and no scan
+    // limit reaches them. A single page says so up front, since the list shows
+    // its first page's meta. A bounded scan says so only where its view runs
+    // out, because scans stop reading a status at its first truncated page;
+    // until then, raising the limit still reaches more of the slice.
+    const truncated =
+      snapshot.groupsTruncated && (drained || !persistentSnapshot);
     snapshot.lastAccessedAt = Date.now();
     this.pageMeta.set(page, {
-      capped: !exhausted && snapshot.scanned >= candidateScanLimit,
+      capped:
+        !exhausted && (snapshot.scanned >= candidateScanLimit || truncated),
       cursorAdvance: page.length,
       exhausted,
       scanned: Math.min(snapshot.scanned, candidateScanLimit),
       scanLimit: candidateScanLimit,
+      truncated,
     });
     return page;
   }
@@ -968,20 +1029,16 @@ export class GroupMQAdapter extends QueueAdapter<
   async getGroups(): Promise<GroupInfo[]> {
     const groupsKey = `${this.queue.namespace}:groups`;
     const groupCount = await this.queue.redis.scard(groupsKey);
-    if (groupCount > MAX_INSPECTABLE_GROUPS) {
-      throw new Error(
-        `GroupMQ group inspection supports at most ${MAX_INSPECTABLE_GROUPS.toLocaleString()} groups per queue`,
-      );
-    }
-
-    const groupIds = (await this.queue.redis.smembers(groupsKey)).sort(
-      compareRedisMembers,
-    );
-    if (groupIds.length > MAX_INSPECTABLE_GROUPS) {
-      throw new Error(
-        `GroupMQ group inspection supports at most ${MAX_INSPECTABLE_GROUPS.toLocaleString()} groups per queue`,
-      );
-    }
+    // An oversized group set is read as the same bounded slice the waiting
+    // list inspects, never in full, and never fails the panel. A set that grew
+    // past the cap between SCARD and SMEMBERS is trimmed to it.
+    const groupIds = (
+      groupCount > MAX_INSPECTABLE_GROUPS
+        ? await this.scanGroupIds(MAX_INSPECTABLE_GROUPS)
+        : await this.queue.redis.smembers(groupsKey)
+    )
+      .sort(compareRedisMembers)
+      .slice(0, MAX_INSPECTABLE_GROUPS);
     if (groupIds.length === 0) return [];
 
     const pipeline = this.queue.redis.pipeline();
@@ -1003,5 +1060,27 @@ export class GroupMQAdapter extends QueueAdapter<
       count: Number(rows[index]?.[1] ?? 0),
       status: "active" as const,
     }));
+  }
+
+  // The same walk as the waiting capture's: SSCAN from cursor 0 in batches of
+  // GROUP_SCAN_BATCH_SIZE, keeping the first distinct `limit` members.
+  private async scanGroupIds(limit: number): Promise<string[]> {
+    const groupsKey = `${this.queue.namespace}:groups`;
+    const groupIds = new Set<string>();
+    let cursor = "0";
+    do {
+      const [nextCursor, members] = await this.queue.redis.sscan(
+        groupsKey,
+        cursor,
+        "COUNT",
+        GROUP_SCAN_BATCH_SIZE,
+      );
+      cursor = nextCursor;
+      for (const member of members) {
+        if (groupIds.size >= limit) break;
+        groupIds.add(member);
+      }
+    } while (cursor !== "0" && groupIds.size < limit);
+    return [...groupIds];
   }
 }
