@@ -1,32 +1,36 @@
 import { clsx } from "clsx";
-import { CheckCircle, Clock, Rocket } from "lucide-react";
+import { Clock, Rocket } from "lucide-react";
 
 import { formatDuration } from "../utils/format";
+import { isFailedJob, isRunningJob, STATUS_ICONS } from "../utils/status";
 import { TEXT_MUTED } from "../utils/styles";
-import type { Job } from "../utils/trpc";
+import type { Job, Status } from "../utils/trpc";
 import { formatAbsoluteTimestamp, Timestamp } from "./Timestamp";
 
 type JobTimelineProps = {
   job: Job;
+  /** The job's current status, when known. */
+  status?: Status | null;
 };
 
-export const JobTimeline = ({ job }: JobTimelineProps) => {
+export const JobTimeline = ({ job, status }: JobTimelineProps) => {
   const addedAt = job.createdAt ? new Date(job.createdAt) : null;
   const processedAt = job.processedAt ? new Date(job.processedAt) : null;
   const finishedAt = job.finishedAt ? new Date(job.finishedAt) : null;
-  const hasFailed = !!job.failedReason;
+  const hasFailed = isFailedJob(job, status);
+  const OutcomeIcon = STATUS_ICONS[hasFailed ? "failed" : "completed"];
 
   const waitDuration =
     addedAt && processedAt ? processedAt.getTime() - addedAt.getTime() : null;
 
+  const isProcessing = isRunningJob(job, status);
   const processDuration =
     processedAt && finishedAt
       ? finishedAt.getTime() - processedAt.getTime()
-      : processedAt
+      : processedAt && isProcessing
         ? Date.now() - processedAt.getTime()
         : null;
 
-  const isProcessing = !!processedAt && !finishedAt;
   const isFinished = !!finishedAt;
 
   // The job panel no longer repeats these as an absolute-time grid, so each
@@ -138,7 +142,7 @@ export const JobTimeline = ({ job }: JobTimelineProps) => {
               : "bg-gray-100 dark:bg-slate-800",
           )}
         >
-          <CheckCircle
+          <OutcomeIcon
             className={clsx(
               "size-3",
               isFinished ? "text-white" : "text-gray-400 dark:text-slate-500",

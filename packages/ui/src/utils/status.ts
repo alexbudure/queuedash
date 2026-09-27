@@ -10,7 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import type { Status } from "./trpc";
+import type { Job, Status } from "./trpc";
 
 /** The order every status list in the dashboard uses. */
 export const STATUS_ORDER: readonly Status[] = [
@@ -65,3 +65,26 @@ export const STATUS_TINT: Record<Status, string> = {
   paused:
     "border-gray-200 bg-gray-100 text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
 };
+
+/**
+ * Whether a job ended in failure. Bull and BullMQ record `failedReason` on
+ * every failed attempt and never clear it, so a job that failed once and then
+ * succeeded - or is waiting to retry - still carries one. Trust the status
+ * whenever it is known; the reason alone only says that an attempt failed.
+ */
+export const isFailedJob = (
+  job: { failedReason?: string | null },
+  status: Status | null | undefined,
+): boolean => (status ? status === "failed" : !!job.failedReason);
+
+/**
+ * Whether a job is running right now. A failed attempt that will be retried
+ * leaves `processedAt` behind with no `finishedAt`, so by its timestamps alone
+ * a job waiting out its backoff looks like it is running. Trust the status
+ * whenever it is known.
+ */
+export const isRunningJob = (
+  job: Pick<Job, "processedAt" | "finishedAt">,
+  status: Status | null | undefined,
+): boolean =>
+  status ? status === "active" : !!job.processedAt && !job.finishedAt;

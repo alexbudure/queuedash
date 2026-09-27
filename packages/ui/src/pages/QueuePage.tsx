@@ -468,12 +468,11 @@ export const QueuePage = () => {
 
   const isPinned = preferences.pinnedQueues.includes(queueName);
   const client = queueReq.data?.client;
-  const blockedClients = client?.blockedClients ?? 0;
   const memoryPercentage = (client?.usedMemoryPercentage ?? 0) * 100;
   // What the queue runs on, as a subtitle: identity first (adapter, Redis
-  // version), then the two numbers that can go wrong. This used to be a bar
-  // pinned to the bottom of the viewport, which handed Redis memory trivia
-  // the most permanent slot on the page.
+  // version), then clients and memory. This used to be a bar pinned to the
+  // bottom of the viewport, which handed Redis memory trivia the most
+  // permanent slot on the page.
   const connectionMeta =
     queueReq.data && client ? (
       <p
@@ -487,16 +486,9 @@ export const QueuePage = () => {
         <span>Redis {client.version}</span>
         <span aria-hidden="true">·</span>
         <span>{formatCount(client.connectedClients)} clients</span>
-        {/* Red is the colour that means "wrong". No blocked clients is the
-            healthy state, so it is not mentioned at all. */}
-        {blockedClients > 0 ? (
-          <>
-            <span aria-hidden="true">·</span>
-            <span className="text-red-700 dark:text-red-400">
-              {formatCount(blockedClients)} blocked
-            </span>
-          </>
-        ) : null}
+        {/* No blocked-clients count: INFO reports it for the whole server,
+            and every idle worker blocks while it waits for a job, so healthy
+            queues always have some. */}
         <span aria-hidden="true">·</span>
         <span className={memoryToneClass(memoryPercentage)}>
           {client.usedMemoryHuman} of {client.totalMemoryHuman} memory

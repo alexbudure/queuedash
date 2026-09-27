@@ -100,8 +100,10 @@ for (const item of queues) {
 
         if (name === "payment-processing") {
           await sleepRange(0.3, 2);
-          job.log(`Processing ${job.data.type} for ${job.data.customerId}`);
-          job.log(`Amount: ${job.data.amount} ${job.data.currency}`);
+          await job.log(
+            `Processing ${job.data.type} for ${job.data.customerId}`,
+          );
+          await job.log(`Amount: ${job.data.amount} ${job.data.currency}`);
           maybeFail(0.05, errors);
           return {
             transactionId: `txn_${Date.now()}`,
@@ -111,14 +113,16 @@ for (const item of queues) {
 
         if (name === "email-delivery") {
           await sleepRange(0.1, 0.5);
-          job.log(`Sending ${job.data.template} to ${job.data.to}`);
+          await job.log(`Sending ${job.data.template} to ${job.data.to}`);
           maybeFail(0.02, errors);
           return { messageId: `msg_${Date.now()}`, delivered: true };
         }
 
         if (name === "image-processing") {
           await sleepRange(1, 8);
-          job.log(`Processing ${job.data.operation} on ${job.data.fileName}`);
+          await job.log(
+            `Processing ${job.data.operation} on ${job.data.fileName}`,
+          );
           maybeFail(0.08, errors);
           return {
             outputUrl: `https://cdn.example.com/processed/${job.data.fileId}.webp`,

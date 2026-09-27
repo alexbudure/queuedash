@@ -2,6 +2,7 @@ import { Check, CopyPlus, Rocket, RotateCw, Trash2 } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 
 import { mutationToasts } from "../utils/mutationToasts";
+import { isFailedJob } from "../utils/status";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { ActionMenu } from "./ActionMenu";
@@ -76,7 +77,7 @@ export const JobActionMenu = ({
     queue?.supports.retry !== false && queue?.access.actions["job.retry"];
   const supportsPromote =
     queue?.supports.promote !== false && queue?.access.actions["job.promote"];
-  const showRetry = !!job.failedReason && supportsRetry;
+  const showRetry = isFailedJob(job, status) && supportsRetry;
   const showPromote = status === "delayed" && supportsPromote;
   const showDiscard =
     !job.finishedAt &&

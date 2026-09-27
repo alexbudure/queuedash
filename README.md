@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>A beautiful, modern queue dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ.</strong>
+  <strong>A dashboard for your job queues. Works with Bull, BullMQ, Bee-Queue, and GroupMQ.</strong>
 </p>
 
 <p align="center">
@@ -20,56 +20,103 @@
   </a>
 </p>
 
-Queuedash gives queue operators a polished overview without giving up control of
-where the dashboard runs or which data and actions it exposes.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/queue-dark.png">
+    <img src="assets/screenshots/queue-light.png" alt="The Payment processing queue in Queuedash: its health over the last hour, above a table of completed jobs">
+  </picture>
+</p>
 
-## Features
+Queuedash runs inside the Node.js server you already have. Open it to see how
+your queues are doing, find the job you're looking for, read its data, logs, and
+error, and retry, remove, or promote it. You decide who can sign in, which queues
+they can see or change, and which job data reaches their browser.
 
-- A clean, responsive overview for multiple queues
-- Job inspection, bounded status filtering, shareable search/sort URLs, and status-aware actions
-- Queue counts plus duration, wait-time, and throughput metrics where supported
-- Job schedulers with BullMQ editing, worker inspection, flows, priorities, and groups where supported
-- Optional Redis discovery for Bull and BullMQ queues
-- Server-enforced full, read-only, hidden, and action-specific queue policies
-- Sensitive-key redaction and whole-category data exposure controls
-- A branded login with signed, HttpOnly sessions and explicit logout
-- Server-provided defaults with instance-scoped browser preferences
-- Custom product name, logo, favicon, and accessible logo text
-- Express, Fastify, Hono, Elysia, Next.js, direct React, and Docker integrations
-- Scoped, specificity-hardened styles designed for embedded host applications
+## What you can do
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/overview-dark.png">
+        <img src="assets/screenshots/overview-light.png" alt="The overview, listing every queue with its last hour as sparklines">
+      </picture>
+      <p><strong>See every queue at once</strong><br>
+      What each queue finished and failed in the last hour, and what's still waiting.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/job-dark.png">
+        <img src="assets/screenshots/job-light.png" alt="A failed job open in the side panel, with its error and data">
+      </picture>
+      <p><strong>Open any job</strong><br>
+      Its data, logs, return value, and error in one panel. Press <kbd>j</kbd> and <kbd>k</kbd> to step through the list.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/search-dark.png">
+        <img src="assets/screenshots/search-light.png" alt="Completed jobs filtered by the text password-reset">
+      </picture>
+      <p><strong>Find the job you need</strong><br>
+      Press <kbd>/</kbd> to filter by text, or sort by date. The view lives in the URL, so you can share it.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/bulk-dark.png">
+        <img src="assets/screenshots/bulk-light.png" alt="Four failed jobs selected, with Retry and Remove in the action bar">
+      </picture>
+      <p><strong>Handle jobs in bulk</strong><br>
+      Select jobs, or everything a filter matches, and retry, remove, or promote them together.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/schedulers-dark.png">
+        <img src="assets/screenshots/schedulers-light.png" alt="A BullMQ job scheduler open in the side panel">
+      </picture>
+      <p><strong>Manage schedulers</strong><br>
+      See what each BullMQ scheduler runs and when it runs next. Add, edit, or remove them.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/palette-dark.png">
+        <img src="assets/screenshots/palette-light.png" alt="The command palette open over a queue">
+      </picture>
+      <p><strong>Jump anywhere</strong><br>
+      Press <kbd>⌘</kbd> <kbd>K</kbd> or <kbd>Ctrl</kbd> <kbd>K</kbd> to go to any queue, status, or page.</p>
+    </td>
+  </tr>
+</table>
 
 ## Quick start
 
-Install Queuedash alongside the queue and web framework your application already
-uses:
+Install Queuedash next to the queue library and web framework you already use.
+It needs Node 22 or newer.
 
 ```bash
 npm install @queuedash/api
 ```
 
-Queuedash requires Node 22 or newer, and is built and tested on Node 24.
-
-Mount the Express middleware with at least one queue:
+Mount it in your server. Here it is in Express with a BullMQ queue:
 
 ```typescript
 import { createQueuedashExpressMiddleware } from "@queuedash/api";
-import Bull from "bull";
+import { Queue } from "bullmq";
 import express from "express";
 
 const app = express();
-const reports = new Bull("reports");
+const emails = new Queue("emails", {
+  connection: { host: "localhost", port: 6379 },
+});
 
 app.use(
   "/queuedash",
   createQueuedashExpressMiddleware({
     ctx: {
-      queues: [
-        {
-          queue: reports,
-          displayName: "Reports",
-          type: "bull",
-        },
-      ],
+      queues: [{ queue: emails, displayName: "Emails", type: "bullmq" }],
     },
   }),
 );
@@ -77,11 +124,11 @@ app.use(
 app.listen(3000);
 ```
 
-Open [http://localhost:3000/queuedash](http://localhost:3000/queuedash).
+Then open [http://localhost:3000/queuedash](http://localhost:3000/queuedash).
 
 ## Integrations
 
-| Runtime      | Queuedash API                                     | Working example                            |
+| Framework    | Use                                               | Example                                    |
 | ------------ | ------------------------------------------------- | ------------------------------------------ |
 | Express      | `createQueuedashExpressMiddleware`                | [Express](./examples/with-express)         |
 | Fastify      | `fastifyQueuedashPlugin`                          | [Fastify](./examples/with-fastify)         |
@@ -90,68 +137,36 @@ Open [http://localhost:3000/queuedash](http://localhost:3000/queuedash).
 | Next.js      | `appRouter` + `<QueuedashApp />`                  | [Next.js App Router](./examples/with-next) |
 | Docker       | `QUEUES_CONFIG_JSON` or `QUEUES_CONFIG_FILE_PATH` | [Docker](#docker)                          |
 
-For direct React or Next.js embedding, see
-[`@queuedash/ui`](./packages/ui/README.md). Server and policy configuration is
-documented under [`@queuedash/api`](./packages/api/README.md).
+To put the dashboard inside your own React or Next.js app, see
+[`@queuedash/ui`](./packages/ui/README.md).
 
-## Queue support
+## Queue libraries
 
-Queuedash detects adapter capabilities and hides unsupported controls.
+| Library   | Versions         | Discovery | Workers | Schedulers | Docker |
+| --------- | ---------------- | --------- | ------- | ---------- | ------ |
+| Bull      | 3, 4             | Yes       | Yes     | No         | Yes    |
+| BullMQ    | 5.60 or newer, 6 | Yes       | Yes     | Yes        | Yes    |
+| Bee-Queue | 1, 2             | No        | No      | No         | Yes    |
+| GroupMQ   | 1                | No        | No      | No         | No     |
 
-| Queue     | Static configuration | Redis discovery | Workers | Schedulers | Docker |
-| --------- | -------------------- | --------------- | ------- | ---------- | ------ |
-| Bull      | Yes                  | Yes             | Yes     | No         | Yes    |
-| BullMQ    | Yes                  | Yes             | Yes     | Yes        | Yes    |
-| Bee-Queue | Yes                  | No              | No      | No         | Yes    |
-| GroupMQ   | Yes                  | No              | No      | No         | No     |
+Queuedash hides what a library can't do instead of faking it. BullMQ gets the
+most: health metrics, logs, flows, priorities, and schedulers. GroupMQ shows its
+groups. Bee-Queue sticks to what its API can do safely.
 
-BullMQ also provides the broadest metrics, logs, flow, priority, and scheduler
-support. Queuedash works with BullMQ 5 (5.60 or newer, for safe scheduler
-editing) and BullMQ 6, and with Bee-Queue 1 and 2, serving whichever major your
-application installs.
-GroupMQ exposes its native groups. Bee-Queue remains intentionally limited to
-operations supported safely by its API.
+Queuedash uses whichever version your app installs. If you pause queues from the
+dashboard, keep its BullMQ at or ahead of the one your producers run
+([here's why](./packages/api/README.md#install)).
 
 ## Configuration
 
-All server-owned behavior lives in the Queuedash API context. The dashboard
-cannot override access, privacy, discovery, or search limits from the browser.
+Everything is set on the server, in the `ctx` object you pass to the adapter,
+and nothing in the browser can loosen it. Create `ctx` once and reuse it:
+Queuedash caches its queue list and Redis connections per context.
 
-### Branding and dashboard defaults
+These are the settings most people reach for. The
+[`@queuedash/api` README](./packages/api/README.md) has all of them.
 
-```typescript
-createQueuedashExpressMiddleware({
-  ctx: {
-    queues,
-    ui: {
-      instanceId: "operations",
-      branding: {
-        name: "Acme Queues",
-        logoUrl: "/assets/acme-logo.svg",
-        logoAlt: "Acme",
-        faviconUrl: "/assets/acme-favicon.svg",
-      },
-      defaults: {
-        theme: "system",
-        refreshIntervalMs: 2_000,
-        jobsPerPage: 30,
-        defaultJobStatus: "remember",
-        density: "comfortable",
-        timestamps: "absolute",
-        showOverviewMetrics: true,
-      },
-    },
-  },
-});
-```
-
-`instanceId` scopes browser-local preferences when multiple Queuedash instances
-share an origin.
-
-### Authentication
-
-Express, Fastify, Hono, and Elysia accept an optional `auth` configuration next
-to `ctx`:
+### Sign-in
 
 ```typescript
 createQueuedashExpressMiddleware({
@@ -160,171 +175,133 @@ createQueuedashExpressMiddleware({
     password: process.env.QUEUEDASH_AUTH_PASSWORD!,
     session: {
       secret: process.env.QUEUEDASH_AUTH_SESSION_SECRET,
-      ttlSeconds: 12 * 60 * 60,
-      secure: true,
     },
   },
-  ctx: {
-    queues,
-    ui: {
-      branding: {
-        name: "Acme Queues",
-        logoUrl: "/assets/acme-logo.svg",
-      },
-    },
-  },
+  ctx,
 });
 ```
 
-The default `session` mode serves the branded login screen, validates the
-configured credentials, and issues a signed, `HttpOnly`, `SameSite=Strict`
-cookie scoped to the Queuedash mount path. Credentials are not stored in
-browser storage. The dashboard shell can load before login, but every tRPC data
-request remains protected server-side.
+Give the Express, Fastify, Hono, or Elysia adapter an `auth` option and
+Queuedash shows its own login page, then keeps you signed in with a signed,
+`HttpOnly` cookie. Passwords never go into browser storage, and the server
+checks every API request.
 
-Use HTTPS in production. The cookie follows the request protocol by default;
-set `session.secure: true` when TLS terminates at a reverse proxy. Rotating the
-configured username or password invalidates existing sessions. Without
-`session.secret`, Queuedash generates a process-local signing secret, so
-sessions end on restart. Set the same strong secret on every replica when
-sessions must survive restarts or load balancing.
+Sessions last 12 hours unless you set `session.ttlSeconds`. Without
+`session.secret`, a restart signs everyone out; set the same secret on every
+instance to keep sessions across restarts and replicas. If TLS ends at a proxy in
+front of your app, add `session.secure: true`. Set `mode: "basic"` if you'd
+rather have the browser's own password prompt.
 
-Set `mode: "basic"` to retain the browser-native HTTP Basic prompt. The bundled
-auth remains a single configured credential, not user management, SSO, or RBAC.
+It's one shared login, not user accounts, roles, or SSO.
 
-### Queue access
+### Branding and defaults
 
 ```typescript
-createQueuedashExpressMiddleware({
-  ctx: {
-    queues,
-    access: {
-      default: "full",
-      rules: [
-        {
-          queues: ["payments-*"],
-          mode: "read-only",
-        },
-        {
-          queues: ["internal-*"],
-          mode: "hidden",
-        },
-        {
-          queues: ["email"],
-          deny: ["queue.empty", "job.remove"],
-        },
-      ],
+const ctx = {
+  queues,
+  ui: {
+    branding: {
+      name: "Acme Queues",
+      logoUrl: "/assets/acme-logo.svg",
+      faviconUrl: "/assets/acme-favicon.svg",
+    },
+    defaults: {
+      theme: "system",
+      refreshIntervalMs: 2_000,
+      timestamps: "relative",
     },
   },
-});
+};
 ```
 
-Queue patterns support `*` wildcards. Rules are evaluated in order: later
-matching rules can change the mode, while denied actions accumulate. Hidden
-queues are omitted from listings, resolve as not found, and are not disclosed
-by Settings policy metadata. Read-only and denied actions are enforced by the
-API, not only hidden in the interface.
+Your name and logo show in the sidebar and on the login page. `defaults` sets
+where everyone starts. People can change the theme, refresh rate, density,
+timestamps, and more for themselves in Settings, and those choices stay in their
+browser. If several dashboards share a domain, give each one an `instanceId` so
+their settings don't mix.
+
+### Access rules
+
+```typescript
+const ctx = {
+  queues,
+  access: {
+    default: "full",
+    rules: [
+      { queues: ["payments-*"], mode: "read-only" },
+      { queues: ["internal-*"], mode: "hidden" },
+      { queues: ["email"], deny: ["queue.empty", "job.remove"] },
+    ],
+  },
+};
+```
+
+Each queue is `full`, `read-only`, or `hidden`, and you can switch off single
+actions, like removing jobs, for any queue. Patterns can use `*`. Rules apply in
+order: a later match can change the mode, and denied actions add up.
+
+The server enforces all of it, not just the buttons. A hidden queue never shows
+up, and asking for it by name gets you "not found". The API README lists
+[every action you can deny](./packages/api/README.md#queue-access).
 
 ### Privacy
 
 ```typescript
-createQueuedashExpressMiddleware({
-  ctx: {
-    queues,
-    privacy: {
-      redact: {
-        keys: ["customerSecret"],
-        paths: ["data.customer.ssn", "opts.headers.authorization"],
-        replacement: "[REDACTED]",
-      },
-      expose: {
-        stacktraces: false,
-        logs: false,
-        returnValues: false,
-      },
+const ctx = {
+  queues,
+  privacy: {
+    redact: {
+      keys: ["customerSecret"],
+      paths: ["data.customer.ssn", "opts.headers.authorization"],
+    },
+    expose: {
+      stacktraces: false,
+      logs: false,
+      returnValues: false,
     },
   },
-});
+};
 ```
 
-Redaction is applied recursively before tRPC serialization. Categories disabled
-through `privacy.expose` are withheld entirely and cannot be searched or
-recovered by the browser.
+Redaction happens on the server, before a job is sent to the browser.
+`redact: true` covers common secret names like `password`, `token`, and
+`authorization`. Pass an object instead to add your own keys and paths on top.
+Anything set to `false` under `expose` is never sent at all, so it can't be
+searched either. While `redact` is set, or scheduler data is hidden, schedulers
+can't be edited from the dashboard, because saving would write the redacted
+values back.
 
 ### Queue discovery
 
 ```typescript
-createQueuedashExpressMiddleware({
-  ctx: {
-    discovery: {
-      type: "bullmq",
-      connectionUrl: "redis://localhost:6379",
-      prefix: "bull",
-      refreshIntervalMs: 30_000,
-      maxQueues: 100,
-    },
+const ctx = {
+  discovery: {
+    type: "bullmq",
+    connectionUrl: "redis://localhost:6379",
+    prefix: "bull",
   },
-});
+};
 ```
 
-Discovery is opt-in, uses incremental Redis `SCAN` against queue metadata keys,
-and keeps a cached registry. It currently supports a single Redis URL for Bull
-or BullMQ. Use explicit static queues for Bee-Queue, GroupMQ, and Redis Cluster.
-Static and discovered queues can be combined.
+Rather than listing your queues, let Queuedash find the Bull or BullMQ queues in
+a Redis instance. It rescans in the background and keeps the last good list if
+Redis has a hiccup. Discovery doesn't cover Bee-Queue, GroupMQ, or Redis
+Cluster, so list those in `queues`, which works alongside it.
 
-Create and reuse one server-side context per dashboard mount. Registry identity
-follows that context, keeping separate mounts and their access/privacy policies
-isolated while reusing discovery connections across requests.
-
-Fastify awaits cleanup of discovery-owned Redis connections during shutdown.
-Elysia starts cleanup from its stop hook, but deterministic Elysia shutdowns
-should await `closeQueuedashContext(ctx)` before `app.stop()`. Express, Hono,
-and custom tRPC integrations should also await the helper when their dashboard
-mount shuts down. Queuedash never closes static queue instances supplied by the
-host application.
-
-Programmatic configuration can also provide `include(queueName)` and
-`displayName(queueName)` functions.
+Discovery opens its own Redis connections. Fastify closes them for you on
+shutdown; with the other adapters, `await closeQueuedashContext(ctx)` when your
+server stops.
 
 ### Search
 
-```typescript
-createQueuedashExpressMiddleware({
-  ctx: {
-    queues,
-    search: {
-      maxScanned: 1_000,
-    },
-  },
-});
-```
-
-Job search runs within the selected queue. It searches only server-presented
-data in the selected status and never scans more than the configured hard limit
-of 25 to 5,000 jobs per request. Filters match job ID, name, group ID, failure
-reason, and visible payload or return-value text. The dashboard stores `q` and
-`sort` in the URL so a filtered status view can be shared.
-
-Filtered retry, removal, and delayed-job promotion use the same bounded,
-server-redacted scan. Confirmations and results identify partial operations when
-more jobs may exist beyond the configured cap. Unfiltered Clean all remains an
-adapter-native operation and is shown only for statuses the adapter can clean.
-
-BullMQ schedulers can be added, inspected, edited with upsert semantics, and
-removed. Other adapters hide scheduler controls rather than emulating behavior
-their queue library does not support. Bee-Queue accepts job data but rejects job
-options instead of silently ignoring them.
-
-### Browser-local preferences
-
-Theme, auto-refresh, jobs per load, default job tab, table density, timestamps,
-overview metrics, and pinned queues can be changed from Settings. They remain in
-the current browser, are scoped by `instanceId` or `basename`, and never sync to
-the server. Resetting local settings restores the server-provided defaults.
+Filtering looks through one status of one queue and matches job ids, names,
+groups, errors, and any data you can see. It stops after 5,000 jobs, or sooner if
+you set `search.maxScanned` (anywhere from 25 to 5,000). Bulk actions on a filter
+use the same limit and tell you when they stopped short.
 
 ## Docker
 
-Run the published image with inline JSON:
+Don't want to touch your app? Run the image and point it at Redis:
 
 ```bash
 docker run -p 3000:3000 \
@@ -336,72 +313,64 @@ docker run -p 3000:3000 \
 
 Then open [http://localhost:3000](http://localhost:3000).
 
-Use `QUEUES_CONFIG_FILE_PATH` instead of `QUEUES_CONFIG_JSON` to load the same
-configuration from a mounted file. Docker supports Bull, BullMQ, and Bee-Queue
-static queues; Redis discovery supports Bull and BullMQ. BullMQ static queues
-may use either `connectionUrl` or `clusterNodes`.
+To keep the config in a file, mount it and set `QUEUES_CONFIG_FILE_PATH` instead
+of `QUEUES_CONFIG_JSON`. The config takes the same `ui`, `privacy`, `access`,
+`search`, and `discovery` settings as above, minus anything that needs a
+function. The image works with Bull, BullMQ, and Bee-Queue queues. A BullMQ queue
+can use `connectionUrl` or `clusterNodes`, and discovery works for Bull and
+BullMQ.
 
-The image bundles BullMQ 6, which talks to queues written by BullMQ 5 and 6
-alike. Keep it ahead of your own BullMQ, not behind: a BullMQ 5 dashboard
-resuming a queue whose producers run BullMQ 6 drops whatever those producers
-added while it was paused, because the two majors disagree on where a paused
-queue's jobs live. BullMQ 6 migrates a list BullMQ 5 left behind, so this image
-is safe in front of either major. The same caveat applies to `@queuedash/api`
-embedded in your own application, where the BullMQ your application installs is
-the one Queuedash uses.
+The image ships BullMQ 6, which handles queues written by BullMQ 5 and 6, so it's
+safe in front of either.
 
-The Docker JSON schema accepts the same `ui`, `privacy`, `access`, `search`, and
-`discovery` settings described above, excluding programmatic callback functions.
+Sign-in is set with environment variables:
 
-Authentication environment variables:
+- `QUEUEDASH_AUTH_USERNAME` and `QUEUEDASH_AUTH_PASSWORD` turn on the login.
+- `QUEUEDASH_AUTH_MODE` is `session` (the default) or `basic`.
+- `QUEUEDASH_AUTH_SESSION_SECRET` keeps sessions valid across restarts and replicas.
+- `QUEUEDASH_AUTH_SESSION_TTL_SECONDS` sets how long a session lasts, from 60 seconds to 30 days.
+- `QUEUEDASH_AUTH_COOKIE_SECURE` turns the cookie's `Secure` flag on (`true`) or off (`false`).
+- `QUEUEDASH_TRUST_PROXY` is `true`, `false`, or the number of proxy hops, from 1 to 10.
 
-- `QUEUEDASH_AUTH_USERNAME` and `QUEUEDASH_AUTH_PASSWORD` enable authentication.
-- `QUEUEDASH_AUTH_MODE` selects `session` (default) or `basic`.
-- `QUEUEDASH_AUTH_SESSION_SECRET` shares session signing across restarts and replicas.
-- `QUEUEDASH_AUTH_SESSION_TTL_SECONDS` sets a session lifetime from 60 seconds to 30 days.
-- `QUEUEDASH_AUTH_COOKIE_SECURE` explicitly selects `true` or `false` for the `Secure` cookie attribute.
-- `QUEUEDASH_TRUST_PROXY` accepts `true`, `false`, or a proxy-hop count from 1 to 10. Set it to `true` for a typical single reverse proxy so session cookies automatically detect forwarded HTTPS.
-
-When TLS terminates at a reverse proxy, either enable `QUEUEDASH_TRUST_PROXY`
-or set `QUEUEDASH_AUTH_COOKIE_SECURE=true`. Without one of those settings,
-Express sees the container connection as HTTP and cannot automatically add the
-`Secure` cookie attribute.
+Behind a reverse proxy that handles HTTPS, set `QUEUEDASH_TRUST_PROXY=true` or
+`QUEUEDASH_AUTH_COOKIE_SECURE=true`. Otherwise the container only sees plain
+HTTP and can't mark the session cookie `Secure`.
 
 ## Security
 
-Queuedash is an operational admin tool. Depending on its policy, it can add,
-retry, promote, remove, clean, empty, pause, and resume production queue data.
+Queuedash can change production data. Depending on your access rules, it can
+add, retry, promote, and remove jobs, clean and empty queues, and pause them.
+Treat it like any other admin tool:
 
-- Enable bundled authentication or protect both routes with an authenticated reverse proxy.
-- Prefer private networking or an authenticated reverse proxy over public exposure.
-- Use `access` policies to remove unnecessary mutation authority.
-- Use `privacy.redact` and `privacy.expose` before sensitive data reaches a browser.
-- Treat hidden and read-only modes as server policy, not as a replacement for authentication.
+- Turn on the built-in login, or put the dashboard and its API behind an authenticated reverse proxy.
+- Keep it on a private network if you can.
+- Use access rules to take away actions people don't need.
+- Use privacy settings to keep sensitive job data out of the browser.
 
-Bundled authentication provides one configured credential and signed browser
-sessions. It does not provide separate users, identity federation, or
-role-based authentication.
+Access rules apply to everyone who can open the dashboard, and the built-in
+login is one shared account. For separate accounts or SSO, put an authenticated
+reverse proxy in front.
 
 ## Packages
 
-| Package                                            | Purpose                                                                 |
-| -------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`@queuedash/api`](./packages/api/README.md)       | Queue adapters, tRPC router, discovery, privacy, and access enforcement |
-| [`@queuedash/ui`](./packages/ui/README.md)         | React dashboard for Next.js and direct embedding                        |
-| [`@queuedash/client`](./packages/client/README.md) | Prebuilt browser entrypoint used by server-rendered adapters            |
+| Package                                            | What it is                                                                    |
+| -------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [`@queuedash/api`](./packages/api/README.md)       | The server side: queue adapters, the API, discovery, access rules, privacy    |
+| [`@queuedash/ui`](./packages/ui/README.md)         | The React dashboard, for Next.js or your own React app                        |
+| [`@queuedash/client`](./packages/client/README.md) | A prebuilt copy of the dashboard that the server adapters load in the browser |
 
-The former `QueueDashApp`, `createQueueDashExpressMiddleware`, Fastify plugin,
-and related `QueueDash*` names remain available as deprecated compatibility
-aliases. New integrations should use `Queuedash`.
+Coming from Queuedash 3? The old `QueueDash*` names, like
+`createQueueDashExpressMiddleware`, still work but are deprecated. The
+[changelog](./packages/api/CHANGELOG.md) covers everything else that changed.
 
 ## Queuedash Pro
 
-For alerts and notifications, longer-term queue trends, and team access, visit
+Queuedash Pro adds alerts, longer history, and team access. See
 [queuedash.com](https://www.queuedash.com).
 
 ## Acknowledgements
 
-Queuedash was inspired by several excellent open-source projects:
+Queuedash was inspired by these open-source projects:
 
 - [bull-board](https://github.com/vcapretz/bull-board)
 - [bull-monitor](https://github.com/s-r-x/bull-monitor)

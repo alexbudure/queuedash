@@ -233,7 +233,7 @@ const createColumns = (onCheckboxClick: (jobId: string) => void) => [
       const added = job.createdAt ? new Date(job.createdAt) : null;
       const processed = job.processedAt ? new Date(job.processedAt) : null;
       const finished = job.finishedAt ? new Date(job.finishedAt) : null;
-      const failed = job.status === "failed" || !!job.failedReason;
+      const failed = job.status === "failed";
       const isTerminalState =
         job.status === "completed" || job.status === "failed";
 

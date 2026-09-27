@@ -4,7 +4,13 @@ import { useId, useMemo, useState } from "react";
 
 import { formatDuration } from "../utils/format";
 import { parseDataOrNull, parseUnknownJson } from "../utils/json";
-import { CARD_BORDER, FOCUS_RING, TEXT_MUTED } from "../utils/styles";
+import { isFailedJob, isRunningJob } from "../utils/status";
+import {
+  CARD_BORDER,
+  FOCUS_RING,
+  TEXT_FAINT,
+  TEXT_MUTED,
+} from "../utils/styles";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { CopyButton } from "./CopyButton";
@@ -206,6 +212,7 @@ export const JobModal = ({
       <JobDetails
         key={job.id}
         job={job}
+        status={status}
         queueName={queueName}
         queue={queueReq.data ?? undefined}
       />
@@ -215,11 +222,32 @@ export const JobModal = ({
 
 type JobDetailsProps = {
   job: Job;
+  status?: Status | null;
   queueName: string;
   queue?: Queue;
 };
 
-const JobDetails = ({ job, queueName, queue }: JobDetailsProps) => {
+const FAILED_TONE = {
+  box: "bg-red-50/80 dark:bg-red-950/20",
+  icon: "text-red-500 dark:text-red-400",
+  title: "text-red-800 dark:text-red-300",
+  text: "text-red-700/90 dark:text-red-400/80",
+  link: "text-red-600 hover:text-red-800 active:text-red-900 dark:text-red-400 dark:hover:text-red-300 dark:active:text-red-200",
+};
+
+// Bull and BullMQ keep a job's last failure reason after a retry succeeds, so
+// on a job that did not end in failure the reason is history, not the outcome.
+const EARLIER_FAILURE_TONE = {
+  box: "bg-gray-50/80 dark:bg-slate-800/40",
+  icon: TEXT_FAINT,
+  title: "text-gray-900 dark:text-white",
+  text: "text-gray-600 dark:text-slate-300",
+  link: `${TEXT_MUTED} hover:text-gray-900 active:text-gray-600 dark:hover:text-white dark:active:text-slate-300`,
+};
+
+const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
+  const failed = isFailedJob(job, status);
+  const errorTone = failed ? FAILED_TONE : EARLIER_FAILURE_TONE;
   const [showOpts, setShowOpts] = useState(false);
   const [showFullError, setShowFullError] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
@@ -310,7 +338,7 @@ const JobDetails = ({ job, queueName, queue }: JobDetailsProps) => {
       {/* Where the job is in its life, and - if it failed - why. The failure
           leads: on a failed job the error is what the panel was opened for. */}
       <DetailSection>
-        {progress !== null && job.processedAt && !job.finishedAt ? (
+        {progress !== null && isRunningJob(job, status) ? (
           <div className="mb-4 rounded-lg bg-gray-50/80 px-3 py-2.5 dark:bg-slate-800/40">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -351,17 +379,29 @@ const JobDetails = ({ job, queueName, queue }: JobDetailsProps) => {
           </div>
         ) : null}
 
-        <JobTimeline job={job} />
+        <JobTimeline job={job} status={status} />
 
         {job.failedReason ? (
-          <div className="mt-4 rounded-lg bg-red-50/80 p-3 dark:bg-red-950/20">
+          <div className={clsx("mt-4 rounded-lg p-3", errorTone.box)}>
             <div className="flex items-start gap-2.5">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-red-500 dark:text-red-400" />
+              <AlertTriangle
+                className={clsx("mt-0.5 size-3.5 shrink-0", errorTone.icon)}
+              />
               <div className="min-w-0 flex-1">
-                <p className="mb-1.5 text-xs font-medium text-red-800 dark:text-red-300">
-                  Failed reason
+                <p
+                  className={clsx(
+                    "mb-1.5 text-xs font-medium",
+                    errorTone.title,
+                  )}
+                >
+                  {failed ? "Failed reason" : "An earlier attempt failed"}
                 </p>
-                <pre className="overflow-wrap-anywhere font-mono text-xs break-all whitespace-pre-wrap text-red-700/90 dark:text-red-400/80">
+                <pre
+                  className={clsx(
+                    "overflow-wrap-anywhere font-mono text-xs break-all whitespace-pre-wrap",
+                    errorTone.text,
+                  )}
+                >
                   {showFullError || job.failedReason.length <= 300
                     ? job.failedReason
                     : `${job.failedReason.slice(0, 300)}…`}
@@ -373,7 +413,8 @@ const JobDetails = ({ job, queueName, queue }: JobDetailsProps) => {
                       aria-expanded={showFullError}
                       onClick={() => setShowFullError((prev) => !prev)}
                       className={clsx(
-                        "rounded text-xs font-medium text-red-600 transition-colors duration-150 hover:text-red-800 active:text-red-900 dark:text-red-400 dark:hover:text-red-300 dark:active:text-red-200",
+                        "rounded text-xs font-medium transition-colors duration-150",
+                        errorTone.link,
                         FOCUS_RING,
                       )}
                     >
@@ -387,7 +428,8 @@ const JobDetails = ({ job, queueName, queue }: JobDetailsProps) => {
                       aria-controls={traceId}
                       onClick={() => setShowTrace((prev) => !prev)}
                       className={clsx(
-                        "rounded text-xs font-medium text-red-600 transition-colors duration-150 hover:text-red-800 active:text-red-900 dark:text-red-400 dark:hover:text-red-300 dark:active:text-red-200",
+                        "rounded text-xs font-medium transition-colors duration-150",
+                        errorTone.link,
                         FOCUS_RING,
                       )}
                     >

@@ -70,3 +70,8 @@ control, privacy controls and automatic queue discovery.
 - Removing several jobs at once reports how many failed instead of failing
   the whole request.
 - The queue page still loads when your Redis user isn't allowed to run `INFO`.
+- A job that failed an attempt and then succeeded no longer shows as failed in
+  the job panel or the table, and no longer offers Retry. Failed jobs get a
+  cross in their timeline instead of a check mark.
+- The queue page no longer shows Redis's blocked-client count. It covered the
+  whole server and counted every idle worker, so healthy queues looked broken.
