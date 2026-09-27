@@ -1,14 +1,17 @@
 {
   "name": "@queuedash/api",
   "version": "3.20.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "Server adapters and queue APIs for the beautiful Queuedash dashboard",
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsc && pnpm run typecheck:bullmq5 && vite build",
+    "typecheck:bullmq5": "tsc -p tsconfig.bullmq5.json",
     "dev": "pnpm run build --watch",
-    "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bee && pnpm run test:groupmq",
+    "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bullmq5 && pnpm run test:bee && pnpm run test:bee1 && pnpm run test:groupmq",
     "test:bull": "QUEUE_TYPE=bull vitest run",
     "test:bullmq": "QUEUE_TYPE=bullmq vitest run",
+    "test:bullmq5": "QUEUE_TYPE=bullmq BULLMQ_MAJOR=5 vitest run",
     "test:bee": "QUEUE_TYPE=bee vitest run",
+    "test:bee1": "QUEUE_TYPE=bee BEE_MAJOR=1 vitest run",
     "test:groupmq": "QUEUE_TYPE=groupmq vitest run",
     "lint": "oxlint --config ../../.oxlintrc.json --disable-nested-config .",
     "lint:fix": "oxlint --config ../../.oxlintrc.json --disable-nested-config --fix .",
@@ -26,19 +29,19 @@
     "bee-queue",
     "queue",
     "bullmq",
+    "groupmq",
     "dashboard"
   ],
   "dependencies": {
     "@trpc/server": "^11.14.1",
-    "redis": "^4.7.0",
+    "redis": "^6.2.1",
     "redis-info": "^3.1.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {
-    "@hono/trpc-server": "^0.3.0",
-    "bee-queue": "^1.0.0",
+    "bee-queue": "^1.0.0 || ^2.0.0",
     "bull": "^3.0.0 || ^4.0.0",
-    "bullmq": "^1.0.0 || ^5.0.0",
+    "bullmq": "^5.60.0 || ^6.0.0",
     "elysia": "^1.0.0",
     "express": "^4.0.0 || ^5.0.0",
     "fastify": "^4.0.0 || ^5.0.0",
@@ -46,9 +49,6 @@
     "hono": "^4.0.0"
   },
   "peerDependenciesMeta": {
-    "@hono/trpc-server": {
-      "optional": true
-    },
     "bee-queue": {
       "optional": true
     },
@@ -76,15 +76,16 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^10.3.0",
-    "@hono/trpc-server": "^0.3.4",
     "@rollup/plugin-typescript": "^12.3.0",
     "@types/express": "^5.0.6",
     "@types/express-serve-static-core": "^5.1.1",
     "@types/node": "^24.8.1",
     "@types/redis-info": "^3.0.3",
-    "bee-queue": "^1.7.1",
+    "bee-queue": "^2.0.0",
+    "bee-queue-v1": "npm:bee-queue@^1.7.1",
     "bull": "^4.16.5",
-    "bullmq": "^5.71.0",
+    "bullmq": "^6.3.8",
+    "bullmq-v5": "npm:bullmq@^5.60.0",
     "elysia": "^1.4.28",
     "express": "^5.2.1",
     "fastify": "^5.8.2",
@@ -96,6 +97,9 @@
     "typescript": "^5.9.3",
     "vite": "^5.4.19",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "license": "MIT"
 }

@@ -1,14 +1,14 @@
 {
   "name": "with-express",
   "version": "1.0.0",
-  "description": "Example of using QueueDash with Express",
+  "description": "Example of using Queuedash with Express",
   "author": "Alex Budure",
   "license": "MIT",
   "scripts": {
     "start": "tsx main.ts"
   },
   "dependencies": {
-    "@queuedash/api": "^3.12.0",
+    "@queuedash/api": "^4.0.0",
     "bull": "^4.16.5",
     "express": "^5.1.0"
   },

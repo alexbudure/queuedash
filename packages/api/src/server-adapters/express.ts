@@ -4,44 +4,71 @@ import type { Handler } from "express";
 import type { Context } from "../routers/_app";
 import { appRouter } from "../routers/_app";
 import {
-  isQueueDashAuthorized,
-  QUEUEDASH_AUTH_CHALLENGE,
-  QUEUEDASH_AUTH_REQUIRED_MESSAGE,
-  type QueueDashAuthOptions,
+  getQueuedashRoute,
+  type QueuedashAuthOptions,
+  resolveQueuedashRequest,
+  validateQueuedashAuthOptions,
 } from "./auth";
 import { createQueuedashHtml } from "./utils";
 
-export function createQueueDashExpressMiddleware({
+export function createQueuedashExpressMiddleware({
   ctx,
   auth,
 }: {
   ctx: Context;
-  auth?: QueueDashAuthOptions;
+  auth?: QueuedashAuthOptions;
 }): Handler {
-  return async (req, res, next) => {
-    if (!isQueueDashAuthorized(req.headers.authorization, auth)) {
-      res
-        .set({
-          "WWW-Authenticate": QUEUEDASH_AUTH_CHALLENGE,
-          "Cache-Control": "no-store",
-        })
-        .status(401)
-        .send(QUEUEDASH_AUTH_REQUIRED_MESSAGE);
-      return;
-    }
+  const authMode = validateQueuedashAuthOptions(auth);
 
-    if (req.path.startsWith("/trpc")) {
-      const endpoint = req.path.replace("/trpc", "").slice(1);
-      await trpcNodeHttp.nodeHTTPRequestHandler({
-        router: appRouter,
-        createContext: () => ctx,
-        req,
-        res,
-        path: endpoint,
+  return async (req, res, next) => {
+    // Express 4 does not catch a rejected handler: an error escaping here
+    // would be an unhandled rejection, which ends the host process.
+    try {
+      const decision = resolveQueuedashRequest(auth, {
+        route: getQueuedashRoute(req.method, req.path),
+        method: req.method,
+        authorization: req.headers.authorization,
+        cookie: req.headers.cookie,
+        contentType: req.headers["content-type"],
+        baseUrl: req.baseUrl,
+        isSecure: req.secure,
       });
-    } else {
-      res.type("text/html").send(createQueuedashHtml(req.baseUrl));
-      next();
+
+      if (decision.type === "respond") {
+        res.set(decision.headers).status(decision.status).send(decision.body);
+        return;
+      }
+
+      if (decision.type === "trpc") {
+        res.set(decision.headers);
+        const endpoint = req.path.replace("/trpc", "").slice(1);
+        await trpcNodeHttp.nodeHTTPRequestHandler({
+          router: appRouter,
+          createContext: () => ctx,
+          req,
+          res,
+          path: endpoint,
+        });
+        return;
+      }
+
+      res
+        .type("text/html")
+        .send(
+          createQueuedashHtml(
+            req.baseUrl,
+            ctx.ui,
+            authMode === "session"
+              ? { baseUrl: `${req.baseUrl}/auth` }
+              : undefined,
+          ),
+        );
+    } catch (error) {
+      next(error);
     }
   };
 }
+
+/** @deprecated Use createQueuedashExpressMiddleware instead. */
+export const createQueueDashExpressMiddleware =
+  createQueuedashExpressMiddleware;

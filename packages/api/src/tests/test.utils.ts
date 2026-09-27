@@ -1,9 +1,10 @@
 import { faker } from "@faker-js/faker";
 import BeeQueue from "bee-queue";
 import Bull from "bull";
-import BullMQ, { MetricsTime } from "bullmq";
+import * as BullMQ from "bullmq";
 import { Queue as GroupMQQueue, Worker as GroupMQWorker } from "groupmq";
 import Redis from "ioredis";
+import { afterAll, onTestFinished } from "vitest";
 
 import type { Context } from "../trpc";
 
@@ -26,6 +27,49 @@ type QueueType = "bull" | "bullmq" | "bee" | "groupmq";
 export const type: QueueType =
   (process.env.QUEUE_TYPE as unknown as QueueType) || "groupmq";
 
+/**
+ * Which BullMQ major the suite runs against. Vitest aliases the `bullmq`
+ * specifier to the installed 5.x when this is set, so tests that touch APIs
+ * the majors disagree on branch on it.
+ */
+export const bullmqMajor: 5 | 6 = process.env.BULLMQ_MAJOR === "5" ? 5 : 6;
+
+/**
+ * The parts of the raw Redis client the tests reach for. BullMQ 6 hands over a
+ * proxy that forwards anything outside its own interface to ioredis, so both
+ * majors answer all of these.
+ */
+type BullMQTestRedisClient = {
+  info: () => Promise<string>;
+  defineCommand: (
+    name: string,
+    definition: { numberOfKeys: number; lua: string },
+  ) => void;
+  set: (key: string, value: string) => Promise<unknown>;
+  del: (key: string) => Promise<unknown>;
+  type: (key: string) => Promise<string>;
+};
+
+/**
+ * Mirrors the adapter's lookup: BullMQ 6 moved the raw Redis client behind
+ * `getBackend()`, where 5 exposed it as `queue.client`.
+ */
+export const getBullMQRedisClient = async (
+  queue: BullMQ.Queue,
+): Promise<BullMQTestRedisClient> => {
+  const compat = queue as unknown as {
+    client?: Promise<BullMQTestRedisClient | undefined>;
+    getBackend?: () => { client?: Promise<BullMQTestRedisClient | undefined> };
+  };
+  const client = await (typeof compat.getBackend === "function"
+    ? compat.getBackend().client
+    : compat.client);
+  if (!client) {
+    throw new Error("This BullMQ queue is not backed by Redis");
+  }
+  return client;
+};
+
 // Helper to check if current queue type supports a feature
 export const supportsFeature = (feature: keyof typeof featureSupport) => {
   return featureSupport[feature];
@@ -35,8 +79,8 @@ export const supportsFeature = (feature: keyof typeof featureSupport) => {
 const featureSupport = {
   pause: type !== "bee",
   resume: type !== "bee",
-  clean: type !== "bee",
-  retry: type !== "bee",
+  clean: type !== "bee" && type !== "groupmq",
+  retry: type !== "bee" && type !== "groupmq",
   promote: type === "bullmq" || type === "groupmq",
   logs: type === "bullmq",
   schedulers: type === "bullmq",
@@ -64,7 +108,7 @@ export const initMultipleQueues = async (count: number = 2) => {
 // Helper to expect TRPC error
 export const expectTRPCError = async (
   fn: () => Promise<unknown>,
-  code?: "BAD_REQUEST" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
+  code?: "BAD_REQUEST" | "FORBIDDEN" | "NOT_FOUND" | "INTERNAL_SERVER_ERROR",
 ) => {
   const { TRPCError } = await import("@trpc/server");
   try {
@@ -81,6 +125,46 @@ export const expectTRPCError = async (
   }
 };
 
+/**
+ * Every suite shares one Redis database, so fixtures are torn down, keys and
+ * all; left behind, each run adds thousands of keys. A fixture stops its
+ * worker and removes its queue's keys when the test that created it finishes,
+ * pass or fail. Two slow steps wait for the end of the file instead: Bull's
+ * close(), which gives a worker blocked on an empty queue 500 ms to quit, and
+ * removing GroupMQ keys, which has no obliterate() and so takes a keyspace
+ * scan, done once for all of the file's queues.
+ */
+const closingBullQueues: Promise<void>[] = [];
+const groupMQNamespaces = new Set<string>();
+
+afterAll(async () => {
+  await Promise.all(closingBullQueues);
+  if (groupMQNamespaces.size === 0) return;
+
+  const redis = new Redis();
+  try {
+    let cursor = "0";
+    do {
+      const [next, keys] = await redis.scan(
+        cursor,
+        "MATCH",
+        `groupmq:${QUEUE_NAME_PREFIX}-*`,
+        "COUNT",
+        10_000,
+      );
+      cursor = next;
+      const fixtureKeys = keys.filter((key) =>
+        groupMQNamespaces.has(
+          key.slice(0, key.indexOf(":", "groupmq:".length)),
+        ),
+      );
+      if (fixtureKeys.length > 0) await redis.unlink(...fixtureKeys);
+    } while (cursor !== "0");
+  } finally {
+    await redis.quit();
+  }
+});
+
 export const initRedisInstance = async () => {
   switch (type) {
     case "bull": {
@@ -89,6 +173,16 @@ export const initRedisInstance = async () => {
         displayName: QUEUE_DISPLAY_NAME,
         type: "bull" as const,
       };
+      onTestFinished(async () => {
+        // The queue is also its own worker. obliterate() pauses the queue
+        // before removing anything, so the worker takes no further jobs.
+        await flightBookingsQueue.queue.obliterate({ force: true });
+        const closing = flightBookingsQueue.queue.close();
+        // A failed close is reported by the file's afterAll, which awaits it,
+        // rather than as an unhandled rejection in whichever test is running.
+        closing.catch(() => {});
+        closingBullQueues.push(closing);
+      });
 
       flightBookingsQueue.queue.process(async (job) => {
         if (job.data.index > NUM_OF_COMPLETED_JOBS) {
@@ -152,7 +246,7 @@ export const initRedisInstance = async () => {
         {
           connection: {},
           metrics: {
-            maxDataPoints: MetricsTime.ONE_WEEK * 2,
+            maxDataPoints: BullMQ.MetricsTime.ONE_WEEK * 2,
           },
         },
       );
@@ -160,6 +254,11 @@ export const initRedisInstance = async () => {
       // Store worker reference to prevent garbage collection
       // This ensures metrics continue to be recorded
       flightBookingsQueue.worker = worker;
+      onTestFinished(async () => {
+        await worker.close();
+        await flightBookingsQueue.queue.obliterate({ force: true });
+        await flightBookingsQueue.queue.close();
+      });
 
       await flightBookingsQueue.queue.addBulk(
         Array.from({ length: NUM_OF_JOBS }, (_, index) => {
@@ -234,6 +333,19 @@ export const initRedisInstance = async () => {
         displayName: QUEUE_DISPLAY_NAME,
         type: "bee" as const,
       };
+      onTestFinished(async () => {
+        // close() waits for the active job, after which nothing can write the
+        // keys destroy() removes. A closed queue runs no commands, so a second,
+        // non-worker handle to the same queue removes them.
+        await flightBookingsQueue.queue.close();
+        const cleanup = new BeeQueue(flightBookingsQueue.queue.name, {
+          isWorker: false,
+          getEvents: false,
+          sendEvents: false,
+        });
+        await cleanup.destroy();
+        await cleanup.close();
+      });
 
       flightBookingsQueue.queue.process(async (job) => {
         if (job.data.index > NUM_OF_COMPLETED_JOBS) {
@@ -289,6 +401,11 @@ export const initRedisInstance = async () => {
 
           return Promise.resolve();
         },
+      });
+      groupMQNamespaces.add(flightBookingsQueue.queue.namespace);
+      onTestFinished(async () => {
+        await worker.close();
+        await flightBookingsQueue.queue.close();
       });
       worker.run();
       // Add regular jobs with different group IDs

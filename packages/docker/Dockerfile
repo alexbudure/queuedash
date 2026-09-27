@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm-slim AS base
+FROM node:24-bookworm-slim AS base
 WORKDIR /repo
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
@@ -25,9 +25,10 @@ COPY . .
 COPY --from=deps /repo/node_modules ./node_modules
 
 # Build any workspaces that @queuedash/docker needs at runtime
-# (e.g., compiling TS to dist/)
-RUN pnpm -w --filter @queuedash/api build || true
-RUN pnpm -w --filter @queuedash/ui  build || true
+# (e.g., compiling TS to dist/). A failed build must fail the image: without
+# dist/ the server cannot start.
+RUN pnpm -w --filter @queuedash/api build
+RUN pnpm -w --filter @queuedash/ui  build
 
 # Deploy ONLY the docker runtime workspace into /repo/out
 # Exclude root to keep "exactly one project" for deploy
@@ -38,7 +39,7 @@ RUN mkdir -p /repo/out \
 # RUN ls -la /repo/out && ls -la /repo/out/packages/docker || true
 
 # ---------------- runner: tiny runtime ----------------
-FROM node:20-bookworm-slim AS runner
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000
 

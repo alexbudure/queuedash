@@ -1,7 +1,7 @@
 {
   "name": "@queuedash/client",
   "version": "3.20.0",
-  "description": "A stunning, sleek dashboard for Bull, BullMQ, and Bee-Queue",
+  "description": "Prebuilt browser entrypoint for Queuedash server adapters",
   "files": [
     "dist"
   ],
@@ -25,6 +25,9 @@
     "rollup-plugin-typescript-paths": "^1.5.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.19"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "license": "MIT"
 }

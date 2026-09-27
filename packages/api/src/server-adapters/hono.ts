@@ -1,14 +1,8 @@
-import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 
-import { appRouter } from "../routers/_app";
 import type { Context } from "../routers/_app";
-import {
-  createQueueDashUnauthorizedResponse,
-  isQueueDashAuthorized,
-  type QueueDashAuthOptions,
-} from "./auth";
-import { createQueuedashHtml } from "./utils";
+import type { QueuedashAuthOptions } from "./auth";
+import { createQueuedashFetchHandler } from "./utils";
 
 export const createHonoAdapter = ({
   baseUrl,
@@ -17,25 +11,9 @@ export const createHonoAdapter = ({
 }: {
   baseUrl: string;
   ctx: Context;
-  auth?: QueueDashAuthOptions;
+  auth?: QueuedashAuthOptions;
 }) => {
-  return new Hono()
-    .use("*", async (c, next) => {
-      if (!isQueueDashAuthorized(c.req.header("Authorization"), auth)) {
-        return createQueueDashUnauthorizedResponse();
-      }
+  const handle = createQueuedashFetchHandler({ auth, baseUrl, ctx });
 
-      await next();
-    })
-    .use(
-      "/trpc/*",
-      trpcServer({
-        endpoint: `${baseUrl}/trpc`,
-        router: appRouter,
-        createContext: () => ctx,
-      }),
-    )
-    .get("*", (c) => {
-      return c.html(createQueuedashHtml(baseUrl));
-    });
+  return new Hono().all("*", (c) => handle(c.req.raw));
 };

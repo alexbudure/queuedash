@@ -7,7 +7,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/* Same reset as the standalone HTML the server adapters serve. */}
+      <body style={{ margin: 0 }}>{children}</body>
     </html>
   );
 }

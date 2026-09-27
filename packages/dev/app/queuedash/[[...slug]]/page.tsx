@@ -1,6 +1,6 @@
 "use client";
 
-import { QueueDashApp } from "@queuedash/ui";
+import { QueuedashApp } from "@queuedash/ui";
 import { useState, useEffect } from "react";
 import {
   Button as AriaButton,
@@ -19,7 +19,7 @@ const ADAPTERS = [
 
 const STORAGE_KEY = "queuedash-adapter";
 
-export default function QueueDashPage() {
+export default function QueuedashPage() {
   const [selectedAdapter, setSelectedAdapter] = useState<string>("trpc");
   const [mounted, setMounted] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -57,13 +57,29 @@ export default function QueueDashPage() {
 
   return (
     <div>
-      <QueueDashApp apiUrl={currentAdapter.apiUrl} basename="/queuedash" />
+      <QueuedashApp
+        apiUrl={currentAdapter.apiUrl}
+        basename="/queuedash"
+        ui={{
+          instanceId: "queuedash-dev",
+          defaults: {
+            defaultJobStatus: "remember",
+            density: "comfortable",
+            jobsPerPage: 30,
+            refreshIntervalMs: 2_000,
+            showOverviewMetrics: true,
+            theme: "system",
+            timestamps: "absolute",
+          },
+        }}
+      />
 
       <div
+        // Lifted clear of the dashboard's pinned footer.
         style={{
           position: "fixed",
           right: 32,
-          bottom: 32,
+          bottom: 68,
           zIndex: 80,
         }}
       >
@@ -138,6 +154,7 @@ export default function QueueDashPage() {
               </p>
 
               <label
+                htmlFor="queuedash-dev-adapter"
                 style={{
                   display: "block",
                   marginBottom: 6,
@@ -149,6 +166,7 @@ export default function QueueDashPage() {
                 API Adapter
               </label>
               <select
+                id="queuedash-dev-adapter"
                 value={selectedAdapter}
                 onChange={(e) => handleAdapterChange(e.target.value)}
                 style={{

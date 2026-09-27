@@ -1,6 +1,6 @@
 "use client";
 
-import { QueueDashApp } from "@queuedash/ui";
+import { QueuedashApp } from "@queuedash/ui";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") {
@@ -15,5 +15,5 @@ function getBaseUrl() {
 }
 
 export default function Page() {
-  return <QueueDashApp apiUrl={getBaseUrl()} basename="/queuedash" />;
+  return <QueuedashApp apiUrl={getBaseUrl()} basename="/queuedash" />;
 }

@@ -1,14 +1,9 @@
-import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Elysia } from "elysia";
 
+import { closeQueuedashContext } from "../queue-registry";
 import type { Context } from "../routers/_app";
-import { appRouter } from "../routers/_app";
-import {
-  createQueueDashUnauthorizedResponse,
-  isQueueDashAuthorized,
-  type QueueDashAuthOptions,
-} from "./auth";
-import { createQueuedashHtml } from "./utils";
+import type { QueuedashAuthOptions } from "./auth";
+import { createQueuedashFetchHandler } from "./utils";
 
 export function queuedash({
   baseUrl,
@@ -17,30 +12,16 @@ export function queuedash({
 }: {
   ctx: Context;
   baseUrl: string;
-  auth?: QueueDashAuthOptions;
+  auth?: QueuedashAuthOptions;
 }): Elysia {
+  const handle = createQueuedashFetchHandler({ auth, baseUrl, ctx });
+
   return new Elysia({
     name: "queuedash",
   })
-    .all(`${baseUrl}/trpc/*`, async ({ request }) => {
-      if (!isQueueDashAuthorized(request.headers.get("Authorization"), auth)) {
-        return createQueueDashUnauthorizedResponse();
-      }
-
-      return fetchRequestHandler({
-        endpoint: `${baseUrl}/trpc`,
-        router: appRouter,
-        req: request,
-        createContext: () => ctx,
-      });
+    .onStop(async () => {
+      await closeQueuedashContext(ctx);
     })
-    .get(baseUrl, async ({ request }) => {
-      if (!isQueueDashAuthorized(request.headers.get("Authorization"), auth)) {
-        return createQueueDashUnauthorizedResponse();
-      }
-
-      return new Response(createQueuedashHtml(baseUrl), {
-        headers: { "Content-Type": "text/html; charset=utf8" },
-      });
-    });
+    .all(baseUrl, ({ request }) => handle(request))
+    .all(`${baseUrl}/*`, ({ request }) => handle(request));
 }

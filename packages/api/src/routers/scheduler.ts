@@ -1,9 +1,19 @@
+import { randomUUID } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { assertQueueActionAllowed } from "../access";
+import { presentScheduler, resolvePrivacyExposure } from "../presentation";
 import type { SchedulerInfo } from "../queue-adapters/base.adapter";
+import {
+  schedulerOptionsSchema,
+  schedulerTemplateSchema,
+} from "../scheduler.schemas";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
+
+const BULK_SCHEDULER_CONCURRENCY = 25;
 
 export const schedulerRouter = router({
   list: procedure
@@ -13,7 +23,7 @@ export const schedulerRouter = router({
       }),
     )
     .query(async ({ input: { queueName }, ctx }): Promise<SchedulerInfo[]> => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -26,31 +36,34 @@ export const schedulerRouter = router({
         });
       }
 
-      return (await queueInCtx.adapter.getSchedulers?.()) || [];
+      return ((await queueInCtx.adapter.getSchedulers?.()) || []).map(
+        (scheduler) => presentScheduler(scheduler, internalCtx.privacy),
+      );
     }),
 
   add: procedure
     .input(
       z.object({
         queueName: z.string(),
-        jobName: z.string(),
+        jobName: z.string().trim().min(1),
         data: z.record(z.string(), z.unknown()),
-        pattern: z.string().optional(),
-        every: z.number().optional(),
-        tz: z.string().optional(),
+        pattern: z.string().trim().min(1).optional(),
+        every: z.number().positive().optional(),
+        tz: z.string().trim().min(1).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
       const { queueName, jobName, data, pattern, every, tz } = input;
 
-      if (!pattern && !every) {
+      if ((pattern === undefined) === (every === undefined)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "You must provide either `pattern` or `every`",
+          message: "You must provide exactly one of `pattern` or `every`",
         });
       }
 
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.add");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -62,13 +75,73 @@ export const schedulerRouter = router({
           message: `${queueInCtx.adapter.getType()} does not support job schedulers`,
         });
       }
+      if (!queueInCtx.adapter.addScheduler) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Scheduler support is not implemented for this queue",
+        });
+      }
 
-      await queueInCtx.adapter.addScheduler?.(
-        `scheduler-${Date.now()}`,
+      await queueInCtx.adapter.addScheduler(
+        `scheduler-${randomUUID()}`,
         { pattern, every, tz },
         { name: jobName, data },
       );
 
+      return { success: true };
+    }),
+
+  update: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        key: z.string().min(1),
+        template: schedulerTemplateSchema,
+        opts: schedulerOptionsSchema,
+      }),
+    )
+    .mutation(async ({ input: { queueName, key, template, opts }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.update");
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+
+      if (
+        !resolvePrivacyExposure(internalCtx.privacy).schedulerData ||
+        internalCtx.privacy?.redact
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Scheduler editing is disabled when template data is hidden or redacted",
+        });
+      }
+
+      if (
+        !queueInCtx.adapter.supports.schedulerUpdate ||
+        !queueInCtx.adapter.updateScheduler
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} does not support updating job schedulers`,
+        });
+      }
+
+      // A legacy repeatable's UnsupportedSchedulerUpdateError becomes
+      // BAD_REQUEST in the procedure error middleware.
+      const updated = await queueInCtx.adapter.updateScheduler(
+        key,
+        opts,
+        template,
+      );
+      if (!updated) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Job scheduler not found",
+        });
+      }
       return { success: true };
     }),
 
@@ -80,7 +153,8 @@ export const schedulerRouter = router({
       }),
     )
     .mutation(async ({ input: { queueName, jobSchedulerId }, ctx }) => {
-      const internalCtx = transformContext(ctx);
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "scheduler.remove");
       const queueInCtx = findQueueInCtxOrFail({
         queues: internalCtx.queues,
         queueName,
@@ -93,15 +167,8 @@ export const schedulerRouter = router({
         });
       }
 
-      try {
-        await queueInCtx.adapter.removeScheduler?.(jobSchedulerId);
-        return { success: true };
-      } catch (e) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: e instanceof Error ? e.message : undefined,
-        });
-      }
+      await queueInCtx.adapter.removeScheduler?.(jobSchedulerId);
+      return { success: true };
     }),
 
   bulkRemove: procedure
@@ -116,7 +183,8 @@ export const schedulerRouter = router({
         input: { jobSchedulerIds, queueName },
         ctx,
       }): Promise<SchedulerInfo[]> => {
-        const internalCtx = transformContext(ctx);
+        const internalCtx = await transformContext(ctx);
+        assertQueueActionAllowed(internalCtx, queueName, "scheduler.remove");
         const queueInCtx = findQueueInCtxOrFail({
           queues: internalCtx.queues,
           queueName,
@@ -129,36 +197,38 @@ export const schedulerRouter = router({
           });
         }
 
-        try {
-          const schedulers = await queueInCtx.adapter.getSchedulers?.();
-          const schedulersToRemove = schedulers?.filter((s) =>
-            jobSchedulerIds.includes(s.key),
-          );
+        const schedulers = await queueInCtx.adapter.getSchedulers?.();
+        const requestedIds = new Set(jobSchedulerIds);
+        const schedulersToRemove = schedulers?.filter((s) =>
+          requestedIds.has(s.key),
+        );
 
-          if (!schedulersToRemove || schedulersToRemove.length === 0) {
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              message: "No schedulers found with provided IDs",
-            });
-          }
-
-          await Promise.all(
-            jobSchedulerIds.map((id) =>
-              queueInCtx.adapter.removeScheduler?.(id),
-            ),
-          );
-
-          return schedulersToRemove;
-        } catch (e) {
-          if (e instanceof TRPCError) {
-            throw e;
-          } else {
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: e instanceof Error ? e.message : undefined,
-            });
-          }
+        if (!schedulersToRemove || schedulersToRemove.length === 0) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "No schedulers found with provided IDs",
+          });
         }
+
+        for (
+          let start = 0;
+          start < schedulersToRemove.length;
+          start += BULK_SCHEDULER_CONCURRENCY
+        ) {
+          const results = await Promise.allSettled(
+            schedulersToRemove
+              .slice(start, start + BULK_SCHEDULER_CONCURRENCY)
+              .map(({ key }) => queueInCtx.adapter.removeScheduler?.(key)),
+          );
+          const failure = results.find(
+            (result) => result.status === "rejected",
+          );
+          if (failure?.status === "rejected") throw failure.reason;
+        }
+
+        return schedulersToRemove.map((scheduler) =>
+          presentScheduler(scheduler, internalCtx.privacy),
+        );
       },
     ),
 });
