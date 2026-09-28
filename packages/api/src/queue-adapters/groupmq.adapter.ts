@@ -354,6 +354,7 @@ export class GroupMQAdapter extends QueueAdapter<
 
   supports: FeatureSupport<GroupMQStatus> = {
     addJobOptions: true,
+    jobNames: false,
     addJobOptionKeys: [
       "delay",
       "groupId",

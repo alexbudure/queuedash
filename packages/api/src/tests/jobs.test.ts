@@ -13,6 +13,7 @@ import { appRouter } from "../routers/_app";
 import { type Context, transformContext } from "../trpc";
 import {
   bullmqMajor,
+  getBullMQRedisClient,
   initRedisInstance,
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
@@ -2694,6 +2695,63 @@ test("a job looked up by id carries its live status", async () => {
   ).resolves.toBeNull();
 });
 
+test("a failed job looked up by id names its error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const [{ groups }, failedPage, completedPage] = await Promise.all([
+    caller.job.errorGroups({ queueName, range: "all" }),
+    caller.job.list({ queueName, status: "failed", limit: 1 }),
+    caller.job.list({ queueName, status: "completed", limit: 1 }),
+  ]);
+  const [failed] = failedPage.jobs;
+  const [completed] = completedPage.jobs;
+  expect(groups).toHaveLength(1);
+  expect(failed && completed).toBeTruthy();
+  if (!failed || !completed) return;
+
+  await expect(
+    caller.job.byId({ queueName, jobId: failed.id }),
+  ).resolves.toMatchObject({ errorFingerprint: groups[0]?.fingerprint });
+  // These fixtures never failed, so there is no group to point at.
+  await expect(
+    caller.job.byId({ queueName, jobId: completed.id }),
+  ).resolves.toMatchObject({ errorFingerprint: null });
+});
+
+test("a job looked up by id says which worker ran it and how often it stalled", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const jobId = await addDelayedJob(firstQueue, { runFacts: true }, 600_000);
+
+  if (firstQueue.type !== "bullmq") {
+    const job = await caller.job.byId({ queueName, jobId });
+    expect(job?.processedBy).toBeUndefined();
+    expect(job?.attemptsStarted).toBeUndefined();
+    expect(job?.stalledCounter).toBeUndefined();
+    return;
+  }
+
+  // What BullMQ leaves on a job a worker named "payments-worker-2" started
+  // twice, once after its lock expired mid-run.
+  const client = await getBullMQRedisClient(firstQueue.queue);
+  await client.hset(
+    `${firstQueue.queue.qualifiedName}:${jobId}`,
+    "pb",
+    "payments-worker-2",
+    "ats",
+    "2",
+    "stc",
+    "1",
+  );
+  await expect(caller.job.byId({ queueName, jobId })).resolves.toMatchObject({
+    processedBy: "payments-worker-2",
+    attemptsStarted: 2,
+    stalledCounter: 1,
+  });
+});
+
 // ============================================================================
 // HIGH PRIORITY TESTS - Missing Core Functionality
 // ============================================================================
@@ -3387,6 +3445,49 @@ test("rerun keeps the job's name and run options", async () => {
       break;
     }
   }
+});
+
+test("addJob names the job where the library has names", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const queue = await caller.queue.byName({ queueName });
+
+  if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+    expect(queue.supports.jobNames).toBe(false);
+    await expectTRPCError(
+      () => caller.queue.addJob({ queueName, name: "send-receipt", data: {} }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
+
+  expect(queue.supports.jobNames).toBe(true);
+  // Delayed, so no worker takes them while the test reads them back.
+  const opts = { delay: 600_000 };
+  await caller.queue.addJob({
+    queueName,
+    name: "send-receipt",
+    data: { named: true },
+    opts,
+  });
+  await caller.queue.addJob({
+    queueName,
+    name: "   ",
+    data: { unnamed: true },
+    opts,
+  });
+  const { jobs } = await caller.job.list({
+    queueName,
+    status: "delayed",
+    limit: 10,
+  });
+
+  expect(jobs.find((job) => job.data.named)?.rawName).toBe("send-receipt");
+  // A blank name is no name: each library's own default, as before.
+  expect(jobs.find((job) => job.data.unnamed)?.rawName).toBe(
+    firstQueue.type === "bullmq" ? "Manual add" : "__default__",
+  );
 });
 
 test("rerun of an unknown job is NOT_FOUND", async () => {

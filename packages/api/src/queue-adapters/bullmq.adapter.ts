@@ -210,6 +210,7 @@ export class BullMQAdapter extends QueueAdapter<
 
   supports: FeatureSupport<BullMQStatus> = {
     addJobOptions: true,
+    jobNames: true,
     addJobOptionKeys: [
       "attempts",
       "backoff",
@@ -393,8 +394,9 @@ export class BullMQAdapter extends QueueAdapter<
   async addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
+    name?: string,
   ): Promise<AdaptedJob> {
-    const job = await this.queue.add("Manual add", data, opts || {});
+    const job = await this.queue.add(name || "Manual add", data, opts || {});
     return this.adaptJob(job);
   }
 
@@ -737,6 +739,10 @@ export class BullMQAdapter extends QueueAdapter<
       groupId,
       progress: typeof job.progress === "number" ? job.progress : undefined,
       attemptsMade: job.attemptsMade,
+      rawName: job.name,
+      processedBy: job.processedBy || undefined,
+      attemptsStarted: job.attemptsStarted,
+      stalledCounter: job.stalledCounter,
     };
   }
 

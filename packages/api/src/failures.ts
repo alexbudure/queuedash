@@ -117,7 +117,9 @@ const pickLatestStack = (job: AdaptedJob): string | undefined => {
   if (!stacks?.length) return undefined;
   const reason = job.failedReason?.split(/\r?\n/u, 1)[0]?.trim();
   if (reason) {
-    const matching = stacks.find((stack) =>
+    // Newest first: stacks are kept oldest first, and an earlier attempt can
+    // have failed with the same message somewhere else.
+    const matching = stacks.findLast((stack) =>
       stack.split(/\r?\n/u, 1)[0]?.includes(reason),
     );
     if (matching) return matching;

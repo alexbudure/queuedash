@@ -14,6 +14,43 @@ type HmgetCallback = (
   values: Array<string | null>,
 ) => void;
 
+test("a Bee job's stacks come oldest first, like every other library", async () => {
+  const stored = JSON.stringify({
+    data: {},
+    // Bee-Queue unshifts each failure, so the newest is first.
+    options: {
+      timestamp: 0,
+      stacktraces: [
+        "Error: second failure\n    at second (/app/src/b.ts:1:1)",
+        "Error: first failure\n    at first (/app/src/a.ts:1:1)",
+      ],
+    },
+    status: "failed",
+  });
+  const hmget = vi.fn((_key: string, ...fieldsThenCallback: unknown[]) => {
+    const callback = fieldsThenCallback.pop() as HmgetCallback;
+    callback(
+      null,
+      (fieldsThenCallback as string[]).map(() => stored),
+    );
+  });
+  const queue = {
+    name: "bee-stack-order",
+    ready: vi.fn().mockResolvedValue(undefined),
+    client: { hmget },
+    toKey: (key: string) => `bq:bee-stack-order:${key}`,
+  } as unknown as BeeQueue;
+  const adapter = new BeeAdapter(queue, "Bee stack order");
+
+  const job = await adapter.getJob("1");
+
+  expect(job?.stacktrace?.map((stack) => stack.split("\n", 1)[0])).toEqual([
+    "Error: first failure",
+    "Error: second failure",
+  ]);
+  expect(job?.failedReason).toBe("Error: second failure");
+});
+
 test("un-tokened Bee set pages use isolated stateless scans", async () => {
   const scanCallbacks: ScanCallback[] = [];
   const sscan = vi.fn(

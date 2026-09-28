@@ -255,11 +255,13 @@ export const queueRouter = router({
     .input(
       z.object({
         queueName: z.string(),
+        // Workers dispatch on it. Blank means the library's own default.
+        name: z.string().trim().max(256).optional(),
         data: z.object({}).passthrough(),
         opts: z.object({}).passthrough().optional(),
       }),
     )
-    .mutation(async ({ input: { queueName, data, opts }, ctx }) => {
+    .mutation(async ({ input: { queueName, name, data, opts }, ctx }) => {
       const internalCtx = await transformContext(ctx);
       assertQueueActionAllowed(internalCtx, queueName, "job.add");
       const queueInCtx = findQueueInCtxOrFail({
@@ -267,9 +269,17 @@ export const queueRouter = router({
         queueName,
       });
 
+      // Rejected rather than dropped, like an option the adapter can't take:
+      // a caller who named the job expects a worker to see that name.
+      if (name && !queueInCtx.adapter.supports.jobNames) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${queueInCtx.adapter.getType()} jobs have no names`,
+        });
+      }
       assertSafeAddJobOptions(queueInCtx.adapter, opts);
 
-      await queueInCtx.adapter.addJob(data, opts);
+      await queueInCtx.adapter.addJob(data, opts, name || undefined);
 
       return {
         name: queueName,

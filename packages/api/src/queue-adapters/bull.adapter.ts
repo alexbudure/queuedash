@@ -105,6 +105,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
 
   supports: FeatureSupport<BullStatus> = {
     addJobOptions: true,
+    jobNames: true,
     addJobOptionKeys: [
       "attempts",
       "backoff",
@@ -263,8 +264,12 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   async addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
+    name?: string,
   ): Promise<AdaptedJob> {
-    const job = await this.queue.add(data, opts || {});
+    // Unnamed, a job goes to the processor registered without a name.
+    const job = name
+      ? await this.queue.add(name, data, opts || {})
+      : await this.queue.add(data, opts || {});
     return this.adaptJob(job);
   }
 
@@ -369,6 +374,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
       returnValue: job.returnvalue,
       progress,
       attemptsMade: job.attemptsMade,
+      rawName: job.name,
     };
   }
 }

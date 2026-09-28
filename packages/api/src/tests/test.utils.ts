@@ -46,6 +46,7 @@ type BullMQTestRedisClient = {
     definition: { numberOfKeys: number; lua: string },
   ) => void;
   set: (key: string, value: string) => Promise<unknown>;
+  hset: (key: string, ...fieldsAndValues: string[]) => Promise<unknown>;
   del: (key: string) => Promise<unknown>;
   type: (key: string) => Promise<string>;
 };

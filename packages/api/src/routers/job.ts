@@ -988,9 +988,15 @@ export const jobRouter = router({
         queueInCtx.adapter.getJobStatus(jobId),
       ]);
       if (!job) return null;
+      const presented = presentJob(job, internalCtx.privacy);
       return {
-        ...presentJob(job, internalCtx.privacy),
+        ...presented,
         status: toJobListStatus(status),
+        // The error group this failure falls in, as the Errors tab keys it, so
+        // the panel can tell how many other jobs failed the same way.
+        errorFingerprint:
+          getPresentedFailureSignature(job, internalCtx.privacy)?.fingerprint ??
+          null,
       };
     }),
   logs: procedure

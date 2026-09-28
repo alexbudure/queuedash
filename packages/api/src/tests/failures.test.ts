@@ -149,6 +149,21 @@ describe("getFailureSignature", () => {
     expect(signature?.frame).toBe("app/src/b.ts › second");
   });
 
+  test("takes the newest attempt when earlier ones failed the same way", () => {
+    const signature = getFailureSignature(
+      failedJob({
+        failedReason: "Card declined",
+        // Oldest first: the same message, thrown from two places.
+        stacktrace: [
+          stack("Card declined", "charge (/app/src/old-charge.ts:1:1)"),
+          stack("Card declined", "charge (/app/src/new-charge.ts:1:1)"),
+        ],
+      }),
+    );
+
+    expect(signature?.frame).toBe("app/src/new-charge.ts › charge");
+  });
+
   test("reads the type from the reason when traces are hidden", () => {
     const signature = getFailureSignature(
       failedJob({ failedReason: "TypeError: x is not a function" }),

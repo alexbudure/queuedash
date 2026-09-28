@@ -26,12 +26,24 @@ export type AdaptedJob = {
   processedAt: Date | null;
   finishedAt: Date | null;
   failedReason?: string;
+  // One entry per failed attempt that kept its trace, oldest first. A library
+  // may keep only the latest few (BullMQ's `stackTraceLimit`), or only one.
   stacktrace?: string[];
   retriedAt: Date | null;
   returnValue?: unknown;
   groupId?: string; // Group identifier for GroupMQ and BullMQ Pro
   progress?: number; // Job progress (0-100)
   attemptsMade?: number; // Number of attempts made
+  // The name the job was added under, before a `jobName` display mapping:
+  // what a worker dispatches on, so a copy of the job must keep it. Only for
+  // libraries whose jobs have names.
+  rawName?: string;
+  // BullMQ 5+: the named Worker that last picked the job up, how many times it
+  // was started (a stalled run starts again without counting an attempt), and
+  // how many times its lock expired mid-run.
+  processedBy?: string;
+  attemptsStarted?: number;
+  stalledCounter?: number;
 };
 
 export type JobCounts = Partial<Record<string, number>>;
@@ -68,6 +80,7 @@ export type JobScanToken = symbol;
 export type FeatureSupport<SupportedStatus extends string = string> = {
   addJobOptions: boolean;
   addJobOptionKeys: readonly string[]; // The exact option keys a manually added job may set
+  jobNames: boolean; // Whether jobs carry a name a worker can dispatch on
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
@@ -238,9 +251,12 @@ export abstract class QueueAdapter<
     void jobId;
     return null;
   }
+  // `name` only reaches adapters whose `supports.jobNames` is true; without
+  // one, each library keeps the name it always gave a manually added job.
   abstract addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
+    name?: string,
   ): Promise<AdaptedJob>;
   // Adds a new job with an existing job's name, data and the options that
   // decide how it runs: workers dispatch on the name, and attempts or backoff
