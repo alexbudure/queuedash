@@ -701,6 +701,10 @@ export const QueuePage = () => {
             ) : null}
             {isErrorsView ? (
               <ErrorGroups
+                // Remounted per queue, like HealthStrip: the groups keep
+                // their previous data across a range change, never across
+                // queues.
+                key={queueName}
                 queueName={queueName}
                 queue={queueReq.data}
                 range={errorRange}

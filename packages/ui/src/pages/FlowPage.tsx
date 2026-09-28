@@ -122,9 +122,28 @@ const findFlowJob = (
   );
 };
 
+// One component per flow: "Show more", collapsed branches and the tree kept
+// on screen while more of it loads all belong to the flow they were made in,
+// not the next one opened from this page.
 export const FlowPage = () => {
-  const { portalContainer, preferences } = useQueuedash();
   const { id: queueName = "", jobId = "" } = useParams();
+  return (
+    <FlowView
+      key={`${queueName}:${jobId}`}
+      queueName={queueName}
+      jobId={jobId}
+    />
+  );
+};
+
+const FlowView = ({
+  queueName,
+  jobId,
+}: {
+  queueName: string;
+  jobId: string;
+}) => {
+  const { portalContainer, preferences } = useQueuedash();
   const [searchParams, setSearchParams] = useSearchParams();
   const openQueueName = searchParams.get("jobQueue");
   const openJobId = searchParams.get("job");
