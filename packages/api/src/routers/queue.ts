@@ -356,6 +356,10 @@ export const queueRouter = router({
           logs:
             queueInCtx.adapter.supports.logs &&
             !privacyRedactsJobIdentity(internalCtx.privacy),
+          // A flow is looked up job by job, which redacted ids rule out.
+          flows:
+            queueInCtx.adapter.supports.flows &&
+            !privacyRedactsJobIdentity(internalCtx.privacy),
           schedulerUpdate:
             queueInCtx.adapter.supports.schedulerUpdate &&
             resolvePrivacyExposure(internalCtx.privacy).schedulerData &&

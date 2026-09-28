@@ -137,6 +137,29 @@ export type QueueMetrics = {
   };
 };
 
+// A job's parent in a BullMQ flow. `queueKey` is the parent queue's Redis key
+// prefix ("bull:orders"), which is all a job records about where it lives.
+export type FlowParent = {
+  queueKey: string;
+  id: string;
+  // Whether the child was added with failParentOnFailure,
+  // ignoreDependencyOnFailure, removeDependencyOnFailure or
+  // continueParentOnFailure. Without any of them a failed child holds its
+  // parent in waiting-children until it is retried or removed.
+  failureHandled: boolean;
+};
+
+// Where BullMQ keeps a child: `processed` once it completed, `unprocessed`
+// until then (a failed child with no failure handling stays here), `failed`
+// and `ignored` for failures the parent was told to act on or skip.
+export type FlowChildSet = "processed" | "unprocessed" | "failed" | "ignored";
+
+export type FlowChildren = {
+  total: number;
+  // Child job keys (`${queueKey}:${id}`), the ones still pending first.
+  keys: Array<{ key: string; set: FlowChildSet }>;
+};
+
 export type GroupInfo = {
   id: string;
   count: number;
@@ -250,6 +273,13 @@ export abstract class QueueAdapter<
     start: number,
     end: number,
   ): Promise<QueueMetrics>;
+
+  // Flow operations (optional - only for queues that support flows)
+  // The queue's Redis key prefix, which is how flows name a job's queue.
+  getQueueKey?(): string;
+  getJobParent?(jobId: string): Promise<FlowParent | null>;
+  // Up to `limit` of the job's children; throws JobNotFoundError.
+  getJobChildren?(jobId: string, limit: number): Promise<FlowChildren>;
 
   // Group operations (optional - only for queues that support it)
   async getGroups(): Promise<GroupInfo[]> {

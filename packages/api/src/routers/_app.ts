@@ -19,10 +19,12 @@ export type {
   QueuedashUiConfig,
 } from "../trpc";
 import { router } from "../trpc";
+import { flowRouter } from "./flow";
 import { schedulerRouter } from "./scheduler";
 import { settingsRouter } from "./settings";
 
 export const appRouter = router({
+  flow: flowRouter,
   job: jobRouter,
   queue: queueRouter,
   scheduler: schedulerRouter,

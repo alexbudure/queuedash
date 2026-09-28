@@ -10,6 +10,9 @@ import { parse } from "redis-info";
 import {
   QueueAdapter,
   type AdaptedJob,
+  type FlowChildren,
+  type FlowChildSet,
+  type FlowParent,
   type JobCounts,
   type FeatureSupport,
   type GroupInfo,
@@ -21,6 +24,48 @@ import {
   UnsupportedSchedulerUpdateError,
   type WorkerInfo,
 } from "./base.adapter";
+
+// Pending children first: under a limit, what a parent still waits on matters
+// more than what already finished.
+const FLOW_CHILD_SETS: readonly FlowChildSet[] = [
+  "unprocessed",
+  "failed",
+  "ignored",
+  "processed",
+];
+const FLOW_CHILD_PAGE_SIZE = 100;
+
+type DependencyPage = Awaited<ReturnType<BullMQJob["getDependencies"]>>;
+
+const readDependencyKeys = (
+  page: DependencyPage,
+  set: FlowChildSet,
+): string[] => {
+  switch (set) {
+    case "processed":
+      return Object.keys(page.processed ?? {});
+    case "ignored":
+      return Object.keys(page.ignored ?? {});
+    case "unprocessed":
+      return page.unprocessed ?? [];
+    case "failed":
+      return page.failed ?? [];
+  }
+};
+
+// SCAN cursors come back from Redis as strings, "0" once a set is done.
+const readNextCursor = (
+  page: DependencyPage,
+  set: "processed" | "unprocessed" | "ignored",
+): number => {
+  const cursor =
+    set === "processed"
+      ? page.nextProcessedCursor
+      : set === "ignored"
+        ? page.nextIgnoredCursor
+        : page.nextUnprocessedCursor;
+  return cursor && String(cursor) !== "0" ? cursor : 0;
+};
 
 // What a rerun keeps of the original's options. A copied jobId would make
 // BullMQ drop the rerun as a duplicate, and repeat, parent, deduplication and
@@ -368,6 +413,69 @@ export class BullMQAdapter extends QueueAdapter<
     const job = await this.findJob(jobId);
     if (!job) throw new JobNotFoundError();
     await job.remove();
+  }
+
+  getQueueKey(): string {
+    return this.queue.qualifiedName;
+  }
+
+  async getJobParent(jobId: string): Promise<FlowParent | null> {
+    const parent = (await this.findJob(jobId))?.parent;
+    if (!parent?.id || !parent.queueKey) return null;
+    return {
+      queueKey: parent.queueKey,
+      id: parent.id,
+      failureHandled: Boolean(
+        parent.fpof || parent.idof || parent.rdof || parent.cpof,
+      ),
+    };
+  }
+
+  async getJobChildren(jobId: string, limit: number): Promise<FlowChildren> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    const counts = await job.getDependenciesCount();
+    const total = FLOW_CHILD_SETS.reduce(
+      (sum, set) => sum + (counts[set] ?? 0),
+      0,
+    );
+    const keys: FlowChildren["keys"] = [];
+    const seen = new Set<string>();
+    const add = (found: string[], set: FlowChildSet) => {
+      for (const key of found) {
+        if (keys.length >= limit) return;
+        // A SCAN may return an element twice.
+        if (seen.has(key)) continue;
+        seen.add(key);
+        keys.push({ key, set });
+      }
+    };
+
+    for (const set of FLOW_CHILD_SETS) {
+      if (!counts[set] || keys.length >= limit) continue;
+      if (set === "failed") {
+        // Read by range, and BullMQ asks for [cursor, count - 1], which is
+        // empty on any page after the first, so it is read in one request.
+        const page = await job.getDependencies({
+          failed: { cursor: 0, count: limit - keys.length },
+        });
+        add(readDependencyKeys(page, set), set);
+        continue;
+      }
+      let cursor = 0;
+      do {
+        const page = await job.getDependencies({
+          [set]: {
+            cursor,
+            count: Math.min(limit - keys.length, FLOW_CHILD_PAGE_SIZE),
+          },
+        });
+        add(readDependencyKeys(page, set), set);
+        cursor = readNextCursor(page, set);
+      } while (cursor && keys.length < limit);
+    }
+
+    return { total, keys };
   }
 
   async retryJob(jobId: string): Promise<void> {
