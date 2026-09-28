@@ -7,7 +7,7 @@
   "author": "Alex Budure",
   "license": "MIT",
   "dependencies": {
-    "@queuedash/api": "^4.0.0",
+    "@queuedash/api": "^4.0.1",
     "@queuedash/ui": "^4.0.0",
     "@trpc/server": "^11.8.1",
     "bull": "^4.16.5",

@@ -339,6 +339,14 @@ const unauthorized = ({ challenge = false } = {}): QueuedashResponse =>
 const isJsonContentType = (contentType: string | null | undefined): boolean =>
   contentType?.split(";")[0].trim().toLowerCase() === "application/json";
 
+const isNonJsonPost = (
+  method: string,
+  contentType: string | null | undefined,
+): boolean => method === "POST" && !isJsonContentType(contentType);
+
+const unsupportedMediaType = (): QueuedashResponse =>
+  respond(415, "Content-Type must be application/json");
+
 /**
  * The one auth decision every adapter applies. Basic mode challenges every
  * path; session mode leaves the shell public so the login screen can render,
@@ -380,11 +388,8 @@ export const resolveQueuedashRequest = (
       // Basic credentials the browser has cached, so an input-less mutation
       // such as queue.pauseAll would run cross-site. The dashboard only sends
       // JSON, and a JSON POST from another origin must pass a preflight.
-      if (
-        request.method === "POST" &&
-        !isJsonContentType(request.contentType)
-      ) {
-        return respond(415, "Content-Type must be application/json");
+      if (isNonJsonPost(request.method, request.contentType)) {
+        return unsupportedMediaType();
       }
       return {
         type: "trpc",
@@ -427,3 +432,17 @@ export const createQueuedashUnauthorizedResponse = ({
 /** @deprecated Use createQueuedashUnauthorizedResponse instead. */
 export const createQueueDashUnauthorizedResponse = () =>
   createQueuedashUnauthorizedResponse({ challenge: true });
+
+/**
+ * For a tRPC handler you serve yourself, such as a Next.js route: the 415 the
+ * built-in adapters send for a POST that isn't application/json, or undefined
+ * when the request can go on to tRPC. tRPC also runs mutations posted as
+ * multipart/form-data, which a plain form on another website can send.
+ */
+export const rejectNonJsonPost = (request: Request): Response | undefined => {
+  if (!isNonJsonPost(request.method, request.headers.get("Content-Type"))) {
+    return undefined;
+  }
+  const { status, headers, body } = unsupportedMediaType();
+  return new Response(body, { status, headers });
+};

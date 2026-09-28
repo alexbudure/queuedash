@@ -125,14 +125,18 @@ const app = new Elysia().use(
 
 For Next.js or another tRPC-compatible runtime, mount the exported `appRouter`
 and render [`@queuedash/ui`](https://www.npmjs.com/package/@queuedash/ui)
-separately. Custom handlers must protect the tRPC route with authentication,
+separately. In Next.js, add `@queuedash/api` to `serverExternalPackages`: it
+loads each queue library only when a queue needs it, which Next's bundler
+can't follow. Custom handlers must protect the tRPC route with authentication,
 set `Cache-Control: private, no-store` on every success and error response, and
 reject tRPC `POST` requests whose `Content-Type` is not `application/json` with
 `415`. The last rule matters because tRPC also runs mutations posted as
 `multipart/form-data`, which any website can submit from a plain HTML form
-without a CORS preflight; the built-in adapters enforce it. The Queuedash UI
-also requests tRPC data with `cache: "no-store"`, but only the server response
-header protects data from shared intermediary caches.
+without a CORS preflight; the built-in adapters enforce it. In a Fetch API
+handler, such as a Next.js route, call `rejectNonJsonPost(request)` first: it
+returns that `415` response, or `undefined` when the request can go on to tRPC.
+The Queuedash UI also requests tRPC data with `cache: "no-store"`, but only the
+server response header protects data from shared intermediary caches.
 
 ## Authentication
 

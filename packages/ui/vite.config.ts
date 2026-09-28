@@ -20,7 +20,9 @@ export default defineConfig({
       formats: ["cjs", "es"],
     },
     rollupOptions: {
-      external: ["react", "react-dom"],
+      // The app's own React, subpaths included: a bundled React 19
+      // react/jsx-runtime creates elements React 18 can't render.
+      external: [/^react(-dom)?(\/|$)/],
       plugins: [
         typescriptPaths({
           preserveExtensions: true,

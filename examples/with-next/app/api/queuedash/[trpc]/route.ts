@@ -1,4 +1,4 @@
-import { appRouter } from "@queuedash/api";
+import { appRouter, rejectNonJsonPost } from "@queuedash/api";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import Bull from "bull";
 
@@ -14,6 +14,10 @@ const ctx = {
 };
 
 const handler = async (req: Request) => {
+  // tRPC would also run a mutation posted by a plain form on another website.
+  const rejected = rejectNonJsonPost(req);
+  if (rejected) return rejected;
+
   const response = await fetchRequestHandler({
     endpoint: "/api/queuedash",
     req,

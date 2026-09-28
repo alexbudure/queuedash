@@ -6,6 +6,7 @@ export type {
   QueuedashPublicAuthConfig,
   QueueDashAuthOptions,
 } from "./server-adapters/auth";
+export { rejectNonJsonPost } from "./server-adapters/auth";
 export * from "./server-adapters/express";
 export * from "./server-adapters/fastify";
 export * from "./server-adapters/elysia";

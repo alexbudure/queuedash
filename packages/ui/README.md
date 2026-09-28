@@ -103,7 +103,7 @@ Mount the API router:
 
 ```typescript
 // app/api/queuedash/[trpc]/route.ts
-import { appRouter } from "@queuedash/api";
+import { appRouter, rejectNonJsonPost } from "@queuedash/api";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { Queue } from "bullmq";
 
@@ -125,16 +125,41 @@ const ctx = {
   ],
 };
 
-const handler = (request: Request) =>
-  fetchRequestHandler({
+const handler = async (req: Request) => {
+  // tRPC would also run a mutation posted by a plain form on another website.
+  const rejected = rejectNonJsonPost(req);
+  if (rejected) return rejected;
+
+  const response = await fetchRequestHandler({
     endpoint: "/api/queuedash",
-    req: request,
+    req,
     router: appRouter,
     createContext: () => ctx,
   });
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+};
 
 export { handler as GET, handler as POST };
 ```
+
+Keep `@queuedash/api` out of the server bundle. It loads each queue library only
+when a queue needs it, and Next's bundler would fail on the ones you haven't
+installed:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["@queuedash/api"],
+};
+
+export default nextConfig;
+```
+
+With Bull, add `"bull"` as well: it forks child processes from its own files,
+which Turbopack can't bundle.
 
 See the
 [working Next.js example](https://github.com/alexbudure/queuedash/tree/main/examples/with-next)

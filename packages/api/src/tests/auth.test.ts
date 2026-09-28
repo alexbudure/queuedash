@@ -1,10 +1,11 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import * as trpcNodeHttp from "@trpc/server/adapters/node-http";
 import express, {
   type NextFunction,
-  type Request,
+  type Request as ExpressRequest,
   type Response as ExpressResponse,
 } from "express";
 import fastify, { type FastifyInstance } from "fastify";
@@ -12,6 +13,7 @@ import { Hono } from "hono";
 import { describe, expect, it, type Mock, vi } from "vitest";
 
 import { getQueueRegistry } from "../queue-registry";
+import { appRouter } from "../routers/_app";
 import {
   createQueuedashSessionCookie,
   createQueuedashSessionToken,
@@ -21,6 +23,7 @@ import {
   QUEUEDASH_AUTH_CHALLENGE,
   QUEUEDASH_SESSION_COOKIE,
   type QueuedashAuthOptions,
+  rejectNonJsonPost,
   validateQueuedashAuthOptions,
 } from "../server-adapters/auth";
 import { queuedash } from "../server-adapters/elysia";
@@ -356,7 +359,7 @@ describe("Express adapter auth", () => {
       method,
       path,
       secure: false,
-    }) as Request;
+    }) as ExpressRequest;
 
   const createResponse = () => {
     const response = {
@@ -1093,5 +1096,69 @@ describe.each(adapters)("%s adapter routes", (adapter) => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe("rejectNonJsonPost", () => {
+  const post = (contentType?: string) =>
+    new Request("http://localhost/api/queuedash/queue.pauseAll", {
+      method: "POST",
+      ...(contentType === undefined
+        ? {}
+        : { headers: { "content-type": contentType }, body: "{}" }),
+    });
+
+  it("answers a POST that isn't JSON as the adapters do", async () => {
+    for (const contentType of [
+      undefined,
+      "text/plain",
+      "application/x-www-form-urlencoded",
+      "multipart/form-data; boundary=x",
+      // Still a form: the media type decides, not a substring.
+      "multipart/form-data; boundary=x; application/json",
+    ]) {
+      const response = rejectNonJsonPost(post(contentType));
+      expect(response?.status).toBe(415);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(await response?.text()).toBe(
+        "Content-Type must be application/json",
+      );
+    }
+    for (const contentType of [
+      "application/json",
+      "Application/JSON ; charset=utf-8",
+    ]) {
+      expect(rejectNonJsonPost(post(contentType))).toBeUndefined();
+    }
+    expect(
+      rejectNonJsonPost(
+        new Request("http://localhost/api/queuedash/queue.list"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("guards a handler written like the Next.js README's", async () => {
+    const { context, pause } = createPausableContext();
+    const handler = async (req: Request) => {
+      const rejected = rejectNonJsonPost(req);
+      if (rejected) return rejected;
+
+      const response = await fetchRequestHandler({
+        endpoint: "/queuedash/trpc",
+        req,
+        router: appRouter,
+        createContext: () => context,
+      });
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    };
+    const app: MountedAdapter = {
+      request: (path, init) =>
+        handler(new Request(`http://localhost${path}`, init)),
+      close: async () => {},
+    };
+
+    expectTrpc(await app.request("/queuedash/trpc/settings.get"));
+    await expectJsonOnlyMutations(app, pause);
   });
 });

@@ -1,8 +1,4 @@
-import {
-  Job as GroupMQJobClass,
-  type Job as GroupMQJob,
-  type Queue as GroupMQQueue,
-} from "groupmq";
+import type { Job as GroupMQJob, Queue as GroupMQQueue } from "groupmq";
 import { parse } from "redis-info";
 
 import {
@@ -697,6 +693,9 @@ export class GroupMQAdapter extends QueueAdapter<
   ): Promise<AdaptedJob[]> {
     if (candidates.length === 0) return [];
 
+    // groupmq is an optional peer. Imported at the top, it would stop the
+    // package loading in every app that doesn't use GroupMQ.
+    const { Job: GroupMQJobClass } = await import("groupmq");
     const pipeline = this.queue.redis.pipeline();
     for (const candidate of candidates) {
       pipeline.hgetall(`${this.queue.namespace}:job:${candidate.id}`);

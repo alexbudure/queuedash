@@ -3,9 +3,10 @@
   "version": "4.0.0",
   "description": "Server adapters and queue APIs for the beautiful Queuedash dashboard",
   "scripts": {
-    "build": "tsc && pnpm run typecheck:bullmq5 && vite build",
+    "build": "tsc && pnpm run typecheck:bullmq5 && vite build && pnpm run check:optional-peers",
     "typecheck:bullmq5": "tsc -p tsconfig.bullmq5.json",
-    "dev": "pnpm run build --watch",
+    "check:optional-peers": "node scripts/check-optional-peers.mjs",
+    "dev": "tsc && pnpm run typecheck:bullmq5 && vite build --watch",
     "test": "pnpm run test:bull && pnpm run test:bullmq && pnpm run test:bullmq5 && pnpm run test:bee && pnpm run test:bee1 && pnpm run test:groupmq",
     "test:bull": "QUEUE_TYPE=bull vitest run",
     "test:bullmq": "QUEUE_TYPE=bullmq vitest run",
