@@ -1,14 +1,10 @@
 <p align="center">
   <a href="https://www.queuedash.com" target="_blank" rel="noopener">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-      <img src="assets/logo-light.png" alt="Queuedash" width="280">
+      <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/hero-dark.png">
+      <img src="assets/screenshots/hero-light.png" alt="Queuedash: see inside your job queues, right from your own server. A failed image job is open, with its error, the line of code that threw it, and each attempt.">
     </picture>
   </a>
-</p>
-
-<p align="center">
-  <strong>A dashboard for your job queues. Works with Bull, BullMQ, Bee-Queue, and GroupMQ.</strong>
 </p>
 
 <p align="center">
@@ -20,17 +16,11 @@
   </a>
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/queue-dark.png">
-    <img src="assets/screenshots/queue-light.png" alt="The Payment processing queue in Queuedash: its health over the last hour, above a table of completed jobs">
-  </picture>
-</p>
-
-Queuedash runs inside the Node.js server you already have. Open it to see how
-your queues are doing, find the job you're looking for, read its data, logs, and
-error, and retry, remove, or promote it. You decide who can sign in, which queues
-they can see or change, and which job data reaches their browser.
+Queuedash is a dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ that runs
+inside the Node.js server you already have. See how every queue is doing, open
+any job for its data, logs, and every failed attempt, and retry, remove, or
+promote what you find. You decide who can sign in, which queues they can see or
+change, and which job data reaches their browser.
 
 ## What you can do
 
@@ -46,11 +36,29 @@ they can see or change, and which job data reaches their browser.
     </td>
     <td width="50%" valign="top">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/job-dark.png">
-        <img src="assets/screenshots/job-light.png" alt="A failed job open in the side panel, with its error and data">
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/queue-dark.png">
+        <img src="assets/screenshots/queue-light.png" alt="The Image processing queue, with its success rate, throughput, failures, run times, and workers above its jobs">
       </picture>
-      <p><strong>Open any job</strong><br>
-      Its data, logs, return value, and error in one panel. Press <kbd>j</kbd> and <kbd>k</kbd> to step through the list.</p>
+      <p><strong>Watch a queue's health</strong><br>
+      Success rate, throughput, failures, run times at p50 and p95, and its workers, from the last minute to the last week.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/errors-dark.png">
+        <img src="assets/screenshots/errors-light.png" alt="The Errors tab, grouping failed image jobs by their error and the code that threw it">
+      </picture>
+      <p><strong>See what keeps failing</strong><br>
+      The Errors tab groups failed jobs by their error and the line of your code that threw it, so one bug shows up once, however many jobs it failed. Retry or remove a whole group.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/flow-dark.png">
+        <img src="assets/screenshots/flow-light.png" alt="A flow's jobs on one timeline across four queues, with the thumbnail child that failed">
+      </picture>
+      <p><strong>Follow a flow across queues</strong><br>
+      Lay out a flow's jobs on one timeline, whichever queues they ran in, and see what the parent is still waiting on.</p>
     </td>
   </tr>
   <tr>
@@ -60,7 +68,7 @@ they can see or change, and which job data reaches their browser.
         <img src="assets/screenshots/search-light.png" alt="Completed jobs filtered by the text password-reset">
       </picture>
       <p><strong>Find the job you need</strong><br>
-      Press <kbd>/</kbd> to filter by text, or sort by date. The view lives in the URL, so you can share it.</p>
+      Press <kbd>/</kbd> to filter by text, or sort by date. The view lives in the URL, so you can share it. <kbd>⌘</kbd> <kbd>K</kbd> jumps to any queue, status, or page.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -74,19 +82,19 @@ they can see or change, and which job data reaches their browser.
   <tr>
     <td width="50%" valign="top">
       <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/duplicate-dark.png">
+        <img src="assets/screenshots/duplicate-light.png" alt="A failed email job duplicated, with the one line that changed marked">
+      </picture>
+      <p><strong>Add and duplicate jobs</strong><br>
+      Add a job with its name, data, and options, or duplicate one to run it again with a change. Queuedash marks what you changed.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
         <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/schedulers-dark.png">
         <img src="assets/screenshots/schedulers-light.png" alt="A BullMQ job scheduler open in the side panel">
       </picture>
       <p><strong>Manage schedulers</strong><br>
       See what each BullMQ scheduler runs and when it runs next. Add, edit, or remove them.</p>
-    </td>
-    <td width="50%" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/palette-dark.png">
-        <img src="assets/screenshots/palette-light.png" alt="The command palette open over a queue">
-      </picture>
-      <p><strong>Jump anywhere</strong><br>
-      Press <kbd>⌘</kbd> <kbd>K</kbd> or <kbd>Ctrl</kbd> <kbd>K</kbd> to go to any queue, status, or page.</p>
     </td>
   </tr>
 </table>
