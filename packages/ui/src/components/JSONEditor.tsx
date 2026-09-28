@@ -355,6 +355,11 @@ export const JSONEditor = ({
                 guides: {
                   indentation: false,
                 },
+                // Before 0.56, Monaco's word highlighter drops a promise that
+                // rejects when the editor is disposed within 50ms of a focus
+                // or cursor move, so closing the dialog just as the editor
+                // mounted logged "Uncaught (in promise) Canceled".
+                occurrencesHighlight: "off",
                 padding: {
                   top: 12,
                   bottom: 12,
