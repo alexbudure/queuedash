@@ -282,10 +282,9 @@ stylesheet using `!important` or greater specificity can still override
 ordinary CSS; use an iframe if the embedding environment requires absolute style
 and resource isolation.
 
-Monaco editor themes are global within a JavaScript realm. If two Queuedash
-mounts must show different editor themes at the same time, isolate the mounts
-in separate iframes; ordinary dashboard colors and browser preferences remain
-instance-scoped.
+The JSON editors in Add job and Add scheduler are CodeMirror, bundled into the
+package: opening one fetches nothing from a CDN and starts no web workers, and
+each mount's editors follow that mount's own light or dark theme.
 
 ## Authentication headers
 
