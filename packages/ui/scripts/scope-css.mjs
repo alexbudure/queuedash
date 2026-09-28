@@ -1,5 +1,5 @@
 import { watch } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { cp, readFile, writeFile } from "node:fs/promises";
 
 import postcss from "postcss";
 
@@ -220,6 +220,14 @@ const scopeStylesheet = async () => {
   const scoped = root.toString();
   if (scoped !== source) await writeFile(stylesheetPath, scoped);
 };
+
+// The stylesheet's @font-face rules point at ./fonts/, so the files (and their
+// licences) travel beside it.
+await cp(
+  new URL("../src/fonts/", import.meta.url),
+  new URL("../dist/fonts/", import.meta.url),
+  { recursive: true },
+);
 
 if (process.argv.includes("--watch")) {
   let timer;

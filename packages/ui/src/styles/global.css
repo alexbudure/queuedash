@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=JetBrains+Mono:wght@100..800&display=swap");
+@import "./fonts.css";
 
 @import "tailwindcss";
 
@@ -6,10 +6,12 @@
   (&:where([data-queuedash-root].dark, [data-queuedash-root].dark *));
 
 @theme {
-  --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    "Queuedash Inter", "Inter", "Inter var", ui-sans-serif, system-ui,
+    sans-serif;
   --font-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+    "Queuedash JetBrains Mono", "JetBrains Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   --color-brand-50: #f2f6ff;
   --color-brand-100: #e5ebff;
