@@ -126,6 +126,92 @@ const WEBHOOK_EVENTS = [
 const DOC_TYPES = ["product", "user", "order", "article", "category"];
 const INDEX_ACTIONS = ["index", "update", "delete", "reindex"];
 
+// --- Flows across queues ---
+
+export type FakeFlowJob = {
+  name: string;
+  queueName: string;
+  data: Record<string, unknown>;
+  opts?: BullMQJobOptions;
+  children?: FakeFlowJob[];
+};
+
+// A listing upload that spans four BullMQ queues: the parent publishes once
+// its children have finished. Each job's data has the fields its queue's
+// jobName reads, so the flow page shows the same names as the job lists.
+export const crossQueueFlows = (): FakeFlowJob[] =>
+  Array.from({ length: 3 }, () => {
+    const fileId = `file_${faker.string.alphanumeric(16)}`;
+    const fileName = faker.system.commonFileName("jpg");
+    const userId = `usr_${faker.string.alphanumeric(10)}`;
+    const image = (operation: string) => ({
+      fileId,
+      fileName,
+      operation,
+      inputFormat: "jpg",
+      outputFormat: "jpg",
+      userId,
+    });
+    const documentId = `product_${faker.string.alphanumeric(12)}`;
+    return {
+      name: "publish-listing",
+      queueName: "image-processing",
+      data: image("publish"),
+      opts: { attempts: 2 },
+      children: [
+        {
+          name: "thumbnail",
+          queueName: "image-processing",
+          data: image("thumbnail"),
+        },
+        {
+          name: "watermark",
+          queueName: "image-processing",
+          data: image("watermark"),
+          children: [
+            {
+              name: "optimize",
+              queueName: "image-processing",
+              data: image("optimize"),
+            },
+          ],
+        },
+        {
+          name: "index-listing",
+          queueName: "search-indexing",
+          data: {
+            documentId,
+            documentType: "product",
+            action: "index",
+            index: "products",
+          },
+        },
+        {
+          name: "charge-listing-fee",
+          queueName: "payment-processing",
+          data: {
+            type: "charge",
+            amount: 4.99,
+            currency: "USD",
+            customerId: `cus_${faker.string.alphanumeric(14)}`,
+            description: "Listing fee",
+          },
+          opts: { attempts: 3, backoff: { type: "exponential", delay: 2000 } },
+        },
+        {
+          name: "notify-seller",
+          queueName: "email-delivery",
+          data: {
+            to: faker.internet.email(),
+            template: "listing-live",
+            subject: "Your listing is live",
+          },
+          opts: { attempts: 2 },
+        },
+      ],
+    };
+  });
+
 // --- Queues ---
 
 export const queues: FakeQueue[] = [
@@ -206,17 +292,31 @@ export const queues: FakeQueue[] = [
     flows: Array.from({ length: 4 }, () => {
       const orderId = `ord_${faker.string.alphanumeric(12)}`;
       const customer = faker.person.fullName();
+      const customerId = `cus_${faker.string.alphanumeric(14)}`;
+      // `type` and `customerId` are what this queue's jobName reads, so flow
+      // jobs get names like the rest of the queue instead of "payment_unknown".
       return {
         name: `process-order-${orderId}`,
-        data: { orderId, customer, step: "charge" },
+        data: { orderId, customer, customerId, type: "order", step: "charge" },
         children: [
           {
             name: `send-receipt-${orderId}`,
-            data: { orderId, email: faker.internet.email(), step: "receipt" },
+            data: {
+              orderId,
+              customerId,
+              type: "receipt",
+              email: faker.internet.email(),
+              step: "receipt",
+            },
           },
           {
             name: `update-ledger-${orderId}`,
-            data: { orderId, step: "ledger-update" },
+            data: {
+              orderId,
+              customerId,
+              type: "ledger",
+              step: "ledger-update",
+            },
           },
         ],
       };
