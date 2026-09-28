@@ -11,6 +11,54 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const sleepRange = (minS: number, maxS: number) =>
   sleep((minS + Math.random() * (maxS - minS)) * 1000);
 
+/**
+ * Failures with the stacks a real worker would throw - app frames under /app,
+ * library frames under node_modules - for the job panel's screenshots. Demo
+ * data asks for them by key: `{ demoErrors: ["upload-timeout", "pixel-limit"] }`
+ * fails the first attempt with one and the second with the other.
+ */
+const DEMO_ERRORS: Record<
+  string,
+  { name: string; message: string; frames: string[] }
+> = {
+  "pixel-limit": {
+    name: "Error",
+    message: "Input image exceeds pixel limit",
+    frames: [
+      "Sharp.toBuffer (/app/node_modules/sharp/lib/output.js:163:17)",
+      "resizeImage (/app/src/images/resize.ts:31:18)",
+      "async renderThumbnail (/app/src/images/thumbnail.ts:22:17)",
+      "async Worker.processFn (/app/src/workers/images.ts:57:20)",
+      "async Worker.processJob (/app/node_modules/bullmq/dist/cjs/classes/worker.js:463:28)",
+      "async Worker.retryIfFailed (/app/node_modules/bullmq/dist/cjs/classes/worker.js:627:24)",
+    ],
+  },
+  "upload-timeout": {
+    name: "TimeoutError",
+    message: "Upload to cdn-uploads timed out after 30000ms",
+    frames: [
+      "Timeout._onTimeout (/app/node_modules/@smithy/node-http-handler/dist-cjs/index.js:388:26)",
+      "listOnTimeout (node:internal/timers:594:17)",
+      "process.processTimers (node:internal/timers:529:7)",
+      "async uploadVariant (/app/src/storage/cdn.ts:64:5)",
+      "async renderThumbnail (/app/src/images/thumbnail.ts:29:3)",
+      "async Worker.processFn (/app/src/workers/images.ts:57:20)",
+      "async Worker.processJob (/app/node_modules/bullmq/dist/cjs/classes/worker.js:463:28)",
+    ],
+  },
+};
+
+const demoError = (key: string) => {
+  const spec = DEMO_ERRORS[key] ?? DEMO_ERRORS["pixel-limit"];
+  const error = new Error(spec.message);
+  error.name = spec.name;
+  error.stack = [
+    `${spec.name}: ${spec.message}`,
+    ...spec.frames.map((frame) => `    at ${frame}`),
+  ].join("\n");
+  return error;
+};
+
 // Fail with a given probability (0–1)
 const maybeFail = (rate: number, messages: string[]) => {
   if (Math.random() < rate) {
@@ -106,6 +154,13 @@ for (const item of queues) {
         ) {
           await sleepRange(0.1, 0.4);
           maybeFail(1, errors);
+        }
+        if (
+          Array.isArray(job.data.demoErrors) &&
+          job.attemptsMade < job.data.demoErrors.length
+        ) {
+          await sleepRange(0.2, 0.8);
+          throw demoError(String(job.data.demoErrors[job.attemptsMade]));
         }
 
         if (name === "payment-processing") {
