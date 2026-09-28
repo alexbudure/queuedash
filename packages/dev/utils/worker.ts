@@ -98,6 +98,16 @@ for (const item of queues) {
         const name = item.queue.name;
         const errors = ERRORS[name] || ["Unknown error"];
 
+        // Demo data can ask to fail: `{ failTimes: 2 }` fails the first two
+        // attempts, so the job panel has several to show.
+        if (
+          typeof job.data.failTimes === "number" &&
+          job.attemptsMade < job.data.failTimes
+        ) {
+          await sleepRange(0.1, 0.4);
+          maybeFail(1, errors);
+        }
+
         if (name === "payment-processing") {
           await sleepRange(0.3, 2);
           await job.log(
@@ -141,6 +151,8 @@ for (const item of queues) {
       },
       {
         connection: {},
+        // Named, so a job's panel says which worker ran it (processedBy).
+        name: `${item.queue.name}-worker`,
         metrics: {
           maxDataPoints: MetricsTime.ONE_WEEK * 2,
         },
