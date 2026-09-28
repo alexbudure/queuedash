@@ -7,7 +7,7 @@
     }
   ],
   "commit": false,
-  "fixed": [],
+  "fixed": [["@queuedash/api", "@queuedash/client", "@queuedash/ui"]],
   "linked": [],
   "ignore": ["@queuedash/dev", "@queuedash/docker"],
   "access": "public",
