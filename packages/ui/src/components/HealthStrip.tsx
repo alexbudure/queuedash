@@ -359,15 +359,17 @@ const RunTimeCell = ({
 
 /**
  * Workers is a number with a list behind it. The cell carries the number and
- * the one state that matters (nobody is processing), and the list opens on
- * demand instead of sitting between the metrics and the jobs.
+ * what they are doing (active jobs, idle, or nobody processing), and the list
+ * opens on demand instead of sitting between the metrics and the jobs.
  */
 const WorkersCell = ({
   queueName,
   hasPendingWork,
+  activeCount,
 }: {
   queueName: string;
   hasPendingWork: boolean;
+  activeCount: number;
 }) => {
   const { preferences } = useQueuedash();
   const [open, setOpen] = useState(false);
@@ -380,6 +382,7 @@ const WorkersCell = ({
     isLoading: workersReq.isLoading,
     isError: workersReq.isError,
     hasPendingWork,
+    activeCount,
   });
   const toneClass =
     summary.tone === "warning"
@@ -490,7 +493,11 @@ export const HealthStrip = ({
         sparklineFrom={cellCount === 5 ? "2xl" : "xl"}
       />
       {supportsWorkers ? (
-        <WorkersCell queueName={queueName} hasPendingWork={hasPendingWork} />
+        <WorkersCell
+          queueName={queueName}
+          hasPendingWork={hasPendingWork}
+          activeCount={queue?.counts.active ?? 0}
+        />
       ) : null}
     </StatStrip>
   );

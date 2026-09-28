@@ -34,13 +34,17 @@ export const isWaitingOnWorkers = (counts: {
   active: number;
 }) => counts.waiting + counts.prioritized > 0 && counts.active === 0;
 
-/** The one-line reading of the worker list, shared by the cell and the panel. */
+/** The one-line reading of the worker list, for the Health strip's cell. */
 export const workersSummary = ({
   workers,
   isLoading,
   isError,
   hasPendingWork,
-}: WorkersState): {
+  activeCount,
+}: WorkersState & {
+  /** The queue's active jobs: what its workers are doing right now. */
+  activeCount: number;
+}): {
   value: string;
   sub: string;
   tone: "normal" | "warning";
@@ -57,18 +61,22 @@ export const workersSummary = ({
       ? { value: "0", sub: "Not processing", tone: "warning" }
       : { value: "0", sub: "None reported", tone: "normal" };
   }
-  // Idle time is per adapter and optional; the smallest one is how long ago
-  // any worker last touched Redis.
-  const idle = list
-    .map((worker) => worker.idleSeconds)
-    .filter((seconds): seconds is number => typeof seconds === "number");
+  // Redis lists who is connected, not what they are doing. The idle time it
+  // keeps is for the connection a worker blocks on while it waits for jobs,
+  // so it grows the whole time the worker is busy: read as "last seen", a
+  // busy worker looked gone. The queue's active count is the honest signal.
   return {
     value: String(list.length),
-    sub: idle.length
-      ? `last seen ${formatDurationFromSeconds(Math.min(...idle))} ago`
-      : "connected",
+    sub: activeCount > 0 ? formatCountLabel(activeCount, "active job") : "idle",
     tone: "normal",
   };
+};
+
+/** How long a worker's connection has been open: "connected 15m 8s". */
+const formatConnected = (ageSeconds: number | undefined) => {
+  if (ageSeconds === undefined) return "connected";
+  if (ageSeconds < 1) return "just connected";
+  return `connected ${formatDurationFromSeconds(ageSeconds)}`;
 };
 
 export const WorkersPanel = ({
@@ -120,15 +128,8 @@ export const WorkersPanel = ({
                 >
                   {name}
                 </div>
-                <div
-                  className={clsx("mt-1 flex gap-3 text-[10px]", TEXT_MUTED)}
-                >
-                  <span>
-                    age {formatDurationFromSeconds(worker.ageSeconds)}
-                  </span>
-                  <span>
-                    idle {formatDurationFromSeconds(worker.idleSeconds)}
-                  </span>
+                <div className={clsx("mt-1 text-[10px]", TEXT_MUTED)}>
+                  {formatConnected(worker.ageSeconds)}
                 </div>
               </li>
             );
