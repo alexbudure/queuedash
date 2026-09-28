@@ -34,6 +34,10 @@ describe("maskFailureMessage", () => {
       "GET ‹url› failed",
     ],
     ["Scheduled for 2026-09-28T14:03:11.402Z", "Scheduled for ‹time›"],
+    [
+      "Image dimensions exceed maximum (8192x8192)",
+      "Image dimensions exceed maximum (‹size›)",
+    ],
   ])("masks what varies between jobs: %s", (input, expected) => {
     expect(maskFailureMessage(input)).toBe(expected);
   });

@@ -561,6 +561,9 @@ type JobTableProps = {
   status: Status;
   queue?: RouterOutput["queue"]["byName"];
   selectedGroupId?: string | null;
+  // An error group's fingerprint: the list, and its bulk actions, cover only
+  // that group's jobs.
+  errorFingerprint?: string | null;
   query?: string;
   searchIsPartial?: boolean;
   /** Number of infinite-query pages currently loaded. Live polling stops after
@@ -591,6 +594,7 @@ export const JobTable = ({
   status,
   queue,
   selectedGroupId,
+  errorFingerprint,
   query,
   searchIsPartial = false,
   loadedPageCount,
@@ -804,7 +808,7 @@ export const JobTable = ({
     (cleanSupport === true ||
       (typeof cleanSupport === "object" &&
         cleanSupport.supportedStatuses.includes(status)));
-  const hasFilter = Boolean(query || selectedGroupId);
+  const hasFilter = Boolean(query || selectedGroupId || errorFingerprint);
   const emptyStateCopy = EMPTY_STATE_COPY[status];
   const canAddJob =
     queue?.access.actions["job.add"] === true &&
@@ -823,8 +827,11 @@ export const JobTable = ({
     status === "failed" &&
     !!queue?.supports.retry &&
     queue.access.actions["job.retry"];
+  // Promoting by filter cannot narrow to an error group, so it is not offered
+  // while one is shown: it would promote every delayed job instead.
   const showPromoteAll =
     totalJobs > 0 &&
+    !errorFingerprint &&
     status === "delayed" &&
     !!queue?.supports.promote &&
     queue.access.actions["job.promote"];
@@ -878,7 +885,7 @@ export const JobTable = ({
     setRowSelection({});
     setOwnedJobId(null);
     lastClickedJobIdRef.current = null;
-  }, [query, queueName, selectedGroupId, status]);
+  }, [errorFingerprint, query, queueName, selectedGroupId, status]);
 
   useEffect(() => {
     if (!canSelectRows) {
@@ -1301,6 +1308,7 @@ export const JobTable = ({
                           status: "failed",
                           groupId: selectedGroupId ?? undefined,
                           query,
+                          error: errorFingerprint ?? undefined,
                         })
                       }
                     />
@@ -1397,6 +1405,7 @@ export const JobTable = ({
                           status,
                           groupId: selectedGroupId ?? undefined,
                           query,
+                          error: errorFingerprint ?? undefined,
                         })
                       }
                     />

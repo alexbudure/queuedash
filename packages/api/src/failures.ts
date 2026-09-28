@@ -33,31 +33,35 @@ const isStatusCode = (text: string) =>
 
 export const maskFailureMessage = (text: string): string => {
   const firstLine = text.split(/\r?\n/u, 1)[0] ?? "";
-  return firstLine
-    .replaceAll(/\bhttps?:\/\/[^\s'"<>)]+/giu, placeholder("url"))
-    .replaceAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, placeholder("email"))
-    .replaceAll(
-      /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu,
-      placeholder("id"),
-    )
-    .replaceAll(
-      /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/gu,
-      placeholder("time"),
-    )
-    .replaceAll(
-      /(["'`])((?:(?!\1)[^\\\n]|\\.){0,200})\1/gu,
-      (match, _q, inner) =>
-        QUOTED_IDENTIFIER.test(inner) && !/\d/u.test(inner)
-          ? match
-          : placeholder("str"),
-    )
-    .replaceAll(/\b(?=[0-9a-f]*\d)[0-9a-f]{8,}\b/giu, placeholder("id"))
-    .replaceAll(/(?<![\w.‹])\d+(?:\.\d+)?(?![\d.])/gu, (match) =>
-      isStatusCode(match) ? match : placeholder("num"),
-    )
-    .replaceAll(/\s+/gu, " ")
-    .trim()
-    .slice(0, MAX_MESSAGE_LENGTH);
+  return (
+    firstLine
+      .replaceAll(/\bhttps?:\/\/[^\s'"<>)]+/giu, placeholder("url"))
+      .replaceAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gu, placeholder("email"))
+      .replaceAll(
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/giu,
+        placeholder("id"),
+      )
+      .replaceAll(
+        /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/gu,
+        placeholder("time"),
+      )
+      .replaceAll(
+        /(["'`])((?:(?!\1)[^\\\n]|\\.){0,200})\1/gu,
+        (match, _q, inner) =>
+          QUOTED_IDENTIFIER.test(inner) && !/\d/u.test(inner)
+            ? match
+            : placeholder("str"),
+      )
+      .replaceAll(/\b(?=[0-9a-f]*\d)[0-9a-f]{8,}\b/giu, placeholder("id"))
+      // "1920x1080" as one value, not a masked width beside a literal height.
+      .replaceAll(/\b\d+(?:x\d+)+\b/gu, placeholder("size"))
+      .replaceAll(/(?<![\w.‹])\d+(?:\.\d+)?(?![\d.])/gu, (match) =>
+        isStatusCode(match) ? match : placeholder("num"),
+      )
+      .replaceAll(/\s+/gu, " ")
+      .trim()
+      .slice(0, MAX_MESSAGE_LENGTH)
+  );
 };
 
 // "Error", "TypeError", "SmtpError", "TimeoutException", with Node's optional
