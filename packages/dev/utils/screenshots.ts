@@ -11,9 +11,7 @@
  * 256-colour PNGs to assets/screenshots, with the hero composed around the
  * app in assets/screenshots/hero.html. Needs Google Chrome and ffmpeg.
  *
- * Name shots to retake only those; "app" is the hero. A busy worker reads
- * "last seen" minutes ago on the queue, errors and bulk shots, so take those
- * once the traffic has stopped and the image queue has drained.
+ * Name shots to retake only those; "app" is the hero.
  */
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
