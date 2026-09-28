@@ -15,11 +15,27 @@ import {
   type GroupInfo,
   JobNotFoundError,
   type JobPageMeta,
+  pickJobOptions,
   type QueueMetrics,
   type SchedulerInfo,
   UnsupportedSchedulerUpdateError,
   type WorkerInfo,
 } from "./base.adapter";
+
+// What a rerun keeps of the original's options. A copied jobId would make
+// BullMQ drop the rerun as a duplicate, and repeat, parent, deduplication and
+// delay describe that job's schedule and place in a flow, not a new run.
+const RERUN_OPTION_KEYS = [
+  "attempts",
+  "backoff",
+  "keepLogs",
+  "lifo",
+  "priority",
+  "removeOnComplete",
+  "removeOnFail",
+  "sizeLimit",
+  "stackTraceLimit",
+] as const;
 
 type BullMQStatus =
   | "waiting"
@@ -335,6 +351,17 @@ export class BullMQAdapter extends QueueAdapter<
   ): Promise<AdaptedJob> {
     const job = await this.queue.add("Manual add", data, opts || {});
     return this.adaptJob(job);
+  }
+
+  async rerunJob(jobId: string): Promise<AdaptedJob> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    const rerun = await this.queue.add(
+      job.name,
+      job.data,
+      pickJobOptions(job.opts as Record<string, unknown>, RERUN_OPTION_KEYS),
+    );
+    return this.adaptJob(rerun);
   }
 
   async removeJob(jobId: string): Promise<void> {

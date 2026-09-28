@@ -8,6 +8,7 @@ import {
   type FeatureSupport,
   type JobPageMeta,
   type JobScanToken,
+  pickJobOptions,
   type WorkerInfo,
 } from "./base.adapter";
 
@@ -318,6 +319,22 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   async addJob(data: Record<string, unknown>): Promise<AdaptedJob> {
     const job = await this.queue.createJob(data).save();
     return this.adaptJob(job);
+  }
+
+  async rerunJob(jobId: string): Promise<AdaptedJob> {
+    const [stored] = await this.readStoredJobs([jobId]);
+    if (!stored) throw new JobNotFoundError();
+    const rerun = this.queue.createJob(stored.data);
+    // Copied onto the options rather than set through retries() or backoff():
+    // backoff() rejects a strategy this process never registered, and workers
+    // can register their own. Bee-Queue counts `retries` down as a job fails,
+    // so a job that used some of its retries passes on only the rest.
+    const options = rerun.options as Record<string, unknown>;
+    Object.assign(
+      options,
+      pickJobOptions(stored.options, ["backoff", "retries", "timeout"]),
+    );
+    return this.adaptJob(await rerun.save());
   }
 
   async removeJob(jobId: string): Promise<void> {

@@ -3139,29 +3139,171 @@ test("logs on a non-existent job are NOT_FOUND where logs exist", async () => {
   }
 });
 
-test("rerun job preserves data", async () => {
+test("rerun adds a new job with the original's data", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
 
   const { jobs } = await caller.job.list({
     limit: 1,
     cursor: 0,
     status: "completed",
-    queueName: firstQueue.queue.name,
+    queueName,
   });
+  const original = jobs[0];
+  expect(original).toBeDefined();
 
-  if (jobs.length > 0) {
-    const originalJob = jobs[0];
-    const originalData = originalJob.data;
+  const rerun = await caller.job.rerun({ queueName, jobId: original.id });
 
-    await caller.job.rerun({
-      queueName: firstQueue.queue.name,
-      jobId: originalJob.id,
-    });
+  expect(rerun.id).not.toBe(original.id);
+  expect(rerun.data).toEqual(original.data);
+});
 
-    // The returned job should have the same data
-    expect(originalJob.data).toEqual(originalData);
+// Workers dispatch on the job name, and attempts or backoff are the
+// producer's choice, so a rerun carries them. The id, delay and schedule
+// belong to the original run.
+test("rerun keeps the job's name and run options", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const data = { to: "rerun@example.com" };
+  // Delayed, so no worker takes the original while the test reads it.
+  const delay = 60_000;
+
+  switch (firstQueue.type) {
+    case "bullmq": {
+      const original = await firstQueue.queue.add("send-email", data, {
+        jobId: "rerun-original",
+        attempts: 3,
+        backoff: { type: "fixed", delay: 50 },
+        priority: 4,
+        removeOnComplete: 5,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe("rerun-original");
+      expect(stored?.name).toBe("send-email");
+      expect(stored?.data).toEqual(data);
+      expect(stored?.opts).toMatchObject({
+        attempts: 3,
+        backoff: { type: "fixed", delay: 50 },
+        priority: 4,
+        removeOnComplete: 5,
+      });
+      expect(stored?.opts.delay ?? 0).toBe(0);
+      break;
+    }
+    case "bull": {
+      const original = await firstQueue.queue.add("send-email", data, {
+        jobId: "rerun-original",
+        attempts: 3,
+        backoff: 50,
+        priority: 4,
+        removeOnComplete: 5,
+        timeout: 1_000,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe("rerun-original");
+      expect(stored?.name).toBe("send-email");
+      expect(stored?.data).toEqual(data);
+      expect(stored?.opts).toMatchObject({
+        attempts: 3,
+        backoff: original.opts.backoff,
+        priority: 4,
+        removeOnComplete: 5,
+        timeout: 1_000,
+      });
+      expect(stored?.opts.delay ?? 0).toBe(0);
+
+      // An unnamed job stays unnamed, so a processor registered without a
+      // name still takes the rerun.
+      const { jobs } = await caller.job.list({
+        limit: 1,
+        cursor: 0,
+        status: "completed",
+        queueName,
+      });
+      const unnamed = await caller.job.rerun({ queueName, jobId: jobs[0].id });
+      expect((await firstQueue.queue.getJob(unnamed.id))?.name).toBe(
+        "__default__",
+      );
+      break;
+    }
+    case "bee": {
+      const original = await firstQueue.queue
+        .createJob(data)
+        .retries(2)
+        .timeout(1_000)
+        .backoff("fixed", 50)
+        .delayUntil(Date.now() + delay)
+        .save();
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe(original.id);
+      expect(stored.data).toEqual(data);
+      expect(stored.options).toMatchObject({
+        retries: 2,
+        timeout: 1_000,
+        backoff: { strategy: "fixed", delay: 50 },
+      });
+      expect(stored.options.delay).toBeUndefined();
+      break;
+    }
+    case "groupmq": {
+      const original = await firstQueue.queue.add({
+        groupId: "rerun-group",
+        data,
+        maxAttempts: 4,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: original.id,
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe(original.id);
+      expect(stored.groupId).toBe("rerun-group");
+      expect(stored.opts.attempts).toBe(4);
+      expect(stored.data).toEqual(data);
+      expect(
+        await firstQueue.queue.redis.zscore(
+          `${firstQueue.queue.namespace}:delayed`,
+          rerun.id,
+        ),
+      ).toBeNull();
+      break;
+    }
   }
+});
+
+test("rerun of an unknown job is NOT_FOUND", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  await expectTRPCError(
+    () =>
+      caller.job.rerun({
+        queueName: firstQueue.queue.name,
+        jobId: "no-such-job",
+      }),
+    "NOT_FOUND",
+  );
 });
 
 test("job list respects cursor offset correctly", async () => {

@@ -36,6 +36,18 @@ export type AdaptedJob = {
 
 export type JobCounts = Partial<Record<string, number>>;
 
+/** The listed options that are set on `opts`, to carry them to another job. */
+export const pickJobOptions = (
+  opts: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): Record<string, unknown> => {
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (opts?.[key] !== undefined) picked[key] = opts[key];
+  }
+  return picked;
+};
+
 export type JobPageMeta = {
   capped: boolean;
   cursorAdvance?: number;
@@ -207,6 +219,11 @@ export abstract class QueueAdapter<
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
   ): Promise<AdaptedJob>;
+  // Adds a new job with an existing job's name, data and the options that
+  // decide how it runs: workers dispatch on the name, and attempts or backoff
+  // are the producer's choice. Never its id, delay, schedule or flow parent: a
+  // rerun is a new job that runs now. Throws JobNotFoundError for an unknown id.
+  abstract rerunJob(jobId: string): Promise<AdaptedJob>;
   abstract removeJob(jobId: string): Promise<void>;
   abstract retryJob(jobId: string): Promise<void>;
   abstract promoteJob(jobId: string): Promise<void>;

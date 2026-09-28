@@ -8,8 +8,23 @@ import {
   type FeatureSupport,
   JobNotFoundError,
   type JobPageMeta,
+  pickJobOptions,
   type WorkerInfo,
 } from "./base.adapter";
+
+// What a rerun keeps of the original's options. A copied jobId would make Bull
+// drop the rerun as a duplicate, and repeat and delay describe that job's
+// schedule, not a new run.
+const RERUN_OPTION_KEYS = [
+  "attempts",
+  "backoff",
+  "lifo",
+  "priority",
+  "removeOnComplete",
+  "removeOnFail",
+  "stackTraceLimit",
+  "timeout",
+] as const;
 
 type BullStatus =
   | "completed"
@@ -251,6 +266,19 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   ): Promise<AdaptedJob> {
     const job = await this.queue.add(data, opts || {});
     return this.adaptJob(job);
+  }
+
+  async rerunJob(jobId: string): Promise<AdaptedJob> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    // An unnamed job's name is `__default__`, which Bull treats exactly like
+    // no name, so it still reaches a processor registered without one.
+    const rerun = await this.queue.add(
+      job.name,
+      job.data,
+      pickJobOptions(job.opts as Record<string, unknown>, RERUN_OPTION_KEYS),
+    );
+    return this.adaptJob(rerun);
   }
 
   async removeJob(jobId: string): Promise<void> {

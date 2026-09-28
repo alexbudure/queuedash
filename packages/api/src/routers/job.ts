@@ -564,18 +564,12 @@ export const jobRouter = router({
         queueName,
       });
 
-      const job = await queueInCtx.adapter.getJob(jobId);
+      // The adapter re-adds the job under its own name and settings. Adding
+      // just its data named every rerun "Manual add", which a worker that
+      // dispatches on the name could not process.
+      const rerun = await queueInCtx.adapter.rerunJob(jobId);
 
-      if (!job) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Job not found",
-        });
-      }
-
-      await queueInCtx.adapter.addJob(job.data);
-
-      return presentJob(job, internalCtx.privacy);
+      return presentJob(rerun, internalCtx.privacy);
     }),
   promote: procedure
     .input(
