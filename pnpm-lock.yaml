@@ -212,9 +212,6 @@ importers:
       '@queuedash/api':
         specifier: workspace:*
         version: link:../api
-      '@queuedash/ui':
-        specifier: workspace:*
-        version: link:../ui
       '@trpc/server':
         specifier: ^11.14.1
         version: 11.14.1(typescript@5.9.3)

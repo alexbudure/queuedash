@@ -15,7 +15,6 @@
   ],
   "dependencies": {
     "@queuedash/api": "workspace:*",
-    "@queuedash/ui": "workspace:*",
     "@trpc/server": "^11.14.1",
     "bee-queue": "^2.0.0",
     "bull": "^4.16.5",

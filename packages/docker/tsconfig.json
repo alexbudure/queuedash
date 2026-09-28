@@ -29,16 +29,12 @@
     "preserveWatchOutput": true,
     "baseUrl": ".",
     "paths": {
-      "@queuedash/api": ["../api/src/main"],
-      "@queuedash/ui": ["../ui/src/main"]
+      "@queuedash/api": ["../api/src/main"]
     }
   },
   "references": [
     {
       "path": "../api"
-    },
-    {
-      "path": "../ui"
     }
   ],
   "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx"],
