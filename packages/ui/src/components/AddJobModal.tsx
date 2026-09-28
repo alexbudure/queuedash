@@ -1,15 +1,17 @@
 import { clsx } from "clsx";
 import cronstrue from "cronstrue";
-import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CopyPlus } from "lucide-react";
 import {
   type FormEvent,
   type ReactNode,
+  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
 } from "react";
 import {
+  Checkbox as AriaCheckbox,
   Button as AriaButton,
   ComboBox,
   Input,
@@ -20,10 +22,14 @@ import {
 } from "react-aria-components";
 import { toast } from "sonner";
 
+import { formatJobId } from "../utils/flow";
 import { formatCountLabel } from "../utils/format";
+import { parseDataOrNull, parseUnknownJson } from "../utils/json";
 import type { JSONEditorValidationState } from "../utils/jsonEditor";
 import { normalizeJSONEditorValue } from "../utils/jsonEditor";
+import { getChangedLines } from "../utils/lineDiff";
 import { mutationToasts } from "../utils/mutationToasts";
+import { useRecentJobNames } from "../utils/recentJobNames";
 import {
   FIELD_ERROR,
   FIELD_HINT,
@@ -37,7 +43,7 @@ import {
   SECTION_LABEL,
   TEXT_MUTED,
 } from "../utils/styles";
-import type { Queue, Scheduler } from "../utils/trpc";
+import type { Job, Queue, Scheduler, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import {
   getInitialSchedulerTimezone,
@@ -49,6 +55,10 @@ import { Button } from "./Button";
 import { JSONEditor } from "./JSONEditor";
 import { useQueuedash } from "./QueuedashProvider";
 import { SidePanelDialog } from "./SidePanelDialog";
+import { StatusBadge } from "./StatusBadge";
+
+/** The job Duplicate copies, as the panel it was opened from shows it. */
+export type DuplicateSource = { job: Job; status?: Status | null };
 
 type JobModalProps = {
   queue: Queue;
@@ -56,6 +66,8 @@ type JobModalProps = {
   onSuccess?: () => void;
   scheduler?: Scheduler;
   variant?: "job" | "scheduler";
+  /** Opens the job form as Duplicate, filled in from this job. */
+  source?: DuplicateSource;
 };
 
 const JSON_HELPER_TEXT =
@@ -105,6 +117,44 @@ const STARTING_SCHEDULER_TEMPLATE_OPTIONS = getStartingOptions([
 ]);
 
 const EMPTY_OPTIONS = "{}";
+
+/**
+ * What a copy never takes from the job it copies: its id, the delay it already
+ * waited, a schedule, and its place in a flow. A duplicate is a new job that
+ * runs now - the same rule as Rerun, which Duplicate replaces.
+ */
+const NOT_COPIED_OPTIONS = new Set([
+  "delay",
+  "jobId",
+  "parent",
+  "repeat",
+  "runAt",
+  "timestamp",
+]);
+
+const toJSONText = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
+
+/** The options of `job` a manually added job may set, as the editor shows them. */
+const getCopiedOptions = (job: Job, keys: readonly string[]) => {
+  const opts = parseUnknownJson(job.opts);
+  const record =
+    opts && typeof opts === "object" ? (opts as Record<string, unknown>) : {};
+  return toJSONText(
+    Object.fromEntries(
+      keys
+        .filter((key) => !NOT_COPIED_OPTIONS.has(key) && record[key] != null)
+        .map((key) => [key, record[key]]),
+    ),
+  );
+};
+
+/** Bull's unnamed jobs carry `__default__`: a copy stays unnamed. */
+const toEditableName = (name: string | undefined) =>
+  name && name !== "__default__" ? name : "";
+
+const isMacPlatform = () =>
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 const DEFAULT_OPTIONS_SUMMARY = "Default options";
 
@@ -286,11 +336,17 @@ const getCronDescription = (pattern: string) => {
 const getInitialFormValues = (
   scheduler: Scheduler | undefined,
   addJobOptionKeys: readonly string[],
+  sourceJob: Job | undefined,
 ) => ({
-  dataValue: "{}",
+  nameValue: toEditableName(sourceJob?.rawName),
+  dataValue: sourceJob
+    ? toJSONText(parseDataOrNull(sourceJob.data) ?? {})
+    : "{}",
   // Only what this queue's adapter accepts: GroupMQ takes neither `attempts`
   // nor `backoff`, and every untouched Add job there failed on them.
-  optsValue: getStartingOptions(addJobOptionKeys),
+  optsValue: sourceJob
+    ? getCopiedOptions(sourceJob, addJobOptionKeys)
+    : getStartingOptions(addJobOptionKeys),
   schedulerName: scheduler?.name ?? "manual-scheduler",
   templateDataValue: JSON.stringify(
     scheduler?.template?.data ??
@@ -331,6 +387,7 @@ export const useJobForm = ({
   onSuccess,
   scheduler,
   variant = "job",
+  source,
 }: JobModalProps) => {
   const schedulerScheduleDescriptionId = useId();
   const schedulerEveryId = useId();
@@ -341,22 +398,62 @@ export const useJobForm = ({
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const isJob = variant === "job";
+  const isDuplicate = isJob && !!source;
   // An adapter that names no option keys accepts none, so there is nothing to
   // edit and nothing to send.
   const supportsJobOptions =
     queue.supports.addJobOptions && queue.supports.addJobOptionKeys.length > 0;
+  const supportsJobNames = isJob && queue.supports.jobNames;
   const isEditingScheduler = !isJob && !!scheduler;
+  const recentNames = useRecentJobNames(queue.name, supportsJobNames);
+
+  // Dirtiness is measured against what the panel opened with - a literal "{}"
+  // comparison would report every freshly-opened scheduler panel as dirty.
+  const [initialValues] = useState(() =>
+    getInitialFormValues(
+      scheduler,
+      queue.supports.addJobOptionKeys,
+      source?.job,
+    ),
+  );
+  // With Add another on, what was just added is no longer unsaved work.
+  const [savedJobValues, setSavedJobValues] = useState(() => ({
+    name: initialValues.nameValue,
+    data: initialValues.dataValue,
+    opts: initialValues.optsValue,
+  }));
+  const [addAnother, setAddAnother] = useState(false);
+
+  const [nameValue, setNameValue] = useState(initialValues.nameValue);
+  const [dataValue, setDataValue] = useState(initialValues.dataValue);
+  const [optsValue, setOptsValue] = useState(initialValues.optsValue);
+
+  const onJobAdded = () => {
+    onSuccess?.();
+    if (addAnother) {
+      setSavedJobValues({ name: nameValue, data: dataValue, opts: optsValue });
+    } else {
+      onDismiss();
+    }
+  };
 
   const { mutate: addJob, status: addJobStatus } =
     trpc.queue.addJob.useMutation(
       mutationToasts("Job added", {
         errorMessage: "Could not add the job. Please try again.",
-        onSuccess: () => {
-          onSuccess?.();
-          onDismiss();
-        },
+        onSuccess: onJobAdded,
       }),
     );
+
+  // An unedited duplicate is a rerun: the server copies the job as it is
+  // stored, so values this dashboard shows redacted keep their real contents.
+  const canRerun = queue.access.actions["job.rerun"] === true;
+  const { mutate: rerunJob, status: rerunStatus } = trpc.job.rerun.useMutation(
+    mutationToasts("Job added", {
+      errorMessage: "Could not add the job. Please try again.",
+      onSuccess: onJobAdded,
+    }),
+  );
 
   const { mutate: addJobScheduler, status: addSchedulerStatus } =
     trpc.queue.addJobScheduler.useMutation(
@@ -380,17 +477,8 @@ export const useJobForm = ({
       }),
     );
 
-  // Dirtiness is measured against what the panel opened with - a literal "{}"
-  // comparison would report every freshly-opened scheduler panel as dirty.
-  const [initialValues] = useState(() =>
-    getInitialFormValues(scheduler, queue.supports.addJobOptionKeys),
-  );
-
   const [showErrors, setShowErrors] = useState(false);
   const [isPatternTouched, setIsPatternTouched] = useState(false);
-
-  const [dataValue, setDataValue] = useState(initialValues.dataValue);
-  const [optsValue, setOptsValue] = useState(initialValues.optsValue);
   const [jobDataValidation, setJobDataValidation] =
     useState<JSONEditorValidationState>(() =>
       getInitialValidationState(initialValues.dataValue, "Data", true),
@@ -457,7 +545,9 @@ export const useJobForm = ({
   );
 
   const status = isJob
-    ? addJobStatus
+    ? rerunStatus === "pending"
+      ? rerunStatus
+      : addJobStatus
     : isEditingScheduler
       ? updateSchedulerStatus
       : addSchedulerStatus;
@@ -508,8 +598,9 @@ export const useJobForm = ({
     hasVisibleJSONErrors || (!isJob && !!visibleScheduleError);
 
   const isDirty = isJob
-    ? dataValue !== initialValues.dataValue ||
-      optsValue !== initialValues.optsValue
+    ? nameValue !== savedJobValues.name ||
+      dataValue !== savedJobValues.data ||
+      optsValue !== savedJobValues.opts
     : schedulerName !== initialValues.schedulerName ||
       templateDataValue !== initialValues.templateDataValue ||
       templateOptsValue !== initialValues.templateOptsValue ||
@@ -605,8 +696,21 @@ export const useJobForm = ({
       return;
     }
 
+    const isUnedited =
+      nameValue.trim() === initialValues.nameValue.trim() &&
+      normalizeOptionsValue(dataValue) ===
+        normalizeOptionsValue(initialValues.dataValue) &&
+      (!supportsJobOptions ||
+        normalizeOptionsValue(optsValue) ===
+          normalizeOptionsValue(initialValues.optsValue));
+    if (source && canRerun && isUnedited) {
+      rerunJob({ queueName: queue.name, jobId: source.job.id });
+      return;
+    }
+
     addJob({
       queueName: queue.name,
+      name: supportsJobNames ? nameValue.trim() || undefined : undefined,
       data: normalizedData.parsedValue as Record<string, unknown>,
       opts: normalizedOpts?.parsedValue as Record<string, unknown> | undefined,
     });
@@ -713,6 +817,7 @@ export const useJobForm = ({
   };
 
   return {
+    addAnother,
     advancedSummary,
     cronDescription,
     dataValue,
@@ -730,18 +835,29 @@ export const useJobForm = ({
     isDirty,
     isEditingScheduler,
     isFormInvalid,
+    canRerun,
+    // What a job added with no name is called: BullMQ's is ours, Bull's its own.
+    defaultJobName: queue.type === "bullmq" ? "Manual add" : "Unnamed",
+    isDuplicate,
     isJob,
+    nameValue,
     onDismiss,
     optsValue,
+    originalDataValue: isDuplicate ? initialValues.dataValue : undefined,
+    originalOptsValue: isDuplicate ? initialValues.optsValue : undefined,
+    recentNames,
+    resetData: () => setDataValue(initialValues.dataValue),
     patternValue,
     registerField,
     schedulerName,
     schedulerOptionsValue,
+    setAddAnother,
     setDataValue,
     setEveryValue,
     setIsPatternTouched,
     setJobDataValidation,
     setJobOptsValidation,
+    setNameValue,
     setOptsValue,
     setPatternValue,
     setSchedulerName,
@@ -753,6 +869,7 @@ export const useJobForm = ({
     setTemplateOptsValue,
     setTimezoneValue,
     showErrors,
+    source,
     status,
     submit,
     submitLabel: isJob
@@ -760,6 +877,7 @@ export const useJobForm = ({
       : isEditingScheduler
         ? "Save changes"
         : "Add scheduler",
+    supportsJobNames,
     supportsJobOptions,
     templateDataValue,
     templateOptsValue,
@@ -767,7 +885,9 @@ export const useJobForm = ({
     timezoneValue,
     title: isEditingScheduler
       ? "Edit scheduler"
-      : `Add ${isJob ? "job" : "scheduler"}`,
+      : isDuplicate
+        ? "Duplicate job"
+        : `Add ${isJob ? "job" : "scheduler"}`,
     toggleAdvanced: () => setIsAdvancedOpen((current) => !current),
     visibleScheduleError,
   };
@@ -942,146 +1062,360 @@ const TimezoneField = ({
   );
 };
 
-export const JobFormFields = ({ form }: { form: JobFormController }) => (
-  <form
-    ref={form.formRef}
-    onSubmit={form.handleSubmit}
-    noValidate
-    className="space-y-5 p-6"
-  >
-    {form.isJob ? (
-      <>
-        {/* Said once for the whole form: it is the same rule in every editor. */}
-        <p className={FIELD_HINT}>{JSON_HELPER_TEXT}</p>
+export const JobFormFields = ({ form }: { form: JobFormController }) => {
+  const { formRef } = form;
 
-        <div ref={form.registerField("data")}>
-          <JSONEditor
-            label="Data"
-            value={form.dataValue}
-            onChange={form.setDataValue}
-            required
-            autoFocus
-            rootType="object"
-            height="280px"
-            showErrors={form.showErrors}
-            onSubmit={form.submit}
-            onValidationChange={form.setJobDataValidation}
-          />
-        </div>
+  // Cmd/Ctrl+Enter adds from anywhere in the panel, the pinned footer included.
+  // Taken on the way down and stopped there: react-aria presses a focused
+  // checkbox on Enter, so "Add another" would untick itself on the keyup of
+  // the very shortcut that submits, and the panel would close anyway.
+  useEffect(() => {
+    const panel = formRef.current?.closest("[role='dialog']");
+    if (!panel) return;
+    const onKeyDown = (event: Event) => {
+      const keyEvent = event as KeyboardEvent;
+      if (keyEvent.key !== "Enter" || !(keyEvent.metaKey || keyEvent.ctrlKey)) {
+        return;
+      }
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      formRef.current?.requestSubmit();
+    };
+    panel.addEventListener("keydown", onKeyDown, true);
+    return () => panel.removeEventListener("keydown", onKeyDown, true);
+  }, [formRef]);
 
-        {form.supportsJobOptions ? (
-          <div ref={form.registerField("opts")}>
+  return (
+    <form
+      ref={form.formRef}
+      onSubmit={form.handleSubmit}
+      noValidate
+      className="space-y-5 p-6"
+    >
+      {form.isJob ? (
+        <>
+          {form.source ? (
+            <DuplicateSourceNote
+              source={form.source}
+              canRerun={form.canRerun}
+            />
+          ) : null}
+
+          {form.supportsJobNames ? <JobNameField form={form} /> : null}
+
+          {/* Said once for the whole form: it is the same rule in every editor. */}
+          <p className={FIELD_HINT}>{JSON_HELPER_TEXT}</p>
+
+          <div ref={form.registerField("data")}>
             <JSONEditor
-              label="Options"
-              value={form.optsValue}
-              onChange={form.setOptsValue}
+              label="Data"
+              value={form.dataValue}
+              onChange={form.setDataValue}
+              required
+              // A new job starts from its name; a copy from what to change.
+              autoFocus={!form.supportsJobNames || form.isDuplicate}
+              rootType="object"
+              height="280px"
+              showErrors={form.showErrors}
+              onSubmit={form.submit}
+              onValidationChange={form.setJobDataValidation}
+              originalValue={form.originalDataValue}
+              footer={
+                form.originalDataValue === undefined ? undefined : (
+                  <ChangedLinesNote
+                    original={form.originalDataValue}
+                    value={form.dataValue}
+                    onReset={form.resetData}
+                  />
+                )
+              }
+            />
+          </div>
+
+          {form.supportsJobOptions ? (
+            <div ref={form.registerField("opts")}>
+              <JSONEditor
+                label="Options"
+                value={form.optsValue}
+                onChange={form.setOptsValue}
+                rootType="object"
+                height="240px"
+                showErrors={form.showErrors}
+                onSubmit={form.submit}
+                onValidationChange={form.setJobOptsValidation}
+                originalValue={form.originalOptsValue}
+                footer={
+                  form.isDuplicate ? (
+                    <p className={FIELD_HINT}>
+                      Not copied: the job id, its delay, and its place in a
+                      flow.
+                    </p>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+              This queue accepts job data only; its adapter does not support job
+              options.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <div>
+            <label htmlFor={form.ids.name} className={FIELD_LABEL}>
+              Scheduler name
+            </label>
+            <input
+              id={form.ids.name}
+              autoFocus
+              value={form.schedulerName}
+              onChange={(event) => form.setSchedulerName(event.target.value)}
+              className={clsx(INPUT_CLASS, FOCUS_FIELD)}
+              placeholder="manual-scheduler"
+            />
+          </div>
+
+          <SectionHeader>Schedule</SectionHeader>
+
+          <SchedulerScheduleInputs
+            descriptionId={form.ids.scheduleDescription}
+            everyId={form.ids.every}
+            everyValue={form.everyValue}
+            onEveryValueChange={form.setEveryValue}
+            onPatternBlur={() => form.setIsPatternTouched(true)}
+            onPatternValueChange={form.setPatternValue}
+            patternId={form.ids.pattern}
+            patternRef={form.registerField("pattern")}
+            patternValue={form.patternValue}
+            scheduleError={form.visibleScheduleError}
+            scheduleHint={form.cronDescription ?? SCHEDULE_HINT}
+          />
+
+          <TimezoneField
+            items={form.timezoneItems}
+            onChange={form.setTimezoneValue}
+            value={form.timezoneValue}
+          />
+
+          <SectionHeader description={JSON_HELPER_TEXT}>Template</SectionHeader>
+
+          <div ref={form.registerField("templateData")}>
+            <JSONEditor
+              label="Template data"
+              value={form.templateDataValue}
+              onChange={form.setTemplateDataValue}
+              required
               rootType="object"
               height="240px"
               showErrors={form.showErrors}
               onSubmit={form.submit}
-              onValidationChange={form.setJobOptsValidation}
-            />
-          </div>
-        ) : (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-            This queue accepts job data only; its adapter does not support job
-            options.
-          </p>
-        )}
-      </>
-    ) : (
-      <>
-        <div>
-          <label htmlFor={form.ids.name} className={FIELD_LABEL}>
-            Scheduler name
-          </label>
-          <input
-            id={form.ids.name}
-            autoFocus
-            value={form.schedulerName}
-            onChange={(event) => form.setSchedulerName(event.target.value)}
-            className={clsx(INPUT_CLASS, FOCUS_FIELD)}
-            placeholder="manual-scheduler"
-          />
-        </div>
-
-        <SectionHeader>Schedule</SectionHeader>
-
-        <SchedulerScheduleInputs
-          descriptionId={form.ids.scheduleDescription}
-          everyId={form.ids.every}
-          everyValue={form.everyValue}
-          onEveryValueChange={form.setEveryValue}
-          onPatternBlur={() => form.setIsPatternTouched(true)}
-          onPatternValueChange={form.setPatternValue}
-          patternId={form.ids.pattern}
-          patternRef={form.registerField("pattern")}
-          patternValue={form.patternValue}
-          scheduleError={form.visibleScheduleError}
-          scheduleHint={form.cronDescription ?? SCHEDULE_HINT}
-        />
-
-        <TimezoneField
-          items={form.timezoneItems}
-          onChange={form.setTimezoneValue}
-          value={form.timezoneValue}
-        />
-
-        <SectionHeader description={JSON_HELPER_TEXT}>Template</SectionHeader>
-
-        <div ref={form.registerField("templateData")}>
-          <JSONEditor
-            label="Template data"
-            value={form.templateDataValue}
-            onChange={form.setTemplateDataValue}
-            required
-            rootType="object"
-            height="240px"
-            showErrors={form.showErrors}
-            onSubmit={form.submit}
-            onValidationChange={form.setTemplateDataValidation}
-          />
-        </div>
-
-        <AdvancedOptions
-          isOpen={form.isAdvancedOpen}
-          onToggle={form.toggleAdvanced}
-          summary={form.advancedSummary}
-        >
-          <div ref={form.registerField("templateOpts")}>
-            <JSONEditor
-              label="Template options"
-              value={form.templateOptsValue}
-              onChange={form.setTemplateOptsValue}
-              rootType="object"
-              height="220px"
-              showErrors={form.showErrors}
-              onSubmit={form.submit}
-              onValidationChange={form.setTemplateOptsValidation}
+              onValidationChange={form.setTemplateDataValidation}
             />
           </div>
 
-          <div ref={form.registerField("schedulerOptions")}>
-            <JSONEditor
-              label="Scheduler options"
-              value={form.schedulerOptionsValue}
-              onChange={form.setSchedulerOptionsValue}
-              rootType="object"
-              height="220px"
-              showErrors={form.showErrors}
-              onSubmit={form.submit}
-              onValidationChange={form.setSchedulerOptionsValidation}
-            />
-          </div>
-        </AdvancedOptions>
-      </>
-    )}
+          <AdvancedOptions
+            isOpen={form.isAdvancedOpen}
+            onToggle={form.toggleAdvanced}
+            summary={form.advancedSummary}
+          >
+            <div ref={form.registerField("templateOpts")}>
+              <JSONEditor
+                label="Template options"
+                value={form.templateOptsValue}
+                onChange={form.setTemplateOptsValue}
+                rootType="object"
+                height="220px"
+                showErrors={form.showErrors}
+                onSubmit={form.submit}
+                onValidationChange={form.setTemplateOptsValidation}
+              />
+            </div>
 
-    {/* The visible primary lives in the pinned footer, outside this form, so a
+            <div ref={form.registerField("schedulerOptions")}>
+              <JSONEditor
+                label="Scheduler options"
+                value={form.schedulerOptionsValue}
+                onChange={form.setSchedulerOptionsValue}
+                rootType="object"
+                height="220px"
+                showErrors={form.showErrors}
+                onSubmit={form.submit}
+                onValidationChange={form.setSchedulerOptionsValidation}
+              />
+            </div>
+          </AdvancedOptions>
+        </>
+      )}
+
+      {/* The visible primary lives in the pinned footer, outside this form, so a
         hidden default button is what makes Enter submit from a text field. */}
-    <button type="submit" tabIndex={-1} aria-hidden="true" className="hidden" />
-  </form>
-);
+      <button
+        type="submit"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="hidden"
+      />
+    </form>
+  );
+};
+
+const CHIP =
+  "inline-flex h-6 items-center rounded-full border px-2.5 font-mono text-xs transition-colors duration-150";
+
+/**
+ * What workers dispatch on. The names this queue's jobs already use are one
+ * click away, so a new job does not reach a worker under a typo.
+ */
+const JobNameField = ({ form }: { form: JobFormController }) => {
+  const id = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [focusOnOpen] = useState(!form.isDuplicate);
+
+  useEffect(() => {
+    if (focusOnOpen) inputRef.current?.focus();
+  }, [focusOnOpen]);
+
+  return (
+    <div>
+      <label htmlFor={id} className={FIELD_LABEL}>
+        Name
+      </label>
+      <input
+        id={id}
+        ref={inputRef}
+        value={form.nameValue}
+        onChange={(event) => form.setNameValue(event.target.value)}
+        placeholder={form.defaultJobName}
+        spellCheck={false}
+        autoComplete="off"
+        className={clsx(INPUT_CLASS, FOCUS_FIELD, "font-mono text-[13px]")}
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        {form.recentNames.length > 0 ? (
+          <>
+            <span className={clsx("mr-0.5", FIELD_HINT)}>Recent</span>
+            {form.recentNames.map((name) => {
+              const isChosen = form.nameValue.trim() === name;
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={isChosen}
+                  onClick={() => form.setNameValue(name)}
+                  className={clsx(
+                    CHIP,
+                    isChosen
+                      ? "border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-800/80 dark:bg-brand-950/50 dark:text-brand-300"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800",
+                    FOCUS_RING,
+                  )}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </>
+        ) : (
+          <span className={FIELD_HINT}>
+            Workers often pick a handler by the job&apos;s name.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/** Which job this copies, and what copying it means. */
+const DuplicateSourceNote = ({
+  source,
+  canRerun,
+}: {
+  source: DuplicateSource;
+  canRerun: boolean;
+}) => {
+  const settingsReq = trpc.settings.get.useQuery(undefined, {
+    staleTime: 60_000,
+  });
+  const redacts = settingsReq.data?.privacy.redactionEnabled === true;
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+      <CopyPlus
+        aria-hidden="true"
+        className={clsx("mt-1 size-3.5 shrink-0", TEXT_MUTED)}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px]">
+          <span className={TEXT_MUTED}>From</span>
+          <span className="min-w-0 truncate font-mono text-gray-900 dark:text-white">
+            {source.job.name}
+          </span>
+          <span
+            title={source.job.id}
+            className={clsx(
+              "shrink-0 rounded-md bg-gray-100 px-1.5 font-mono text-[11px] leading-[18px] dark:bg-slate-800",
+              TEXT_MUTED,
+            )}
+          >
+            #{formatJobId(source.job.id)}
+          </span>
+          {source.status ? <StatusBadge status={source.status} /> : null}
+        </div>
+        <p className={clsx("mt-1", FIELD_HINT)}>
+          Its name, data and options are copied. The original job stays as it
+          is.
+          {redacts
+            ? canRerun
+              ? " This server hides sensitive values: added unedited, the copy keeps the real ones; edited, it keeps the placeholders shown here."
+              : " This server hides sensitive values, so the copy keeps the placeholders shown here."
+            : null}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+/** How far a copy has moved from the job it copies, and the way back. */
+const ChangedLinesNote = ({
+  original,
+  value,
+  onReset,
+}: {
+  original: string;
+  value: string;
+  onReset: () => void;
+}) => {
+  const changed = useMemo(
+    () => getChangedLines(original, value).length,
+    [original, value],
+  );
+  if (value === original) {
+    return <p className={FIELD_HINT}>Same as the original</p>;
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className={FIELD_HINT}>
+        {changed === 0
+          ? "Lines removed from the original"
+          : `${formatCountLabel(changed, "line")} changed from the original`}
+      </p>
+      <button
+        type="button"
+        onClick={onReset}
+        className={clsx(
+          "shrink-0 rounded text-xs font-medium transition-colors duration-150 hover:text-gray-900 active:text-gray-600 dark:hover:text-white dark:active:text-slate-300",
+          TEXT_MUTED,
+          FOCUS_RING,
+        )}
+      >
+        Reset to original
+      </button>
+    </div>
+  );
+};
 
 export const JobFormFooter = ({
   form,
@@ -1090,17 +1424,47 @@ export const JobFormFooter = ({
   form: JobFormController;
   onCancel: () => void;
 }) => (
-  <div className="flex items-center justify-end gap-2 border-t border-gray-100/80 bg-gray-50/50 px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900/30">
-    <Button label="Cancel" size="lg" onClick={onCancel} />
-    <Button
-      label={form.submitLabel}
-      size="lg"
-      variant="filled"
-      colorScheme="brand"
-      isLoading={form.status === "pending"}
-      disabled={form.isFormInvalid}
-      onClick={form.submit}
-    />
+  <div className="flex items-center justify-between gap-3 border-t border-gray-100/80 bg-gray-50/50 px-6 py-4 dark:border-slate-800/60 dark:bg-slate-900/30">
+    {form.isJob ? (
+      // Keeps the panel open, values and all, for adding the next test job.
+      <AriaCheckbox
+        isSelected={form.addAnother}
+        onChange={form.setAddAnother}
+        className="group flex cursor-pointer items-center gap-2 text-sm text-gray-700 outline-none dark:text-slate-300"
+      >
+        {({ isSelected }) => (
+          <>
+            <span
+              aria-hidden="true"
+              className={clsx(
+                "flex size-4 items-center justify-center rounded border transition-colors duration-150 group-data-[focus-visible]:ring-2 group-data-[focus-visible]:ring-brand-400 group-data-[focus-visible]:ring-offset-2 group-data-[focus-visible]:ring-offset-white dark:group-data-[focus-visible]:ring-brand-600 dark:group-data-[focus-visible]:ring-offset-slate-900",
+                isSelected
+                  ? "border-gray-900 bg-gray-900 text-white dark:border-slate-200 dark:bg-slate-200 dark:text-slate-900"
+                  : "border-gray-300 bg-white group-hover:border-gray-400 dark:border-slate-600 dark:bg-slate-900 dark:group-hover:border-slate-500",
+              )}
+            >
+              {isSelected ? <Check className="size-3" /> : null}
+            </span>
+            Add another
+          </>
+        )}
+      </AriaCheckbox>
+    ) : (
+      <span />
+    )}
+    <div className="flex items-center gap-2">
+      <Button label="Cancel" size="lg" onClick={onCancel} />
+      <Button
+        label={form.submitLabel}
+        shortcut={isMacPlatform() ? "⌘↵" : "Ctrl ↵"}
+        size="lg"
+        variant="filled"
+        colorScheme="brand"
+        isLoading={form.status === "pending"}
+        disabled={form.isFormInvalid}
+        onClick={form.submit}
+      />
+    </div>
   </div>
 );
 
@@ -1110,8 +1474,16 @@ export const AddJobModal = ({
   onSuccess,
   scheduler,
   variant = "job",
+  source,
 }: JobModalProps) => {
-  const form = useJobForm({ queue, onDismiss, onSuccess, scheduler, variant });
+  const form = useJobForm({
+    queue,
+    onDismiss,
+    onSuccess,
+    scheduler,
+    variant,
+    source,
+  });
 
   return (
     <SidePanelDialog
@@ -1134,6 +1506,8 @@ export const AddJobModal = ({
         })
       }
       panelClassName="max-w-[760px]"
+      // Duplicate opens over the job panel, whose j/k would step it away.
+      ownsShortcuts={!!source}
       footer={<JobFormFooter form={form} onCancel={onDismiss} />}
     >
       <JobFormFields form={form} />

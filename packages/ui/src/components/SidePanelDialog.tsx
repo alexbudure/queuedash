@@ -29,6 +29,9 @@ type SidePanelDialogProps = {
   isKeyboardDismissDisabled?: boolean;
   /** Called when the close button is pressed while dismissal is blocked. */
   onCloseAttempt?: () => void;
+  /** Keeps the page's own shortcuts (j/k, Escape) out of this panel: set on a
+   *  panel opened over another, like Duplicate over the job it copies. */
+  ownsShortcuts?: boolean;
 };
 
 export const SidePanelDialog = ({
@@ -44,6 +47,7 @@ export const SidePanelDialog = ({
   isDismissable = true,
   isKeyboardDismissDisabled = false,
   onCloseAttempt,
+  ownsShortcuts = false,
 }: SidePanelDialogProps) => {
   const { portalContainer } = useQueuedash();
   // The X has to obey the same guard as Escape and the scrim. `isDismissable`
@@ -77,7 +81,10 @@ export const SidePanelDialog = ({
             panelClassName,
           )}
         >
-          <Dialog className="flex h-full flex-col overflow-hidden outline-none">
+          <Dialog
+            className="flex h-full flex-col overflow-hidden outline-none"
+            data-own-shortcuts={ownsShortcuts ? "" : undefined}
+          >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
               <div className="min-w-0 flex-1 pr-3">
                 <Heading

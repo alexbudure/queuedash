@@ -185,7 +185,7 @@ export const isShortcutExemptTarget = (target: EventTarget | null) => {
   }
   return (
     element.closest(
-      "[role='alertdialog'], [role='menu'], [role='listbox'], [role='textbox']",
+      "[role='alertdialog'], [role='menu'], [role='listbox'], [role='textbox'], [data-own-shortcuts]",
     ) !== null
   );
 };

@@ -9,6 +9,7 @@ import { isFailedJob, isRunningJob } from "../utils/status";
 import { CARD_BORDER, FOCUS_RING, TEXT_MUTED } from "../utils/styles";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import { AddJobModal, type DuplicateSource } from "./AddJobModal";
 import { CopyButton } from "./CopyButton";
 import {
   DetailBody,
@@ -135,6 +136,10 @@ export const JobModal = ({
   // since run kept its "Delayed" badge, and a Promote the server refused, next
   // to a live timeline that said Completed.
   const status = liveJob?.status ?? listStatus;
+  // The job as it was when Duplicate opened: j/k may step this panel on while
+  // the copy is being edited, and the copy is of the job it was opened from.
+  const [duplicateSource, setDuplicateSource] =
+    useState<DuplicateSource | null>(null);
 
   return (
     <SidePanelDialog
@@ -198,6 +203,7 @@ export const JobModal = ({
             queueName={queueName}
             queue={queueReq.data ?? undefined}
             onRemove={onJobLeft}
+            onDuplicate={() => setDuplicateSource({ job, status })}
           />
         </>
       }
@@ -215,6 +221,14 @@ export const JobModal = ({
         queue={queueReq.data ?? undefined}
         errorFingerprint={liveJob?.errorFingerprint ?? null}
       />
+      {/* Inside the panel's tree, so it stacks over it as its own modal. */}
+      {duplicateSource && queueReq.data ? (
+        <AddJobModal
+          queue={queueReq.data}
+          source={duplicateSource}
+          onDismiss={() => setDuplicateSource(null)}
+        />
+      ) : null}
     </SidePanelDialog>
   );
 };
