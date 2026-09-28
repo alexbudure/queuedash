@@ -414,6 +414,50 @@
   animation: var(--animate-alert-show);
 }
 
+/* Flow bars. A running job's stripes drift, so a bar that is still growing
+   reads as live; a parent waiting on its children is hatched, like the
+   waiting-children pill's colour. Hex values, because Tailwind only emits
+   the colour variables a class uses. */
+.qd-flow-running {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #3b82f6 0 6px,
+    #93c5fd 6px 12px
+  );
+  background-size: 17px 17px;
+  animation: qd-flow-running 1.2s linear infinite;
+}
+
+[data-queuedash-root].dark .qd-flow-running {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #3b82f6 0 6px,
+    #1e40af 6px 12px
+  );
+}
+
+@keyframes qd-flow-running {
+  to {
+    background-position: 17px 0;
+  }
+}
+
+.qd-flow-children {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #fdba74 0 3px,
+    #ffedd5 3px 6px
+  );
+}
+
+[data-queuedash-root].dark .qd-flow-children {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #c2410c 0 3px,
+    #431407 3px 6px
+  );
+}
+
 /* Scoped to the dashboard root: this ships as an embeddable library, so a bare
    universal selector would flatten the host app's motion too.
    .animate-spin is deliberately left alone - a frozen spinner reads as a hung
@@ -435,6 +479,10 @@
   [data-queuedash-root] .animate-heartbeat {
     animation: none !important;
     opacity: 0.65;
+  }
+
+  [data-queuedash-root] .qd-flow-running {
+    animation: none !important;
   }
 
   [data-queuedash-root] *,

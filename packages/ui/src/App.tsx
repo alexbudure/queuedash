@@ -18,6 +18,7 @@ import {
   useQueuedash,
 } from "./components/QueuedashProvider";
 import { Toaster } from "./components/Toaster";
+import { FlowPage } from "./pages/FlowPage";
 import { HomePage } from "./pages/HomePage";
 import { QueuePage } from "./pages/QueuePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -54,6 +55,7 @@ const RoutedContent = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/queues/:id" element={<QueuePage />} />
+        <Route path="/queues/:id/jobs/:jobId/flow" element={<FlowPage />} />
         {/* Keep non-reserved v3 queue bookmarks working. */}
         <Route path="/:id" element={<QueuePage />} />
       </Routes>

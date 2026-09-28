@@ -22,6 +22,7 @@ import {
   Property,
   PropertyList,
 } from "./DetailView";
+import { FlowSection } from "./FlowSection";
 import { JobActionMenu } from "./JobActionMenu";
 import { JobTimeline } from "./JobTimeline";
 import { JsonPane } from "./JsonPane";
@@ -449,6 +450,11 @@ const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
           </div>
         ) : null}
       </DetailSection>
+
+      {/* Where the job sits in its flow comes straight after where it is in
+          its life: a child stuck on its parent, or a parent on a child, is
+          the next thing to know. */}
+      <FlowSection jobId={job.id} queueName={queueName} queue={queue} />
 
       <DetailSection
         title="Properties"
