@@ -1,5 +1,19 @@
 # @queuedash/ui
 
+## 4.0.1
+
+### Patch Changes
+
+- [`3e8cc30`](https://github.com/alexbudure/queuedash/commit/3e8cc303e7905858baca5f2b871437fb914a1f4d) Thanks [@alexbudure](https://github.com/alexbudure)! - `@queuedash/api` 4.0.0 failed to load unless `groupmq` was installed, so apps that don't use GroupMQ crashed at startup with `Cannot find module 'groupmq'`. It now loads GroupMQ only when a GroupMQ queue needs it.
+
+  In Next.js, also add `@queuedash/api` to `serverExternalPackages` in `next.config`. Next bundles route handlers, and its bundler fails on each queue library Queuedash loads on demand that you haven't installed. The README and example show the setting.
+
+- [`3e8cc30`](https://github.com/alexbudure/queuedash/commit/3e8cc303e7905858baca5f2b871437fb914a1f4d) Thanks [@alexbudure](https://github.com/alexbudure)! - Add `rejectNonJsonPost` for tRPC handlers you serve yourself, such as a Next.js route. It returns the `415` the built-in adapters send for a `POST` that isn't `application/json`, or `undefined` when the request can go on to tRPC.
+
+  The 4.0.0 Next.js README and example left this check out. If you copied that route, call `rejectNonJsonPost` before `fetchRequestHandler`, as the README now shows. Otherwise a plain form on another website can pause or resume your queues.
+
+- [`3e8cc30`](https://github.com/alexbudure/queuedash/commit/3e8cc303e7905858baca5f2b871437fb914a1f4d) Thanks [@alexbudure](https://github.com/alexbudure)! - `@queuedash/ui` now uses your app's React for JSX as well. 4.0.0 bundled React 19's JSX runtime, which React 18 apps can't render.
+
 ## 4.0.0
 
 ### Major Changes
