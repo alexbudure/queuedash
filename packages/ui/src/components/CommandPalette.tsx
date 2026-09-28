@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import {
+  AlertTriangle,
   Calendar,
   LayoutGrid,
   LockKeyhole,
@@ -254,6 +255,11 @@ export const CommandPalette = ({
                       />
                     );
                   })}
+                  <Item
+                    id="view:errors"
+                    label="Errors"
+                    icon={<AlertTriangle className="size-3.5" />}
+                  />
                   {currentQueue.supports.schedulers ? (
                     <Item
                       id="view:schedulers"
