@@ -3,7 +3,7 @@ import { clsx } from "clsx";
 import { ChevronRight, TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
-import { formatCount, formatCountLabel } from "../utils/format";
+import { formatCount, formatCountLabel, formatDuration } from "../utils/format";
 import {
   FOCUS_RING_INSET,
   SECTION_LABEL,
@@ -78,15 +78,26 @@ const TrendIndicator = ({
   );
 };
 
+/** Where a sparkline has room: five cells to a row need a wider screen. */
+type SparklineFrom = "xl" | "2xl";
+
 /** Decoration for the number beside it; it drops out where a cell is narrow. */
 const MetricSparkline = ({
   data,
   color,
+  from,
 }: {
   data: number[];
   color: string;
+  from: SparklineFrom;
 }) => (
-  <div aria-hidden="true" className="hidden w-16 shrink-0 pb-1 xl:block">
+  <div
+    aria-hidden="true"
+    className={clsx(
+      "hidden w-16 shrink-0 pb-1",
+      from === "2xl" ? "2xl:block" : "xl:block",
+    )}
+  >
     <Sparkline data={data} color={color} height={20} />
   </div>
 );
@@ -121,9 +132,11 @@ const getSuccessRate = (completed: number, failed: number) => {
 const MetricCells = ({
   queueName,
   timeRange,
+  sparklineFrom,
 }: {
   queueName: string;
   timeRange: TimeRange;
+  sparklineFrom: SparklineFrom;
 }) => {
   const { preferences } = useQueuedash();
   const minutes = TIME_RANGES[timeRange].minutes;
@@ -157,7 +170,7 @@ const MetricCells = ({
   if (!completedMetrics && !failedMetrics) {
     return (
       <>
-        {[...Array(3)].map((_, i) => (
+        {[...Array(4)].map((_, i) => (
           <StatCellSkeleton key={i} />
         ))}
       </>
@@ -226,7 +239,13 @@ const MetricCells = ({
             ? EMPTY_PERIOD_LABEL
             : `${formatCount(completedCount)}/${formatCount(totalCount)}`
         }
-        aside={<MetricSparkline data={successRateSparkline} color="#22c55e" />}
+        aside={
+          <MetricSparkline
+            data={successRateSparkline}
+            color="#22c55e"
+            from={sparklineFrom}
+          />
+        }
       />
       <StatCell
         isStale={isStale}
@@ -242,8 +261,14 @@ const MetricCells = ({
           <MetricSparkline
             data={completedMetrics?.data || []}
             color="#3b82f6"
+            from={sparklineFrom}
           />
         }
+      />
+      <RunTimeCell
+        queueName={queueName}
+        minutes={minutes}
+        sparklineFrom={sparklineFrom}
       />
       <StatCell
         isStale={isStale}
@@ -255,10 +280,80 @@ const MetricCells = ({
           totalCount > 0 ? ((failedCount / totalCount) * 100).toFixed(1) : "0.0"
         }% rate`}
         aside={
-          <MetricSparkline data={failedMetrics?.data || []} color="#f04438" />
+          <MetricSparkline
+            data={failedMetrics?.data || []}
+            color="#f04438"
+            from={sparklineFrom}
+          />
         }
       />
     </>
+  );
+};
+
+/** Empty slices hold the last median before them, so the line never dips to
+ *  a run time of zero for a stretch where nothing finished. */
+const carryForward = (values: Array<number | null>): number[] => {
+  let last = values.find((value) => value !== null) ?? 0;
+  return values.map((value) => {
+    if (value !== null) last = value;
+    return last;
+  });
+};
+
+/**
+ * How long the queue's jobs take: the median of the window's completed runs,
+ * with the slow tail beside it. Read from job timestamps, so it answers even
+ * where the library keeps no timing metrics - for the jobs it still keeps.
+ */
+const RunTimeCell = ({
+  queueName,
+  minutes,
+  sparklineFrom,
+}: {
+  queueName: string;
+  minutes: number;
+  sparklineFrom: SparklineFrom;
+}) => {
+  const { preferences } = useQueuedash();
+  const runTimesReq = trpc.job.runTimes.useQuery(
+    { queueName, minutes },
+    {
+      // The server rescans at most every ten seconds; polling faster would
+      // only re-read its cache.
+      refetchInterval:
+        preferences.refreshIntervalMs === false
+          ? false
+          : Math.max(preferences.refreshIntervalMs, 10_000),
+      placeholderData: keepPreviousData,
+    },
+  );
+  const runTimes = runTimesReq.data;
+  if (!runTimes) return <StatCellSkeleton />;
+
+  return (
+    <StatCell
+      isStale={runTimesReq.isPlaceholderData}
+      label="Run time"
+      value={runTimes.p50 === null ? "—" : formatDuration(runTimes.p50)}
+      trend={
+        runTimes.p50 === null ? null : (
+          <span className={clsx("font-mono text-[11px]", TEXT_MUTED)}>p50</span>
+        )
+      }
+      sub={
+        runTimes.p95 === null
+          ? EMPTY_PERIOD_LABEL
+          : `p95 ${formatDuration(runTimes.p95)} · ${formatCountLabel(runTimes.count, "job")}`
+      }
+      aside={
+        <MetricSparkline
+          data={carryForward(runTimes.buckets)}
+          color="#8b5cf6"
+          from={sparklineFrom}
+        />
+      }
+    />
   );
 };
 
@@ -365,7 +460,7 @@ export const HealthStrip = ({
   // queues carry their workers in the subtitle instead.
   if (queue && !supportsMetrics) return null;
 
-  const cellCount = supportsWorkers ? 4 : 3;
+  const cellCount = supportsWorkers ? 5 : 4;
   const hasPendingWork = queue ? isWaitingOnWorkers(queue.counts) : false;
 
   return (
@@ -389,7 +484,11 @@ export const HealthStrip = ({
         ) : null
       }
     >
-      <MetricCells queueName={queueName} timeRange={timeRange} />
+      <MetricCells
+        queueName={queueName}
+        timeRange={timeRange}
+        sparklineFrom={cellCount === 5 ? "2xl" : "xl"}
+      />
       {supportsWorkers ? (
         <WorkersCell queueName={queueName} hasPendingWork={hasPendingWork} />
       ) : null}

@@ -14,6 +14,7 @@ import type {
   JobPageMeta,
   JobScanToken,
 } from "../queue-adapters/base.adapter";
+import { type RunSample, summarizeRunTimes } from "../run-times";
 import type { InternalContext } from "../trpc";
 import { procedure, router, transformContext } from "../trpc";
 import { findQueueInCtxOrFail } from "../utils/global.utils";
@@ -151,6 +152,21 @@ type FailureScan = {
 const FAILURE_SCAN_TTL_MS = 10_000;
 const MAX_FAILURE_SCANS = 16;
 const failureScans = new Map<string, FailureScan>();
+
+// Run times come from the newest completed jobs the same way: the Health
+// strip polls, so one scan serves every range for a few seconds.
+type RunTimeScan = {
+  createdAt: number;
+  runs: RunSample[];
+  scanned: number;
+  scanLimitReached: boolean;
+};
+const RUN_TIME_SCAN_TTL_MS = 10_000;
+const MAX_RUN_TIME_SCANS = 16;
+const MAX_RUN_TIME_SAMPLE = 2_000;
+const RUN_TIME_BUCKETS = 20;
+const MAX_RUN_TIME_WINDOW_MINUTES = 7 * 24 * 60;
+const runTimeScans = new Map<string, RunTimeScan>();
 
 // At most BULK_ACTION_CONCURRENCY jobs at a time, each settled on its own: a
 // missing or failing job is counted rather than failing the request while the
@@ -1336,6 +1352,79 @@ export const jobRouter = router({
           (left, right) =>
             right.count - left.count || right.lastSeen - left.lastSeen,
         ),
+      };
+    }),
+  // How long the queue's jobs take to run: p50 and p95 of the last run of every
+  // job that completed in the window, from its start and finish timestamps.
+  // Scans the newest completed jobs, up to the scan limit, so a queue that
+  // keeps few completed jobs answers for those alone.
+  runTimes: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        minutes: z.number().int().min(1).max(MAX_RUN_TIME_WINDOW_MINUTES),
+      }),
+    )
+    .query(async ({ input: { queueName, minutes }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      const { adapter } = queueInCtx;
+      if (!adapter.supports.statuses.includes("completed")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${adapter.getType()} does not keep completed jobs`,
+        });
+      }
+
+      const maxScanned = getEffectiveScanLimit(
+        internalCtx,
+        MAX_RUN_TIME_SAMPLE,
+      );
+      const cacheKey = JSON.stringify([getSnapshotOwner(adapter), maxScanned]);
+      let scan = runTimeScans.get(cacheKey);
+      if (!scan || Date.now() - scan.createdAt >= RUN_TIME_SCAN_TTL_MS) {
+        const scanned = await scanJobsForStatus({
+          adapter,
+          maxScanned,
+          privacy: internalCtx.privacy,
+          status: "completed",
+        });
+        const runs: RunSample[] = [];
+        for (const { raw } of scanned.jobs) {
+          if (!raw.processedAt || !raw.finishedAt) continue;
+          const ms = raw.finishedAt.getTime() - raw.processedAt.getTime();
+          if (ms >= 0) runs.push({ at: raw.finishedAt.getTime(), ms });
+        }
+        scan = {
+          createdAt: Date.now(),
+          runs,
+          scanned: scanned.scanned,
+          scanLimitReached: scanned.scanLimitReached,
+        };
+        runTimeScans.delete(cacheKey);
+        if (runTimeScans.size >= MAX_RUN_TIME_SCANS) {
+          const oldest = runTimeScans.keys().next().value;
+          if (oldest !== undefined) runTimeScans.delete(oldest);
+        }
+        runTimeScans.set(cacheKey, scan);
+      }
+
+      const now = Date.now();
+      return {
+        now,
+        minutes,
+        scanned: scan.scanned,
+        scanLimitReached: scan.scanLimitReached,
+        // Whole minutes, like queue.metrics: the minute under way is still
+        // filling, and the Health strip puts these beside its counts.
+        ...summarizeRunTimes(scan.runs, {
+          now: Math.floor(now / 60_000) * 60_000,
+          minutes,
+          buckets: RUN_TIME_BUCKETS,
+        }),
       };
     }),
   list: procedure

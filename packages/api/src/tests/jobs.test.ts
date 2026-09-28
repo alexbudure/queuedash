@@ -2695,6 +2695,46 @@ test("a job looked up by id carries its live status", async () => {
   ).resolves.toBeNull();
 });
 
+test("run times are the p50 and p95 of recently completed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  // The fixture's workers may still be finishing, and a scan is kept for
+  // seconds: ask once every completed fixture is there to be timed.
+  await vi.waitFor(
+    async () => {
+      const { jobs } = await caller.job.list({
+        queueName,
+        status: "completed",
+        limit: 50,
+      });
+      expect(jobs).toHaveLength(NUM_OF_COMPLETED_JOBS);
+    },
+    { timeout: 5_000 },
+  );
+
+  // The window is whole minutes, and the fixtures finished in the one under
+  // way: ask from a minute later, when theirs is the last whole minute.
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(Date.now() + 60_000);
+  const result = await caller.job
+    .runTimes({ queueName, minutes: 60 })
+    .finally(() => vi.useRealTimers());
+
+  expect(result.minutes).toBe(60);
+  expect(result.buckets).toHaveLength(20);
+  if (firstQueue.type === "bee") {
+    // Bee-Queue keeps no start time on a job, so there is no run to time.
+    expect(result).toMatchObject({ count: 0, p50: null, p95: null });
+    return;
+  }
+  expect(result.count).toBe(NUM_OF_COMPLETED_JOBS);
+  expect(result.p50).not.toBeNull();
+  expect(result.p95).toBeGreaterThanOrEqual(result.p50 ?? 0);
+  // Every fixture finished in the window's last slice.
+  expect(result.buckets.at(-1)).toBe(result.p50);
+});
+
 test("a failed job looked up by id names its error group", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
