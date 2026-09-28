@@ -27,7 +27,9 @@ const ctx = {
   privacy: {
     redact: true,
     expose: {
-      stacktraces: false,
+      // Hidden, to show the privacy settings at work; the README screenshots
+      // run with QUEUEDASH_DEV_STACKTRACES=1 to show the job panel's traces.
+      stacktraces: process.env.QUEUEDASH_DEV_STACKTRACES === "1",
     },
   },
   search: {
