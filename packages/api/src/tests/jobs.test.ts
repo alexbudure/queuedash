@@ -2146,6 +2146,103 @@ test("bulk retry by filter retries all failed jobs", async () => {
   expect(result.succeeded + result.failed).toBe(failedJobs.totalCount);
 });
 
+test("error groups gather a queue's failures by what went wrong", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.errorGroups({
+    queueName: firstQueue.queue.name,
+    range: "all",
+  });
+
+  // Every fixture failure throws the same error from the same worker.
+  expect(result.failedInRange).toBe(NUM_OF_FAILED_JOBS);
+  expect(result.groups).toHaveLength(1);
+  const [group] = result.groups;
+  expect(group).toMatchObject({
+    count: NUM_OF_FAILED_JOBS,
+    message: "Generic error",
+  });
+  expect(group.fingerprint).toMatch(/^[0-9a-f]{16}$/u);
+  // They all failed within the last hour: the newest bucket holds them.
+  expect(group.hourly).toHaveLength(24);
+  expect(group.hourly.reduce((sum, count) => sum + count, 0)).toBe(
+    NUM_OF_FAILED_JOBS,
+  );
+  expect(group.lastSeen).toBeGreaterThanOrEqual(group.firstSeen);
+});
+
+test("the job list filters to one error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+
+  const { groups } = await caller.job.errorGroups({ queueName, range: "all" });
+  const matching = await caller.job.list({
+    queueName,
+    status: "failed",
+    limit: 50,
+    error: groups[0].fingerprint,
+  });
+  expect(matching.totalCount).toBe(NUM_OF_FAILED_JOBS);
+  expect("errorGroup" in matching ? matching.errorGroup : null).toMatchObject({
+    fingerprint: groups[0].fingerprint,
+    message: "Generic error",
+  });
+
+  const other = await caller.job.list({
+    queueName,
+    status: "failed",
+    limit: 50,
+    error: "0123456789abcdef",
+  });
+  expect(other.totalCount).toBe(0);
+
+  await expectTRPCError(
+    () =>
+      caller.job.list({
+        queueName,
+        status: "failed",
+        limit: 50,
+        error: "not-a-fingerprint",
+      }),
+    "BAD_REQUEST",
+  );
+});
+
+test("retry and remove by filter act on one error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const { groups } = await caller.job.errorGroups({ queueName, range: "all" });
+
+  const none = await caller.job.bulkRemoveByFilter({
+    queueName,
+    status: "failed",
+    error: "0123456789abcdef",
+  });
+  expect(none.matched).toBe(0);
+
+  if (firstQueue.type === "bull" || firstQueue.type === "bullmq") {
+    const retried = await caller.job.bulkRetryByFilter({
+      queueName,
+      status: "failed",
+      error: groups[0].fingerprint,
+    });
+    expect(retried.matched).toBe(NUM_OF_FAILED_JOBS);
+    expect(retried.succeeded).toBe(NUM_OF_FAILED_JOBS);
+    return;
+  }
+
+  const removed = await caller.job.bulkRemoveByFilter({
+    queueName,
+    status: "failed",
+    error: groups[0].fingerprint,
+  });
+  expect(removed.matched).toBe(NUM_OF_FAILED_JOBS);
+  expect(removed.succeeded).toBe(NUM_OF_FAILED_JOBS);
+});
+
 test("list jobs by group id paginates correctly", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);

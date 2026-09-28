@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { assertQueueActionAllowed } from "../access";
+import { type FailureSignature, getFailureSignature } from "../failures";
 import {
   presentJob,
   presentLogs,
@@ -42,6 +43,8 @@ const BULK_ACTION_CONCURRENCY = 25;
 // A selection of rows, not a filter: acting on everything that matches is the
 // by-filter actions' job, and those stay within the scan limit.
 const MAX_BULK_JOB_IDS = 1_000;
+// An error group's fingerprint, as getFailureSignature makes it.
+const ERROR_FINGERPRINT = z.string().regex(/^[0-9a-f]{16}$/u);
 
 // A filtered, grouped or sorted list is built by a bounded scan. Scanning again
 // for every "load more" read up to 5,000 jobs to show 30, and on a busy queue
@@ -67,9 +70,20 @@ const listSnapshots = new Map<string, ListSnapshot>();
 const listSnapshotOwners = new WeakMap<object, number>();
 let nextListSnapshotOwner = 0;
 
+const getSnapshotOwner = (adapter: object): number => {
+  let owner = listSnapshotOwners.get(adapter);
+  if (owner === undefined) {
+    owner = nextListSnapshotOwner;
+    nextListSnapshotOwner += 1;
+    listSnapshotOwners.set(adapter, owner);
+  }
+  return owner;
+};
+
 const getListSnapshotKey = (
   adapter: object,
   list: {
+    errorFingerprint?: string;
     groupId?: string;
     query?: string;
     scanLimit: number;
@@ -77,23 +91,17 @@ const getListSnapshotKey = (
     sort: string;
     status: JobListStatus;
   },
-): string => {
-  let owner = listSnapshotOwners.get(adapter);
-  if (owner === undefined) {
-    owner = nextListSnapshotOwner;
-    nextListSnapshotOwner += 1;
-    listSnapshotOwners.set(adapter, owner);
-  }
-  return JSON.stringify([
-    owner,
+): string =>
+  JSON.stringify([
+    getSnapshotOwner(adapter),
     list.status,
     list.sort,
     list.query?.toLocaleLowerCase() ?? null,
     list.groupId ?? null,
     list.scanLimit,
     list.searchInData,
+    list.errorFingerprint ?? null,
   ]);
-};
 
 const readListSnapshot = (key: string): ListSnapshot | undefined => {
   const snapshot = listSnapshots.get(key);
@@ -120,6 +128,29 @@ const storeListSnapshot = (
   }
   listSnapshots.set(key, { ...snapshot, createdAt });
 };
+
+const HOUR_MS = 3_600_000;
+const ERROR_GROUP_RANGES_MS = {
+  "1h": HOUR_MS,
+  "24h": 24 * HOUR_MS,
+  "7d": 7 * 24 * HOUR_MS,
+  all: Number.POSITIVE_INFINITY,
+} as const;
+
+type ScannedFailure = { at: number; signature: FailureSignature };
+type FailureScan = {
+  createdAt: number;
+  failures: ScannedFailure[];
+  scanned: number;
+  scanLimitReached: boolean;
+};
+
+// The Errors tab polls, and grouping reads up to 5,000 failed jobs. Its
+// result is kept briefly per queue and scan limit, and every range is cut
+// from the same scan.
+const FAILURE_SCAN_TTL_MS = 10_000;
+const MAX_FAILURE_SCANS = 16;
+const failureScans = new Map<string, FailureScan>();
 
 // At most BULK_ACTION_CONCURRENCY jobs at a time, each settled on its own: a
 // missing or failing job is counted rather than failing the request while the
@@ -227,6 +258,22 @@ const getSearchText = (
   }
 };
 
+// The signature of a job's failure as the viewer may see it. Only the reason
+// and traces are presented: redacting a job's data to read its error is work
+// the answer never depends on.
+const getPresentedFailureSignature = (
+  job: AdaptedJob,
+  privacy: InternalContext["privacy"],
+  presented?: AdaptedJob,
+): FailureSignature | null =>
+  getFailureSignature(
+    presented ??
+      presentJob(
+        { ...job, data: {}, opts: {}, returnValue: undefined },
+        privacy,
+      ),
+  );
+
 type FilteredJob = {
   // Only when a text query had to be matched against what the viewer sees.
   // Presenting (redaction included) every scanned job just to show 30 of
@@ -237,6 +284,7 @@ type FilteredJob = {
 
 const scanJobsForStatus = async ({
   adapter,
+  errorFingerprint,
   groupId,
   maxScanned,
   privacy,
@@ -245,6 +293,8 @@ const scanJobsForStatus = async ({
   status,
 }: {
   adapter: Parameters<typeof getJobsPage>[0];
+  // Only jobs whose latest failure has this signature (see failures.ts).
+  errorFingerprint?: string;
   groupId?: string;
   maxScanned: number;
   privacy: InternalContext["privacy"];
@@ -304,12 +354,27 @@ const scanJobsForStatus = async ({
         if (seen.has(raw.id)) continue;
         seen.add(raw.id);
         if (groupId && raw.groupId !== groupId) continue;
-        if (!normalizedQuery) {
+        if (!normalizedQuery && !errorFingerprint) {
           jobs.push({ raw });
           continue;
         }
-        const presented = presentJob(raw, privacy);
-        if (!getSearchText(presented, searchInData).includes(normalizedQuery)) {
+        // Both filters match what the viewer can see, never the raw job: a
+        // redacted secret must not be findable by guessing it.
+        const presented = normalizedQuery
+          ? presentJob(raw, privacy)
+          : undefined;
+        if (
+          presented &&
+          normalizedQuery &&
+          !getSearchText(presented, searchInData).includes(normalizedQuery)
+        ) {
+          continue;
+        }
+        if (
+          errorFingerprint &&
+          getPresentedFailureSignature(raw, privacy, presented)?.fingerprint !==
+            errorFingerprint
+        ) {
           continue;
         }
         jobs.push({ presented, raw });
@@ -442,6 +507,7 @@ const scanJobsAcrossStatuses = async ({
 const runFilteredJobAction = async ({
   action,
   adapter,
+  errorFingerprint,
   groupId,
   maxScanned,
   privacy,
@@ -450,6 +516,7 @@ const runFilteredJobAction = async ({
 }: {
   action: (jobId: string) => Promise<void>;
   adapter: Parameters<typeof getJobsPage>[0];
+  errorFingerprint?: string;
   groupId?: string;
   maxScanned: number;
   privacy: InternalContext["privacy"];
@@ -458,6 +525,7 @@ const runFilteredJobAction = async ({
 }) => {
   const scan = await scanJobsForStatus({
     adapter,
+    errorFingerprint,
     groupId,
     maxScanned,
     privacy,
@@ -732,6 +800,7 @@ export const jobRouter = router({
         status: z.enum(JOB_STATUSES),
         groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
+        error: ERROR_FINGERPRINT.optional(),
         maxScanned: z
           .number()
           .int()
@@ -742,7 +811,7 @@ export const jobRouter = router({
     )
     .mutation(
       async ({
-        input: { queueName, status, groupId, query, maxScanned },
+        input: { queueName, status, groupId, query, error, maxScanned },
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
@@ -763,6 +832,7 @@ export const jobRouter = router({
         return runFilteredJobAction({
           action: (jobId) => queueInCtx.adapter.removeJob(jobId),
           adapter: queueInCtx.adapter,
+          errorFingerprint: error,
           groupId,
           maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
           privacy: internalCtx.privacy,
@@ -804,6 +874,7 @@ export const jobRouter = router({
         status: z.literal("failed"),
         groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
+        error: ERROR_FINGERPRINT.optional(),
         maxScanned: z
           .number()
           .int()
@@ -814,7 +885,7 @@ export const jobRouter = router({
     )
     .mutation(
       async ({
-        input: { queueName, status, groupId, query, maxScanned },
+        input: { queueName, status, groupId, query, error, maxScanned },
         ctx,
       }) => {
         const internalCtx = await transformContext(ctx);
@@ -835,6 +906,7 @@ export const jobRouter = router({
         const result = await runFilteredJobAction({
           action: (jobId) => queueInCtx.adapter.retryJob(jobId),
           adapter: queueInCtx.adapter,
+          errorFingerprint: error,
           groupId,
           maxScanned: getEffectiveScanLimit(internalCtx, maxScanned),
           privacy: internalCtx.privacy,
@@ -1151,6 +1223,115 @@ export const jobRouter = router({
         }
       },
     ),
+  errorGroups: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        range: z.enum(["1h", "24h", "7d", "all"]).default("24h"),
+      }),
+    )
+    .query(async ({ input: { queueName, range }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      const queueInCtx = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      const { adapter } = queueInCtx;
+      if (!adapter.supports.statuses.includes("failed")) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${adapter.getType()} does not keep failed jobs`,
+        });
+      }
+
+      const maxScanned = getEffectiveScanLimit(internalCtx, MAX_JOB_SCAN_LIMIT);
+      const cacheKey = JSON.stringify([getSnapshotOwner(adapter), maxScanned]);
+      let scan = failureScans.get(cacheKey);
+      if (!scan || Date.now() - scan.createdAt >= FAILURE_SCAN_TTL_MS) {
+        const scanned = await scanJobsForStatus({
+          adapter,
+          maxScanned,
+          privacy: internalCtx.privacy,
+          status: "failed",
+        });
+        const failures: ScannedFailure[] = [];
+        for (const { raw } of scanned.jobs) {
+          const signature = getPresentedFailureSignature(
+            raw,
+            internalCtx.privacy,
+          );
+          if (!signature) continue;
+          failures.push({
+            at: (raw.finishedAt ?? raw.processedAt ?? raw.createdAt).getTime(),
+            signature,
+          });
+        }
+        scan = {
+          createdAt: Date.now(),
+          failures,
+          scanned: scanned.scanned,
+          scanLimitReached: scanned.scanLimitReached,
+        };
+        failureScans.delete(cacheKey);
+        if (failureScans.size >= MAX_FAILURE_SCANS) {
+          const oldest = failureScans.keys().next().value;
+          if (oldest !== undefined) failureScans.delete(oldest);
+        }
+        failureScans.set(cacheKey, scan);
+      }
+
+      const now = Date.now();
+      const since = now - ERROR_GROUP_RANGES_MS[range];
+      const groups = new Map<
+        string,
+        FailureSignature & {
+          count: number;
+          firstSeen: number;
+          lastSeen: number;
+          // Failures per hour over the last 24 hours, oldest first.
+          hourly: number[];
+        }
+      >();
+      let failedInRange = 0;
+      let oldestFailureAt: number | null = null;
+      for (const { at, signature } of scan.failures) {
+        oldestFailureAt =
+          oldestFailureAt === null ? at : Math.min(oldestFailureAt, at);
+        if (at < since) continue;
+        failedInRange += 1;
+        let group = groups.get(signature.fingerprint);
+        if (!group) {
+          group = {
+            ...signature,
+            count: 0,
+            firstSeen: at,
+            lastSeen: at,
+            hourly: Array.from({ length: 24 }, () => 0),
+          };
+          groups.set(signature.fingerprint, group);
+        }
+        group.count += 1;
+        group.firstSeen = Math.min(group.firstSeen, at);
+        group.lastSeen = Math.max(group.lastSeen, at);
+        const hoursAgo = Math.floor((now - at) / HOUR_MS);
+        if (hoursAgo >= 0 && hoursAgo < 24) group.hourly[23 - hoursAgo] += 1;
+      }
+
+      return {
+        now,
+        range,
+        scanned: scan.scanned,
+        scanLimitReached: scan.scanLimitReached,
+        failedInRange,
+        // How far back the kept failures reach, so "new" can mean new rather
+        // than "older failures were already removed".
+        oldestFailureAt,
+        groups: Array.from(groups.values()).sort(
+          (left, right) =>
+            right.count - left.count || right.lastSeen - left.lastSeen,
+        ),
+      };
+    }),
   list: procedure
     .input(
       z.object({
@@ -1160,6 +1341,8 @@ export const jobRouter = router({
         status: z.enum(JOB_STATUSES),
         groupId: z.string().min(1).optional(),
         query: z.string().trim().min(1).max(200).optional(),
+        // Only jobs in this error group (see job.errorGroups).
+        error: ERROR_FINGERPRINT.optional(),
         searchInData: z.boolean().default(true),
         scanLimit: z
           .number()
@@ -1179,6 +1362,7 @@ export const jobRouter = router({
           cursor,
           groupId,
           query,
+          error,
           searchInData,
           scanLimit,
           sort,
@@ -1212,7 +1396,7 @@ export const jobRouter = router({
               ? "Bee-Queue completed/failed"
               : undefined;
         const usesBoundedScan = Boolean(
-          groupId || query || sort === "newest" || sort === "oldest",
+          groupId || query || error || sort === "newest" || sort === "oldest",
         );
         const pageLimit = usesBoundedScan
           ? effectiveScanLimit
@@ -1240,6 +1424,7 @@ export const jobRouter = router({
 
         if (usesBoundedScan) {
           const snapshotKey = getListSnapshotKey(queueInCtx.adapter, {
+            errorFingerprint: error,
             groupId,
             query,
             scanLimit: effectiveScanLimit,
@@ -1277,6 +1462,7 @@ export const jobRouter = router({
 
           const scan = await scanJobsForStatus({
             adapter: queueInCtx.adapter,
+            errorFingerprint: error,
             groupId,
             maxScanned: effectiveScanLimit,
             privacy: internalCtx.privacy,
@@ -1314,6 +1500,16 @@ export const jobRouter = router({
               capped: scan.scanLimitReached,
               scanLimit: effectiveScanLimit,
             },
+            // What the error filter is, so the page can name it without a
+            // second request.
+            errorGroup:
+              error && matches[0]
+                ? getPresentedFailureSignature(
+                    matches[0].raw,
+                    internalCtx.privacy,
+                    matches[0].presented,
+                  )
+                : null,
           };
         }
 
