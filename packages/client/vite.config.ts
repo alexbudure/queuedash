@@ -1,39 +1,26 @@
 import path from "path";
 
-import typescript from "@rollup/plugin-typescript";
 import react from "@vitejs/plugin-react";
-import { typescriptPaths } from "rollup-plugin-typescript-paths";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 
+// Browsers run this bundle as it is published, so it is built as an
+// application rather than a library. Vite leaves the whitespace in a library's
+// ES output for the consumer's minifier, and here there is none: that cost the
+// file about a third of its size. Nothing loads a CommonJS copy.
 export default defineConfig({
   plugins: [react()],
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
   },
   build: {
-    minify: true,
     reportCompressedSize: true,
-    lib: {
-      entry: path.resolve(__dirname, "src/main.tsx"),
-      name: "Queuedash App",
-      fileName: "main",
-      formats: ["cjs", "es"],
-    },
     rollupOptions: {
-      plugins: [
-        typescriptPaths({
-          preserveExtensions: true,
-        }) as Plugin,
-        typescript({
-          sourceMap: false,
-          declaration: true,
-          outDir: "dist",
-          compilerOptions: {
-            composite: false,
-            incremental: false,
-          },
-        }) as Plugin,
-      ],
+      input: path.resolve(__dirname, "src/main.tsx"),
+      output: {
+        // The server adapters load dist/main.mjs by name.
+        entryFileNames: "main.mjs",
+        inlineDynamicImports: true,
+      },
     },
   },
 });
