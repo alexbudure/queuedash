@@ -225,6 +225,13 @@ for (const item of queues) {
       if (name === "email-delivery") {
         await sleepRange(0.1, 0.5);
         await job.log(`Sending ${job.data.template} to ${job.data.to}`);
+        // The seller welcome greets the seller by name, and the screenshots'
+        // stuck flow sends it without one, a failure Edit data can fix.
+        if (job.data.template === "seller-welcome" && !job.data.userName) {
+          throw new Error(
+            "Template rendering failed: missing variable 'userName'",
+          );
+        }
         maybeFail(0.02, errors);
         return { messageId: `msg_${Date.now()}`, delivered: true };
       }

@@ -1,7 +1,7 @@
 import { FlowProducer } from "bullmq";
 import { NextResponse } from "next/server";
 
-import { crossQueueFlows, queues } from "../../../utils/fake-data";
+import { crossQueueFlows, nameFor, queues } from "../../../utils/fake-data";
 
 export async function GET() {
   for (const item of queues) {
@@ -24,13 +24,10 @@ export async function GET() {
           scheduler.template,
         );
       }
+      // Named the way the traffic names them, so a seed job reads like one a
+      // producer added (and the Job types tab has no "test" row).
       await item.queue.addBulk(
-        item.jobs.map((job) => {
-          return {
-            name: "test",
-            ...job,
-          };
-        }),
+        item.jobs.map((job) => ({ name: nameFor(job.data), ...job })),
       );
 
       if (item.flows.length > 0) {

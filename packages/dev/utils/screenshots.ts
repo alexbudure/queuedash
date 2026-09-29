@@ -245,9 +245,22 @@ const openPage = async (browser: Cdp, workDir: string): Promise<Page> => {
     file: string,
     clip = { x: 0, y: 0, width: WIDTH, height: HEIGHT },
   ) => {
+    // A clip is in page coordinates: on a scrolled page it has to move with
+    // the scroll to stay on what's showing.
+    const scroll = await evaluate<{ x: number; y: number }>(
+      "({ x: window.scrollX, y: window.scrollY })",
+    );
     const { data } = (await send("Page.captureScreenshot", {
       format: "png",
-      clip: { ...clip, scale: 1 },
+      // What's on screen: capturing beyond the viewport lays the page out
+      // again at full height, which drops its scroll position.
+      captureBeyondViewport: false,
+      clip: {
+        ...clip,
+        x: clip.x + scroll.x,
+        y: clip.y + scroll.y,
+        scale: 1,
+      },
     })) as { data: string };
     const raw = path.join(workDir, `${file}.png`);
     await writeFile(raw, Buffer.from(data, "base64"));
@@ -259,15 +272,81 @@ const openPage = async (browser: Cdp, workDir: string): Promise<Page> => {
 
 // --- Data the shots need ---------------------------------------------------
 
-type Api = <T>(procedure: string, input: Record<string, unknown>) => Promise<T>;
+const mutate = async (procedure: string, input: Record<string, unknown>) => {
+  const response = await fetch(`${BASE}/api/trpc/queuedash/${procedure}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(`${procedure} failed: ${await response.text()}`);
+  }
+};
 
-const api: Api = async (procedure, input) => {
-  const url = `${BASE}/api/trpc/queuedash/${procedure}?input=${encodeURIComponent(JSON.stringify(input))}`;
-  const response = await fetch(url);
-  const body = (await response.json()) as { result?: { data: unknown } };
-  if (!body.result)
-    throw new Error(`${procedure} failed: ${JSON.stringify(body)}`);
-  return body.result.data as never;
+type RedisLike = {
+  set: (key: string, value: string, mode: "PX", ms: number) => Promise<unknown>;
+};
+
+/**
+ * Starts a rate-limit window, the one a worker opens when it hits the limit:
+ * the limiter key, at the limit, expiring after `ms`.
+ */
+const holdRateLimit = async (queueName: string, max: number, ms: number) => {
+  const queue = new Queue(queueName, { connection: {} });
+  // BullMQ 6 moved the Redis client behind getBackend().
+  const compat = queue as unknown as {
+    client?: Promise<RedisLike>;
+    getBackend?: () => { client?: Promise<RedisLike> };
+  };
+  const client = await (typeof compat.getBackend === "function"
+    ? compat.getBackend().client
+    : compat.client);
+  if (!client) throw new Error(`${queueName} has no Redis client`);
+  await client.set(queue.keys.limiter, String(max), "PX", ms);
+  await queue.close();
+};
+
+/**
+ * A listing whose seller-welcome email went out without the seller's name,
+ * so the listing waits on it: the fix shot's failed job and stuck flow.
+ */
+const addSellerFlow = async () => {
+  const producer = new FlowProducer({ connection: {} });
+  const flow = await producer.add({
+    name: "publish-listing",
+    queueName: "image-processing",
+    data: {
+      fileId: "file_8sLq2vX0mR4kTn7c",
+      fileName: "kitchen.jpg",
+      operation: "publish",
+      inputFormat: "jpg",
+      outputFormat: "webp",
+      userId: "usr_k2Jd8sQm4x",
+    },
+    children: [
+      {
+        name: "seller-welcome",
+        queueName: "email-delivery",
+        data: {
+          to: "maya.chen@example.com",
+          template: "seller-welcome",
+          subject: "Your first listing is live",
+          listingId: "lst_4821",
+        },
+      },
+    ],
+  });
+  await producer.close();
+
+  const emailId = flow.children?.[0]?.job.id;
+  if (!emailId) throw new Error("The seller flow has no email");
+  const emails = new Queue("email-delivery", { connection: {} });
+  for (let tries = 0; tries < 30; tries += 1) {
+    if ((await emails.getJobState(emailId)) === "failed") break;
+    await sleep(1_000);
+  }
+  await emails.close();
+  return emailId;
 };
 
 /**
@@ -370,23 +449,49 @@ type Shot = {
   prepare?: (page: Page) => Promise<void>;
   /** Tiles drop the sidebar: 1000px from the content's edge. */
   clip?: { x: number; y: number; width: number; height: number };
+  /** Undoes what `prepare` changed, once both themes are taken. */
+  cleanup?: () => Promise<void>;
 };
 
 const TILE = { x: 280, y: 0, width: 1000, height: 800 };
 
-type Ids = { rootId: string; thumbnailId: string; emailId: string };
+/** `minutes` ago, on the minute, in epoch ms. */
+const minuteAgo = (minutes: number) =>
+  Math.floor(Date.now() / 60_000) * 60_000 - minutes * 60_000;
 
-/** Clicks through the job panel's menu to Duplicate. */
-const openDuplicate = async (page: Page) => {
-  await page.click('[aria-label="More job actions"]');
-  await page.evaluate(`(() => {
-    const item = Array.from(document.querySelectorAll('[role="menuitem"]'))
-      .find((element) => element.textContent?.includes("Duplicate"));
-    item?.setAttribute("data-shot-duplicate", "");
+type Ids = { rootId: string; thumbnailId: string; sellerEmailId: string };
+
+/**
+ * Scrolls whatever scrolls `element` (the job panel, the page) until the
+ * element sits `offset` px from that scroller's top. scrollIntoView left
+ * these alone.
+ */
+const scrollToTop = (page: Page, elementExpression: string, offset: number) =>
+  page.evaluate(`(() => {
+    const element = ${elementExpression};
+    if (!element) return false;
+    let scroller = element.parentElement;
+    while (
+      scroller &&
+      !(/(auto|scroll)/.test(getComputedStyle(scroller).overflowY) &&
+        scroller.scrollHeight > scroller.clientHeight)
+    ) {
+      scroller = scroller.parentElement;
+    }
+    const target = scroller ?? document.scrollingElement;
+    const top = scroller ? scroller.getBoundingClientRect().top : 0;
+    target.scrollTop += element.getBoundingClientRect().top - top - ${offset};
     return true;
   })()`);
-  await page.click("[data-shot-duplicate]");
-};
+
+/** Marks the first element matching `selector` whose text is `text`. */
+const markByText = (page: Page, selector: string, text: string, mark: string) =>
+  page.evaluate(`(() => {
+    const element = Array.from(document.querySelectorAll(${JSON.stringify(selector)}))
+      .find((candidate) => candidate.textContent?.trim() === ${JSON.stringify(text)});
+    element?.setAttribute(${JSON.stringify(mark)}, "");
+    return Boolean(element);
+  })()`);
 
 const shots = (ids: Ids): Shot[] => [
   {
@@ -403,8 +508,22 @@ const shots = (ids: Ids): Shot[] => [
   },
   {
     name: "search",
-    path: "/queues/email-delivery?status=completed&q=password-reset",
+    // Half an hour that ended ten minutes ago, as whole minutes: the kind of
+    // window an incident leaves.
+    path: `/queues/email-delivery?status=completed&q=password-reset&from=${minuteAgo(
+      40,
+    )}&to=${minuteAgo(10)}`,
     clip: TILE,
+    prepare: async (page) => {
+      // The filters at the top first: the popover sizes itself to the room
+      // below its button when it opens.
+      await scrollToTop(
+        page,
+        `document.querySelector('[aria-label="Queue view"]')`,
+        16,
+      );
+      await page.click('[aria-label^="Date range:"]');
+    },
   },
   {
     name: "bulk",
@@ -425,21 +544,31 @@ const shots = (ids: Ids): Shot[] => [
     },
   },
   {
-    name: "duplicate",
-    path: `/queues/email-delivery?status=failed&job=${ids.emailId}`,
+    name: "fix",
+    path: `/queues/email-delivery?status=failed&job=${ids.sellerEmailId}`,
     clip: TILE,
     prepare: async (page) => {
-      await openDuplicate(page);
+      if (
+        !(await markByText(
+          page,
+          ".side-panel button",
+          "Edit",
+          "data-shot-edit",
+        ))
+      ) {
+        throw new Error("Job data has no Edit button: is redaction off?");
+      }
+      await page.click("[data-shot-edit]");
       // The fix the failure asked for: the variable the template missed,
       // on a new line after the subject.
       const line = await page.evaluate<{
         x: number;
         y: number;
       } | null>(`(() => {
-        const dialogs = document.querySelectorAll('[role="dialog"]');
-        const lines = dialogs[dialogs.length - 1]?.querySelectorAll(".qd-cm .cm-line") ?? [];
+        const lines = document.querySelectorAll(".side-panel .qd-cm .cm-line");
         const subject = Array.from(lines).find((line) => line.textContent?.includes('"subject"'));
         if (!subject) return null;
+        subject.scrollIntoView({ block: "center" });
         const box = subject.getBoundingClientRect();
         return { x: box.right - 8, y: box.y + box.height / 2 };
       })()`);
@@ -448,6 +577,16 @@ const shots = (ids: Ids): Shot[] => [
       await page.key("End", "End", 35);
       await page.key("Enter", "Enter", 13);
       await page.type('"userName": "Maya",');
+      // From Flow down: the parent waiting on this job, its facts, its data
+      // being fixed, and Save and retry.
+      await scrollToTop(
+        page,
+        `Array.from(document.querySelectorAll(".side-panel h3"))
+          .find((heading) => heading.textContent?.trim() === "Flow")
+          ?.closest("section")`,
+        0,
+      );
+      await sleep(500);
     },
   },
   {
@@ -458,19 +597,38 @@ const shots = (ids: Ids): Shot[] => [
       await page.click("[aria-label^='Scheduler ']");
     },
   },
+  { name: "types", path: "/queues/image-processing?view=types", clip: TILE },
+  {
+    name: "limits",
+    path: "/queues/image-processing",
+    clip: TILE,
+    prepare: async (page) => {
+      await mutate("queue.setConcurrency", {
+        queueName: "image-processing",
+        concurrency: 10,
+      });
+      await mutate("queue.setRateLimit", {
+        queueName: "image-processing",
+        limit: { max: 200, duration: 60_000 },
+      });
+      await holdRateLimit("image-processing", 200, 20_000);
+      // A poll for the Workers cell to see the window, then its panel.
+      await sleep(3_000);
+      await page.click('[aria-label^="Workers:"]');
+    },
+    cleanup: async () => {
+      await mutate("queue.clearRateLimit", { queueName: "image-processing" });
+      await mutate("queue.setRateLimit", {
+        queueName: "image-processing",
+        limit: null,
+      });
+      await mutate("queue.setConcurrency", {
+        queueName: "image-processing",
+        concurrency: null,
+      });
+    },
+  },
 ];
-
-/** A failed email to duplicate with a fix: one that missed a template variable. */
-const findFailedEmail = async () => {
-  const { jobs } = await api<{
-    jobs: Array<{ id: string; failedReason?: string }>;
-  }>("job.list", { queueName: "email-delivery", status: "failed", limit: 50 });
-  const job =
-    jobs.find(({ failedReason }) => failedReason?.includes("userName")) ??
-    jobs[0];
-  if (!job) throw new Error("No failed email yet: let the traffic run longer");
-  return job.id;
-};
 
 const quantize = (input: string, output: string) =>
   new Promise<void>((resolve, reject) =>
@@ -540,7 +698,7 @@ const main = async () => {
     }
     const ids = {
       ...flow,
-      emailId: wanted("duplicate") ? await findFailedEmail() : "",
+      sellerEmailId: wanted("fix") ? await addSellerFlow() : "",
     };
 
     // Both themes of a shot back to back, so the pair shows the same moment:
@@ -563,6 +721,7 @@ const main = async () => {
         }
         console.log(`${shot.name}-${theme}`);
       }
+      await shot.cleanup?.();
     }
     browser.close();
   } finally {
