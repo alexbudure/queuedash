@@ -112,6 +112,12 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
     statuses: ["waiting", "active", "completed", "failed", "delayed"],
     groups: false,
     workers: false,
+    updateData: false,
+    changeDelay: false,
+    changePriority: false,
+    deduplication: false,
+    concurrencyLimit: false,
+    rateLimit: false,
   };
 
   constructor(

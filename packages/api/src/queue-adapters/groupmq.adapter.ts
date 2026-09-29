@@ -382,6 +382,12 @@ export class GroupMQAdapter extends QueueAdapter<
     statuses: ["waiting", "active", "completed", "failed", "delayed"],
     groups: true,
     workers: false,
+    updateData: false,
+    changeDelay: false,
+    changePriority: false,
+    deduplication: false,
+    concurrencyLimit: false,
+    rateLimit: false,
   };
 
   constructor(

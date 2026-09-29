@@ -1088,6 +1088,8 @@ export const presentJob = (
     name: nameIsHiddenIdentity ? replacement : redacted.name,
     // Unique per job: the UI keys rows, selection and j/k stepping by id.
     id: redactId ? pseudonymizeJobId(exposed.id, replacement) : exposed.id,
+    // An id the producer chose, often from the data it deduplicates on.
+    deduplicationId: redactId ? undefined : exposed.deduplicationId,
     groupId: redactGroupId
       ? exposed.groupId === undefined
         ? undefined

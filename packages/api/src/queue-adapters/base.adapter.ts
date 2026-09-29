@@ -44,9 +44,34 @@ export type AdaptedJob = {
   processedBy?: string;
   attemptsStarted?: number;
   stalledCounter?: number;
+  // BullMQ: the deduplication id the job was added with. New jobs with the
+  // same id are dropped while this one holds it.
+  deduplicationId?: string;
+  // When a delayed job is due, where the library can tell. BullMQ keeps it
+  // only in its delayed set: moving a job changes that, not the time the job
+  // was added, so added time plus delay goes stale.
+  runAt?: Date | null;
+  // BullMQ: the job's priority now. Changing it rewrites this, not the
+  // priority in the options the job was added with.
+  priority?: number;
 };
 
 export type JobCounts = Partial<Record<string, number>>;
+
+// Epoch milliseconds, both ends inclusive; an open end reaches the edge.
+export type JobTimeRange = { from?: number; to?: number };
+
+// Where a time range of finished jobs sits in the newest-first list `getJobs`
+// pages through: skip `offset` jobs, then the next `count` are the range.
+export type FinishedRange = { offset: number; count: number };
+
+// A queue's global limits (BullMQ), shared by every worker on the queue.
+export type QueueLimits = {
+  concurrency: number | null;
+  rateLimit: { max: number; duration: number } | null;
+  // How much longer the queue is rate limited, in ms; 0 when it isn't.
+  rateLimitedForMs: number;
+};
 
 /** The listed options that are set on `opts`, to carry them to another job. */
 export const pickJobOptions = (
@@ -97,6 +122,12 @@ export type FeatureSupport<SupportedStatus extends string = string> = {
   statuses: SupportedStatus[]; // Which statuses this queue actually supports
   groups: boolean; // Whether queue supports job groups (GroupMQ, BullMQ Pro)
   workers: boolean; // Whether active queue workers can be inspected
+  updateData: boolean; // Whether a job's data can be edited in place
+  changeDelay: boolean; // Whether a delayed job can be moved to another time
+  changePriority: boolean; // Whether a job's priority can be changed
+  deduplication: boolean; // Whether a job's deduplication id can be released
+  concurrencyLimit: boolean; // Whether the queue has a global concurrency limit
+  rateLimit: boolean; // Whether the queue has a global rate limit
 };
 
 export type SchedulerInfo = {
@@ -268,6 +299,31 @@ export abstract class QueueAdapter<
   abstract promoteJob(jobId: string): Promise<void>;
   abstract discardJob(jobId: string): Promise<void>;
   abstract getJobLogs(jobId: string): Promise<string[] | null>;
+
+  // Where finished jobs in a time range sit in the newest-first list, for
+  // libraries that keep them sorted by finish time. Null when it can't tell,
+  // and the caller scans instead.
+  getFinishedRange?(
+    status: "completed" | "failed",
+    range: JobTimeRange,
+  ): Promise<FinishedRange | null>;
+  // When each delayed job is due, by id; missing when the job isn't delayed.
+  getRunAts?(jobIds: readonly string[]): Promise<Map<string, Date>>;
+
+  // Editing jobs in place (optional - see the matching `supports` flags).
+  // Each throws JobNotFoundError for an unknown id.
+  updateJobData?(jobId: string, data: Record<string, unknown>): Promise<void>;
+  changeJobDelay?(jobId: string, delayMs: number): Promise<void>;
+  changeJobPriority?(jobId: string, priority: number): Promise<void>;
+  // False when the id no longer points at this job.
+  removeJobDeduplication?(jobId: string): Promise<boolean>;
+
+  // Global limits (optional - see `supports.concurrencyLimit`/`rateLimit`).
+  getLimits?(): Promise<QueueLimits>;
+  setConcurrencyLimit?(concurrency: number | null): Promise<void>;
+  setRateLimit?(limit: { max: number; duration: number } | null): Promise<void>;
+  // Ends the current rate-limit window, so workers pick jobs up right away.
+  clearRateLimit?(): Promise<void>;
 
   // Scheduler operations (optional - only for queues that support it)
   getSchedulers?(): Promise<SchedulerInfo[]>;

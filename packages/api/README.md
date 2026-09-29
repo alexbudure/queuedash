@@ -342,12 +342,19 @@ Supported action identifiers:
 - `queue.resume`
 - `queue.empty`
 - `queue.clean`
+- `queue.setConcurrency`
+- `queue.setRateLimit`
+- `queue.clearRateLimit`
 - `job.add`
 - `job.retry`
 - `job.promote`
 - `job.discard`
 - `job.rerun`
 - `job.remove`
+- `job.update`
+- `job.changeDelay`
+- `job.changePriority`
+- `job.removeDeduplication`
 - `scheduler.add`
 - `scheduler.update`
 - `scheduler.remove`
@@ -362,6 +369,14 @@ metadata.
 inputs. Filtering is status-scoped, operates on the server-presented redacted
 job shape, and returns `searchMeta` when a bounded scan is used. The hard server
 ceiling remains 5,000 inspected jobs.
+
+It also takes a job `name` and a date range: `from` and `to` in epoch
+milliseconds, or `fromOffset` and `toOffset` in milliseconds from when the
+request runs (negative for the past), which keeps a polled "last hour" the last
+hour. Completed and failed jobs are judged by when they finished, delayed jobs
+by when they're due, and every other status by when it was added. BullMQ and
+Bull keep finished jobs sorted by finish time, so a range over them is read
+directly, with an exact count and no scan limit.
 
 `job.bulkPromoteByFilter`, `job.bulkRemoveByFilter`, and
 `job.bulkRetryByFilter` reuse that bounded filter. They process mutations with
