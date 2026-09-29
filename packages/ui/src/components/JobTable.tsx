@@ -20,10 +20,24 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useInView } from "react-intersection-observer";
 
-import { formatCount, formatCountLabel, formatDuration } from "../utils/format";
+import {
+  type DateRange,
+  describeDateRange,
+  hasDateRange,
+  toDateRangeInput,
+} from "../utils/dateRange";
+import { formatJobId } from "../utils/flow";
+import { formatCount, formatDuration } from "../utils/format";
 import {
   BULK_VERBS,
   bulkResultToast,
@@ -39,6 +53,7 @@ import {
 } from "../utils/styles";
 import type { Job, RouterOutput, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import { PHONE_MEDIA_QUERY, useMediaQuery } from "../utils/useMediaQuery";
 import {
   canSelectJobRows,
   formatJobCountLabel,
@@ -53,6 +68,7 @@ import {
   getTableMinWidthClassName,
   isJobListPollingPaused,
   isShortcutExemptTarget,
+  type JobSort,
 } from "../utils/viewState";
 import { AddJobModal } from "./AddJobModal";
 import { Alert } from "./Alert";
@@ -209,7 +225,7 @@ const createColumns = (onCheckboxClick: (jobId: string) => void) => [
               // would otherwise never yield width and squeeze the job name,
               // which is the thing you actually scan for, down to "week…".
               <span className="max-w-[7rem] min-w-0 shrink truncate rounded-full bg-gray-100 px-1.5 font-mono text-[10px] text-gray-600 dark:bg-slate-800 dark:text-slate-300">
-                #{job.id}
+                #{formatJobId(job.id)}
               </span>
             ) : null}
           </span>
@@ -551,6 +567,140 @@ const createColumns = (onCheckboxClick: (jobId: string) => void) => [
   }),
 ];
 
+const PHONE_CHIP =
+  "inline-flex h-[22px] shrink-0 items-center gap-1 rounded-md px-[7px] font-mono text-[11px]";
+
+/**
+ * A job as a phone lists it: the name, with the id faint beside it, then how
+ * it ended, when, and how long it waited. The lifecycle columns need 540px,
+ * so on a phone they sat off-screen with the job's status in them.
+ */
+const PhoneJobSummary = ({ job }: { job: Job & { status: Status } }) => {
+  const hasName = Boolean(job.name && job.name.trim() !== "");
+  const added = job.createdAt ? new Date(job.createdAt) : null;
+  const processed = job.processedAt ? new Date(job.processedAt) : null;
+  const finished = job.finishedAt ? new Date(job.finishedAt) : null;
+  const isFinished = job.status === "completed" || job.status === "failed";
+  const failed = job.status === "failed";
+  const waited =
+    added && processed
+      ? formatDuration(processed.getTime() - added.getTime())
+      : null;
+
+  let chip: ReactNode = null;
+  let moment: ReactNode = null;
+  if (isFinished) {
+    const ran =
+      processed && finished ? finished.getTime() - processed.getTime() : null;
+    chip = (
+      <span
+        className={clsx(
+          PHONE_CHIP,
+          failed
+            ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+            : "bg-green-50 text-green-700 dark:bg-green-950/50 dark:text-green-400",
+        )}
+      >
+        {ran === null ? (failed ? "Failed" : "Done") : formatDuration(ran)}
+        {failed ? (
+          <X aria-hidden="true" className="size-[11px]" />
+        ) : (
+          <Check aria-hidden="true" className="size-[11px]" />
+        )}
+      </span>
+    );
+    moment = finished ? (
+      <span>
+        {failed ? "failed" : "finished"}{" "}
+        <Timestamp value={finished} variant="time" />
+      </span>
+    ) : (
+      <span>no timing</span>
+    );
+  } else if (job.status === "active") {
+    chip = (
+      <span
+        className={clsx(
+          PHONE_CHIP,
+          "bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400",
+        )}
+      >
+        {processed
+          ? formatDuration(Date.now() - processed.getTime())
+          : "Running"}
+        <Loader2 aria-hidden="true" className="size-[11px] animate-spin" />
+      </span>
+    );
+    moment = processed ? (
+      <span>
+        started <Timestamp value={processed} variant="time" />
+      </span>
+    ) : null;
+  } else if (added) {
+    chip = (
+      <span
+        className={clsx(
+          PHONE_CHIP,
+          "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400",
+        )}
+      >
+        {formatDuration(Date.now() - added.getTime())}
+        <Clock aria-hidden="true" className="size-[11px]" />
+      </span>
+    );
+    moment =
+      job.status === "delayed" && job.runAt ? (
+        <span>
+          due <Timestamp value={job.runAt} variant="time" />
+        </span>
+      ) : (
+        <span>
+          added <Timestamp value={added} variant="time" />
+        </span>
+      );
+  }
+
+  return (
+    <div className="min-w-0 flex-1 py-1.5">
+      <div className="flex min-w-0 items-baseline justify-between gap-2.5">
+        <span className="min-w-0 truncate font-mono text-[13px] leading-5 text-gray-900 dark:text-white">
+          {hasName ? job.name : `#${job.id}`}
+        </span>
+        {hasName ? (
+          <span className="shrink-0 font-mono text-[11px] text-gray-400 dark:text-slate-500">
+            #{formatJobId(job.id)}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-1.5 flex min-w-0 items-center gap-2 overflow-hidden text-xs leading-4 whitespace-nowrap text-gray-500 tabular-nums dark:text-slate-400">
+        {chip}
+        {moment}
+        {(isFinished || job.status === "active") && waited ? (
+          <>
+            <span aria-hidden="true" className={TEXT_FAINT}>
+              ·
+            </span>
+            <span>waited {waited}</span>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+/** What a phone's list header says about the order, since its sort control
+ *  is an icon. */
+const getSortHint = (status: Status, sort: JobSort, queueType?: string) => {
+  if (sort === "newest") return "Newest created first";
+  if (sort === "oldest") return "Oldest created first";
+  // BullMQ and Bull keep finished jobs sorted by when they finished.
+  if (queueType === "bullmq" || queueType === "bull") {
+    if (status === "failed") return "Newest failure first";
+    if (status === "completed") return "Newest finish first";
+  }
+  return "Queue order";
+};
+
 type JobTableProps = {
   jobs: (Job & { status: Status })[];
   queueName: string;
@@ -564,7 +714,12 @@ type JobTableProps = {
   // An error group's fingerprint: the list, and its bulk actions, cover only
   // that group's jobs.
   errorFingerprint?: string | null;
+  /** A job name from the Job types tab: the list, and its bulk actions,
+   *  cover only jobs added under it. */
+  jobName?: string | null;
   query?: string;
+  dateRange?: DateRange;
+  sort?: JobSort;
   searchIsPartial?: boolean;
   /** Number of infinite-query pages currently loaded. Live polling stops after
    *  the first one, which the footer explains. */
@@ -584,6 +739,11 @@ type JobTableProps = {
   /** Steps the open job without growing history; the page owns how. */
   onStepJob?: (delta: 1 | -1) => void;
 };
+const EMPTY_RANGE: DateRange = {};
+const DOCK_BUTTON_CLASS = "max-sm:h-10";
+// By-filter actions work through the same bounded scan the list does.
+const SCAN_LIMIT_NOTE = "A very long list stops at the server's scan limit.";
+
 export const JobTable = ({
   jobs,
   totalJobs,
@@ -595,7 +755,10 @@ export const JobTable = ({
   queue,
   selectedGroupId,
   errorFingerprint,
+  jobName,
   query,
+  dateRange = EMPTY_RANGE,
+  sort = "queue",
   searchIsPartial = false,
   loadedPageCount,
   onResetPages,
@@ -607,6 +770,7 @@ export const JobTable = ({
   onStepJob,
 }: JobTableProps) => {
   const { preferences, portalContainer } = useQueuedash();
+  const isPhone = useMediaQuery(PHONE_MEDIA_QUERY);
   const [rowSelection, setRowSelection] = useState({});
   const [showAddJobModal, setShowAddJobModal] = useState(false);
   const lastClickedJobIdRef = useRef<string | null>(null);
@@ -808,7 +972,21 @@ export const JobTable = ({
     (cleanSupport === true ||
       (typeof cleanSupport === "object" &&
         cleanSupport.supportedStatuses.includes(status)));
-  const hasFilter = Boolean(query || selectedGroupId || errorFingerprint);
+  const hasRange = hasDateRange(dateRange);
+  // "Matching" is for the filters a date phrase doesn't already describe.
+  const hasSearchFilter = Boolean(
+    query || selectedGroupId || errorFingerprint || jobName,
+  );
+  const hasFilter = hasSearchFilter || hasRange;
+  const rangePhrase = hasRange ? describeDateRange(dateRange, status) : null;
+  const rangeKey = JSON.stringify(dateRange);
+  // What every by-filter action narrows to, so it acts on exactly the list.
+  const filterInput = {
+    groupId: selectedGroupId ?? undefined,
+    query,
+    name: jobName ?? undefined,
+    ...toDateRangeInput(dateRange),
+  };
   const emptyStateCopy = EMPTY_STATE_COPY[status];
   const canAddJob =
     queue?.access.actions["job.add"] === true &&
@@ -836,6 +1014,8 @@ export const JobTable = ({
     !!queue?.supports.promote &&
     queue.access.actions["job.promote"];
 
+  const dockButtonSize = isPhone ? "lg" : "sm";
+
   const selectedRows = table.getSelectedRowModel().rows;
   const selectedCount = selectedRows.length;
   const hasSelection = canSelectRows && selectedCount > 0;
@@ -846,10 +1026,14 @@ export const JobTable = ({
   const canRerunSelection =
     status === "completed" && queue?.access.actions["job.rerun"] === true;
   const countLabel = formatJobCountLabel({
-    hasFilter,
+    hasFilter: hasSearchFilter,
     status,
     total: totalJobs,
   });
+  // "38 failed jobs in the last hour": what a by-filter action will touch.
+  const actionSubject = `${searchIsPartial ? "at least " : ""}${countLabel}${
+    rangePhrase ? ` ${rangePhrase}` : ""
+  }`;
   // A capped search knows only a lower bound. The qualifier belongs to the
   // sentence rather than the count, so it opens the standalone phrase and
   // stays lower-case inside "3 of …".
@@ -869,6 +1053,11 @@ export const JobTable = ({
       : isPollingPaused && jobs.length < totalJobs
         ? `${formatCount(jobs.length)} of ${countLabel}`
         : countLabel;
+  // "47 failed", "3 selected": the dock is one row on a phone.
+  const phoneFooterCount = hasSelection
+    ? formatCount(selectedCount)
+    : `${formatCount(totalJobs)}${searchIsPartial ? "+" : ""}`;
+  const phoneFooterNoun = hasSelection ? "selected" : statusLabel;
   const hasReachedEnd = !isEmpty && jobs.length >= totalJobs;
   const knownCount = queue ? (queue.counts[status] ?? 0) : null;
   // Without queue metadata there is no count to gate on yet, and skipping the
@@ -885,7 +1074,15 @@ export const JobTable = ({
     setRowSelection({});
     setOwnedJobId(null);
     lastClickedJobIdRef.current = null;
-  }, [errorFingerprint, query, queueName, selectedGroupId, status]);
+  }, [
+    errorFingerprint,
+    jobName,
+    query,
+    queueName,
+    rangeKey,
+    selectedGroupId,
+    status,
+  ]);
 
   useEffect(() => {
     if (!canSelectRows) {
@@ -1016,6 +1213,7 @@ export const JobTable = ({
             />
           ) : undefined
         }
+        className="max-sm:rounded-none max-sm:border-x-0 max-sm:border-t-0"
         header={table.getHeaderGroups().map((headerGroup) => (
           <div
             role="row"
@@ -1024,6 +1222,7 @@ export const JobTable = ({
               getTableGridClassName("job", canSelectRows),
               getTableMinWidthClassName("job"),
               getTableHeaderPaddingClassName(preferences.density),
+              "max-sm:h-9 max-sm:items-center",
             )}
             key={headerGroup.id}
           >
@@ -1034,6 +1233,7 @@ export const JobTable = ({
                 className={clsx(
                   "flex h-full items-center px-1.5 text-xs font-medium",
                   TEXT_MUTED,
+                  header.column.id !== "select" && "max-sm:hidden",
                 )}
               >
                 {header.isPlaceholder
@@ -1044,6 +1244,24 @@ export const JobTable = ({
                     )}
               </div>
             ))}
+            <div
+              role="columnheader"
+              className={clsx(
+                "flex h-full items-center justify-between gap-3 px-1.5 text-xs sm:hidden",
+                TEXT_MUTED,
+              )}
+            >
+              <span>
+                {canSelectRows ? (
+                  "Select all"
+                ) : (
+                  <span className="sr-only">Jobs</span>
+                )}
+              </span>
+              <span className={TEXT_FAINT}>
+                {getSortHint(status, sort, queue?.type)}
+              </span>
+            </div>
           </div>
         ))}
         footer={
@@ -1053,9 +1271,11 @@ export const JobTable = ({
                 {hasFilter ? "No matching jobs" : emptyStateCopy.title}
               </p>
               <p className={clsx("max-w-sm text-sm", TEXT_MUTED)}>
-                {hasFilter
-                  ? `Nothing in the ${statusLabel} list matches the current search or group filter.`
-                  : emptyStateCopy.message}
+                {hasSearchFilter
+                  ? `Nothing in the ${statusLabel} list matches these filters.`
+                  : hasRange
+                    ? `No ${statusLabel} jobs ${rangePhrase}.`
+                    : emptyStateCopy.message}
               </p>
               {hasFilter && onClearFilters ? (
                 <div className="mt-3">
@@ -1130,300 +1350,311 @@ export const JobTable = ({
                 className={clsx(
                   "flex h-full items-center px-1.5",
                   getTableCellPaddingClassName(preferences.density),
+                  cell.column.id === "select"
+                    ? "max-sm:items-start max-sm:pt-2.5"
+                    : "max-sm:hidden",
                 )}
               >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </div>
             ))}
+            <div role="cell" className="flex min-w-0 px-1.5 sm:hidden">
+              <PhoneJobSummary job={row.original} />
+            </div>
           </TableRow>
         ))}
       </TableFrame>
 
-      {/* The footer is always present, so a read-only user still gets a count
-          and a terminus - it used to render only alongside bulk actions. */}
-      <div
-        className={clsx(
-          FLOATING_BAR_DOCK,
-          // Below the sticky header, which must win when a row scrolls past it.
-          "z-[5]",
-          showSkeleton && "invisible",
-        )}
-      >
-        <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
-          {/* `tabular-nums` so the count does not shift the bar's width on
+      {/* The footer is present whenever there are jobs, so a read-only user
+          still gets a count and a terminus - it used to render only alongside
+          bulk actions. An empty list has its own message and nothing to act
+          on, so it gets no dock. */}
+      {isEmpty && !isLoading ? null : (
+        <div
+          className={clsx(
+            FLOATING_BAR_DOCK,
+            // Below the sticky header, which must win when a row scrolls past it.
+            "z-[5]",
+            showSkeleton && "invisible",
+          )}
+        >
+          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200/60 bg-white/90 px-3 py-1.5 text-xs shadow-md backdrop-blur max-sm:w-full max-sm:flex-nowrap max-sm:rounded-full max-sm:py-2 max-sm:pr-2 max-sm:pl-4 max-sm:text-sm sm:rounded-full dark:border-slate-700/60 dark:bg-slate-900/90">
+            {/* `tabular-nums` so the count does not shift the bar's width on
               every poll. */}
-          <p
-            className={clsx(
-              "tabular-nums",
-              hasSelection ? "text-gray-900 dark:text-slate-100" : TEXT_MUTED,
-            )}
-          >
-            {footerLabel}
-            {/* What the count was built from. Only worth saying when a filter
-                narrowed the scan, or when the server's cap cut it short. */}
-            {!hasSelection &&
-            scannedCount !== undefined &&
-            (hasFilter || searchIsPartial) ? (
-              <span
-                className={
-                  searchIsPartial
-                    ? "text-amber-600 dark:text-amber-400"
-                    : TEXT_FAINT
-                }
-              >
-                {" · "}
-                {searchIsPartial
-                  ? `scanned the first ${formatCount(scannedCount)}`
-                  : `scanned ${formatCount(scannedCount)}`}
+            <p
+              className={clsx(
+                "min-w-0 tabular-nums max-sm:flex-1 max-sm:truncate",
+                TEXT_MUTED,
+              )}
+            >
+              <span className="font-medium text-gray-900 max-sm:hidden dark:text-slate-100">
+                {footerLabel}
               </span>
-            ) : null}
-          </p>
+              <span className="sm:hidden">
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  {phoneFooterCount}
+                </span>{" "}
+                {phoneFooterNoun}
+              </span>
+              {!hasSelection && rangePhrase ? (
+                <span className="max-sm:hidden"> {rangePhrase}</span>
+              ) : null}
+              {/* What the count was built from. Only worth saying when a filter
+                narrowed the scan, or when the server's cap cut it short. */}
+              {!hasSelection &&
+              scannedCount !== undefined &&
+              (hasFilter || searchIsPartial) ? (
+                <span
+                  className={clsx(
+                    "max-sm:hidden",
+                    searchIsPartial
+                      ? "text-amber-600 dark:text-amber-400"
+                      : TEXT_FAINT,
+                  )}
+                >
+                  {" · "}
+                  {searchIsPartial
+                    ? `scanned the first ${formatCount(scannedCount)}`
+                    : `scanned ${formatCount(scannedCount)}`}
+                </span>
+              ) : null}
+            </p>
 
-          {/* The same dot language as the sidebar's Live indicator, and not
+            {/* The same dot language as the sidebar's Live indicator, and not
               the word "paused", which next to a queue means something else.
               The sentence it replaced was the longest thing in the dock and
               the least often needed; the chip carries it as a tooltip and
               resets on press. */}
-          {isPollingPaused && !hasSelection ? (
-            onResetPages ? (
-              <button
-                type="button"
-                onClick={onResetPages}
-                title="This list stops updating once more than one page is loaded. Press to go back to the first page and resume live updates."
-                className={clsx(
-                  "flex h-7 items-center gap-1.5 rounded-full px-2 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200 dark:hover:bg-slate-800 dark:hover:text-white dark:active:bg-slate-700",
-                  TEXT_MUTED,
-                  FOCUS_RING,
-                )}
-              >
+            {isPollingPaused && !hasSelection ? (
+              onResetPages ? (
+                <button
+                  type="button"
+                  onClick={onResetPages}
+                  title="This list stops updating once more than one page is loaded. Press to go back to the first page and resume live updates."
+                  className={clsx(
+                    "flex h-7 items-center gap-1.5 rounded-full px-2 transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200 dark:hover:bg-slate-800 dark:hover:text-white dark:active:bg-slate-700",
+                    TEXT_MUTED,
+                    FOCUS_RING,
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-1.5 rounded-full bg-gray-400 dark:bg-slate-500"
+                  />
+                  Not live
+                  <span className="sr-only">
+                    . This list stops updating once more than one page is
+                    loaded; press to reset to the first page.
+                  </span>
+                </button>
+              ) : (
                 <span
-                  aria-hidden="true"
-                  className="size-1.5 rounded-full bg-gray-400 dark:bg-slate-500"
-                />
-                Not live
-                <span className="sr-only">
-                  . This list stops updating once more than one page is loaded;
-                  press to reset to the first page.
+                  className={clsx("flex items-center gap-1.5 px-1", TEXT_MUTED)}
+                  title="This list stops updating once more than one page is loaded."
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-1.5 rounded-full bg-gray-400 dark:bg-slate-500"
+                  />
+                  Not live
                 </span>
-              </button>
-            ) : (
-              <span
-                className={clsx("flex items-center gap-1.5 px-1", TEXT_MUTED)}
-                title="This list stops updating once more than one page is loaded."
-              >
-                <span
-                  aria-hidden="true"
-                  className="size-1.5 rounded-full bg-gray-400 dark:bg-slate-500"
-                />
-                Not live
-              </span>
-            )
-          ) : null}
+              )
+            ) : null}
 
-          {hasSelection ? (
-            <>
-              <Button
-                label="Clear"
-                icon={<X className="size-3.5" />}
-                size="sm"
-                onClick={() => table.resetRowSelection()}
-              />
-
-              {canRetrySelection || canRerunSelection ? (
+            {hasSelection ? (
+              <>
                 <Button
-                  label={canRetrySelection ? "Retry" : "Rerun"}
-                  icon={<RotateCw className="size-3.5" />}
-                  size="sm"
-                  isLoading={
-                    canRetrySelection
-                      ? bulkRetrySelectedStatus === "pending"
-                      : isRerunning
-                  }
-                  onClick={() => {
-                    if (canRetrySelection) {
-                      bulkRetrySelected({
-                        queueName,
-                        jobIds: selectedRows.map((row) => row.original.id),
-                      });
-                      return;
-                    }
-                    void handleBulkRerun();
-                  }}
+                  label="Clear"
+                  icon={<X className="size-3.5" />}
+                  size={dockButtonSize}
+                  className={DOCK_BUTTON_CLASS}
+                  onClick={() => table.resetRowSelection()}
                 />
-              ) : null}
 
-              {queue?.access.actions["job.remove"] ? (
-                <Alert
-                  isPending={bulkRemoveSelectedStatus === "pending"}
-                  title="Remove selected jobs?"
-                  description={`This action cannot be undone. This will permanently remove ${formatCountLabel(
-                    selectedCount,
-                    "job",
-                  )} from the queue.`}
-                  action={
-                    <Button
-                      variant="filled"
-                      colorScheme="red"
-                      label="Yes, remove jobs"
-                      onClick={() =>
-                        bulkRemoveSelected({
+                {canRetrySelection || canRerunSelection ? (
+                  <Button
+                    label={canRetrySelection ? "Retry" : "Rerun"}
+                    icon={<RotateCw className="size-3.5" />}
+                    size={dockButtonSize}
+                    className={DOCK_BUTTON_CLASS}
+                    isLoading={
+                      canRetrySelection
+                        ? bulkRetrySelectedStatus === "pending"
+                        : isRerunning
+                    }
+                    onClick={() => {
+                      if (canRetrySelection) {
+                        bulkRetrySelected({
                           queueName,
                           jobIds: selectedRows.map((row) => row.original.id),
-                        })
+                        });
+                        return;
                       }
-                    />
-                  }
-                >
-                  <Button
-                    as="span"
-                    label="Remove"
-                    icon={<Trash2 className="size-3.5" />}
-                    size="sm"
-                    isLoading={bulkRemoveSelectedStatus === "pending"}
+                      void handleBulkRerun();
+                    }}
                   />
-                </Alert>
-              ) : null}
-            </>
-          ) : (
-            <>
-              {showRetryAll ? (
-                <Alert
-                  isPending={bulkRetryStatus === "pending"}
-                  title={
-                    hasFilter
-                      ? "Retry matching failed jobs?"
-                      : "Retry eligible failed jobs?"
-                  }
-                  description="This will retry eligible failed jobs found within the server scan limit and move them back to the waiting state."
-                  action={
+                ) : null}
+
+                {queue?.access.actions["job.remove"] ? (
+                  <Alert
+                    isPending={bulkRemoveSelectedStatus === "pending"}
+                    title={`Remove ${formatCount(selectedCount)} selected ${
+                      selectedCount === 1 ? "job" : "jobs"
+                    }?`}
+                    description="They're deleted from the queue for good. This can't be undone."
+                    action={
+                      <Button
+                        variant="filled"
+                        colorScheme="red"
+                        label="Yes, remove jobs"
+                        onClick={() =>
+                          bulkRemoveSelected({
+                            queueName,
+                            jobIds: selectedRows.map((row) => row.original.id),
+                          })
+                        }
+                      />
+                    }
+                  >
                     <Button
-                      variant="filled"
-                      colorScheme="brand"
-                      label={
-                        hasFilter ? "Yes, retry matches" : "Yes, retry eligible"
-                      }
-                      onClick={() =>
-                        bulkRetry({
-                          queueName,
-                          status: "failed",
-                          groupId: selectedGroupId ?? undefined,
-                          query,
-                          error: errorFingerprint ?? undefined,
-                        })
-                      }
+                      as="span"
+                      label="Remove"
+                      icon={<Trash2 className="size-3.5" />}
+                      size={dockButtonSize}
+                      className={DOCK_BUTTON_CLASS}
+                      isLoading={bulkRemoveSelectedStatus === "pending"}
                     />
-                  }
-                >
-                  <Button
-                    as="span"
-                    icon={<RotateCw className="size-3.5" />}
-                    label={hasFilter ? "Retry matches" : "Retry eligible"}
-                    size="sm"
-                    isLoading={bulkRetryStatus === "pending"}
-                  />
-                </Alert>
-              ) : null}
-              {showPromoteAll ? (
-                <Alert
-                  isPending={bulkPromoteStatus === "pending"}
-                  title={
-                    hasFilter
-                      ? "Promote matching delayed jobs?"
-                      : "Promote eligible delayed jobs?"
-                  }
-                  description="This will promote eligible delayed jobs found within the server scan limit into the runnable queue."
-                  action={
+                  </Alert>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {showRetryAll ? (
+                  <Alert
+                    isPending={bulkRetryStatus === "pending"}
+                    title={`Retry ${actionSubject}?`}
+                    description={`They go back to waiting and run again. ${SCAN_LIMIT_NOTE}`}
+                    action={
+                      <Button
+                        variant="filled"
+                        colorScheme="brand"
+                        label="Yes, retry them"
+                        onClick={() =>
+                          bulkRetry({
+                            queueName,
+                            status: "failed",
+                            error: errorFingerprint ?? undefined,
+                            ...filterInput,
+                          })
+                        }
+                      />
+                    }
+                  >
                     <Button
-                      variant="filled"
-                      colorScheme="brand"
-                      label="Yes, promote"
-                      onClick={() =>
-                        bulkPromote({
-                          queueName,
-                          status: "delayed",
-                          groupId: selectedGroupId ?? undefined,
-                          query,
-                        })
-                      }
+                      as="span"
+                      icon={<RotateCw className="size-3.5" />}
+                      label="Retry all"
+                      size={dockButtonSize}
+                      className={DOCK_BUTTON_CLASS}
+                      isLoading={bulkRetryStatus === "pending"}
                     />
-                  }
-                >
-                  <Button
-                    as="span"
-                    icon={<Rocket className="size-3.5" />}
-                    label={hasFilter ? "Promote matches" : "Promote eligible"}
-                    size="sm"
-                    isLoading={bulkPromoteStatus === "pending"}
-                  />
-                </Alert>
-              ) : null}
-              {showCleanAll ? (
-                <Alert
-                  isPending={cleanQueueStatus === "pending"}
-                  title={`Remove all ${statusLabel} jobs?`}
-                  description={`This action cannot be undone. This will permanently remove all ${statusLabel} jobs from the queue.`}
-                  action={
+                  </Alert>
+                ) : null}
+                {showPromoteAll ? (
+                  <Alert
+                    isPending={bulkPromoteStatus === "pending"}
+                    title={`Promote ${actionSubject}?`}
+                    description={`They run now instead of waiting out their delay. ${SCAN_LIMIT_NOTE}`}
+                    action={
+                      <Button
+                        variant="filled"
+                        colorScheme="brand"
+                        label="Yes, promote them"
+                        onClick={() =>
+                          bulkPromote({
+                            queueName,
+                            status: "delayed",
+                            ...filterInput,
+                          })
+                        }
+                      />
+                    }
+                  >
                     <Button
-                      variant="filled"
-                      colorScheme="red"
-                      label="Yes, remove jobs"
-                      onClick={() =>
-                        cleanQueue({
-                          queueName,
-                          status,
-                        })
-                      }
+                      as="span"
+                      icon={<Rocket className="size-3.5" />}
+                      label="Promote all"
+                      size={dockButtonSize}
+                      className={DOCK_BUTTON_CLASS}
+                      isLoading={bulkPromoteStatus === "pending"}
                     />
-                  }
-                >
-                  <Button
-                    as="span"
-                    icon={<Trash2 className="size-3.5" />}
-                    label={`Remove all ${statusLabel}`}
-                    size="sm"
-                    isLoading={cleanQueueStatus === "pending"}
-                  />
-                </Alert>
-              ) : null}
-              {showRemoveAll ? (
-                <Alert
-                  isPending={bulkRemoveByFilterStatus === "pending"}
-                  title={
-                    hasFilter
-                      ? "Remove matching jobs?"
-                      : `Remove eligible ${statusLabel} jobs?`
-                  }
-                  description="This action cannot be undone. It will remove eligible jobs found within the server scan limit."
-                  action={
+                  </Alert>
+                ) : null}
+                {showCleanAll ? (
+                  <Alert
+                    isPending={cleanQueueStatus === "pending"}
+                    title={`Remove all ${statusLabel} jobs?`}
+                    description={`Every ${statusLabel} job is deleted from the queue for good. This can't be undone.`}
+                    action={
+                      <Button
+                        variant="filled"
+                        colorScheme="red"
+                        label="Yes, remove jobs"
+                        onClick={() =>
+                          cleanQueue({
+                            queueName,
+                            status,
+                          })
+                        }
+                      />
+                    }
+                  >
                     <Button
-                      variant="filled"
-                      colorScheme="red"
-                      label="Yes, remove jobs"
-                      onClick={() =>
-                        bulkRemoveByFilter({
-                          queueName,
-                          status,
-                          groupId: selectedGroupId ?? undefined,
-                          query,
-                          error: errorFingerprint ?? undefined,
-                        })
-                      }
+                      as="span"
+                      icon={<Trash2 className="size-3.5" />}
+                      label={isPhone ? "Remove" : `Remove all ${statusLabel}`}
+                      size={dockButtonSize}
+                      className={DOCK_BUTTON_CLASS}
+                      isLoading={cleanQueueStatus === "pending"}
                     />
-                  }
-                >
-                  <Button
-                    as="span"
-                    icon={<Trash2 className="size-3.5" />}
-                    label={hasFilter ? "Remove matches" : "Remove eligible"}
-                    size="sm"
-                    isLoading={bulkRemoveByFilterStatus === "pending"}
-                  />
-                </Alert>
-              ) : null}
-            </>
-          )}
+                  </Alert>
+                ) : null}
+                {showRemoveAll ? (
+                  <Alert
+                    isPending={bulkRemoveByFilterStatus === "pending"}
+                    title={`Remove ${actionSubject}?`}
+                    description={`They're deleted from the queue for good. This can't be undone. ${SCAN_LIMIT_NOTE}`}
+                    action={
+                      <Button
+                        variant="filled"
+                        colorScheme="red"
+                        label="Yes, remove them"
+                        onClick={() =>
+                          bulkRemoveByFilter({
+                            queueName,
+                            status,
+                            error: errorFingerprint ?? undefined,
+                            ...filterInput,
+                          })
+                        }
+                      />
+                    }
+                  >
+                    <Button
+                      as="span"
+                      icon={<Trash2 className="size-3.5" />}
+                      label={isPhone ? "Remove" : "Remove all"}
+                      size={dockButtonSize}
+                      className={DOCK_BUTTON_CLASS}
+                      isLoading={bulkRemoveByFilterStatus === "pending"}
+                    />
+                  </Alert>
+                ) : null}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

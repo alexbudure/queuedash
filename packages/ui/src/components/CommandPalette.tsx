@@ -3,12 +3,14 @@ import {
   AlertTriangle,
   Calendar,
   LayoutGrid,
+  Loader2,
   LockKeyhole,
   Search,
   Settings,
+  Shapes,
   Star,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   Autocomplete,
   Dialog,
@@ -24,6 +26,7 @@ import {
 } from "react-aria-components";
 import { useLocation, useNavigate } from "react-router";
 
+import { formatJobId } from "../utils/flow";
 import { formatCount } from "../utils/format";
 import { STATUS_ICONS, STATUS_LABELS, STATUS_ORDER } from "../utils/status";
 import {
@@ -34,6 +37,7 @@ import {
   TEXT_MUTED,
   Z_INDEX,
 } from "../utils/styles";
+import type { Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { useQueuedash } from "./QueuedashProvider";
 
@@ -106,6 +110,26 @@ const Item = ({
   </ListBoxItem>
 );
 
+// Two characters before the server scans every queue for them.
+const MIN_FIND_LENGTH = 2;
+const FIND_DEBOUNCE_MS = 250;
+const JOB_KEY = "job:";
+
+const STATUS_ICON_TONES: Partial<Record<Status, string>> = {
+  failed: "text-red-500 dark:text-red-400",
+  completed: "text-green-600 dark:text-green-400",
+  active: "text-blue-500 dark:text-blue-400",
+};
+
+const useDebouncedValue = (value: string, ms: number) => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(timer);
+  }, [ms, value]);
+  return debounced;
+};
+
 const SectionHeader = ({ children }: { children: ReactNode }) => (
   <Header className={clsx("px-2.5 pt-2.5 pb-1.5", SECTION_LABEL)}>
     {children}
@@ -130,6 +154,49 @@ export const CommandPalette = ({
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { contains } = useFilter({ sensitivity: "base" });
+  const [inputValue, setInputValue] = useState("");
+  // A fresh palette starts empty, like it did before it kept its text.
+  useEffect(() => {
+    if (!open) setInputValue("");
+  }, [open]);
+  // Any job in any queue the viewer can see, by id or by text: the ticket
+  // quotes a job id and nobody knows its queue.
+  const findQuery = useDebouncedValue(inputValue.trim(), FIND_DEBOUNCE_MS);
+  const canFind = open && findQuery.length >= MIN_FIND_LENGTH;
+  const findReq = trpc.job.find.useQuery(
+    { query: findQuery, limit: 8 },
+    { enabled: canFind, retry: false, staleTime: 5_000 },
+  );
+  // Refused while job ids are redacted: the palette just doesn't offer jobs.
+  const foundJobs = canFind && !findReq.isError ? findReq.data?.results : [];
+  // From the first keystroke, not the debounced one: in between, the list
+  // said "Nothing matches." about a search that hadn't run yet.
+  // Typing focuses the first row that matches, but the server's jobs land
+  // after that: with nothing else matching, Enter did nothing. Once they
+  // arrive, the first one takes focus, unless a row already has it. The
+  // event is the one react-aria's Autocomplete sends for the same purpose.
+  const listRef = useRef<HTMLDivElement>(null);
+  const firstFoundKey = foundJobs?.[0]
+    ? `${foundJobs[0].queueName}:${foundJobs[0].job.id}`
+    : null;
+  useEffect(() => {
+    const list = listRef.current;
+    if (!firstFoundKey || !list || list.querySelector("[data-focused]")) {
+      return;
+    }
+    list.dispatchEvent(
+      new CustomEvent("react-aria-focus", {
+        cancelable: true,
+        bubbles: true,
+        detail: { focusStrategy: "first" },
+      }),
+    );
+  }, [firstFoundKey]);
+  const isFinding =
+    open &&
+    inputValue.trim().length >= MIN_FIND_LENGTH &&
+    (findReq.isFetching || inputValue.trim() !== findQuery) &&
+    !findReq.isError;
 
   const currentQueueName = getQueueNameFromPath(pathname);
   const currentQueue = trpc.queue.byName.useQuery(
@@ -160,6 +227,18 @@ export const CommandPalette = ({
     : [];
 
   const go = (key: string) => {
+    if (key.startsWith(JOB_KEY)) {
+      const [queueName = "", status = "", jobId = ""] = key
+        .slice(JOB_KEY.length)
+        .split(":")
+        .map(decodeURIComponent);
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      params.set("job", jobId);
+      navigate(`/queues/${encodeURIComponent(queueName)}?${params}`);
+      onOpenChange(false);
+      return;
+    }
     const [kind, ...rest] = key.split(":");
     const value = rest.join(":");
     if (kind === "page") navigate(value);
@@ -190,7 +269,15 @@ export const CommandPalette = ({
         )}
       >
         <Dialog aria-label="Search" className="outline-none">
-          <Autocomplete filter={contains}>
+          <Autocomplete
+            inputValue={inputValue}
+            onInputChange={setInputValue}
+            // The server already matched the jobs, often on data their names
+            // don't show, so only the palette's own items are filtered here.
+            filter={(textValue, query, node) =>
+              String(node.key).startsWith(JOB_KEY) || contains(textValue, query)
+            }
+          >
             <SearchField
               aria-label="Search queues and pages"
               // oxlint-disable-next-line jsx-a11y/no-autofocus -- The field is the palette's only content until it is typed in.
@@ -202,7 +289,7 @@ export const CommandPalette = ({
                 className={clsx("size-4 shrink-0", TEXT_FAINT)}
               />
               <Input
-                placeholder="Jump to a queue, a status, or a page…"
+                placeholder="Find a job, or jump to a queue or a page…"
                 className="h-12 min-w-0 flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-500 dark:text-white dark:placeholder:text-slate-400 [&::-webkit-search-cancel-button]:hidden"
               />
               <kbd
@@ -216,6 +303,7 @@ export const CommandPalette = ({
             </SearchField>
 
             <ListBox
+              ref={listRef}
               aria-label="Results"
               onAction={(key) => go(String(key))}
               className="qd-scroll qd-scroll-contain max-h-[50vh] overflow-y-auto p-1.5 outline-none"
@@ -230,6 +318,83 @@ export const CommandPalette = ({
                 </p>
               )}
             >
+              {isFinding || (foundJobs && foundJobs.length > 0) ? (
+                <ListBoxSection id="jobs">
+                  <SectionHeader>Jobs</SectionHeader>
+                  {foundJobs?.map(
+                    ({ job, queueName, queueDisplayName, status }) => {
+                      const listStatus = status as Status | null;
+                      const Icon = listStatus ? STATUS_ICONS[listStatus] : null;
+                      const label = job.name?.trim() || `#${job.id}`;
+                      return (
+                        <ListBoxItem
+                          key={`${queueName}:${job.id}`}
+                          // Encoded, so the key makes a plain DOM id: react-aria
+                          // builds element ids from it.
+                          id={`${JOB_KEY}${[queueName, status ?? "", job.id]
+                            .map(encodeURIComponent)
+                            .join(":")}`}
+                          textValue={`${label} ${queueDisplayName}`}
+                          className={ITEM_CLASS}
+                        >
+                          <span className="flex min-w-0 items-center gap-2.5">
+                            <span
+                              className={clsx(
+                                "flex size-4 shrink-0 items-center justify-center",
+                                (listStatus && STATUS_ICON_TONES[listStatus]) ??
+                                  TEXT_FAINT,
+                              )}
+                              title={
+                                listStatus
+                                  ? STATUS_LABELS[listStatus]
+                                  : undefined
+                              }
+                            >
+                              {Icon ? <Icon className="size-3.5" /> : null}
+                            </span>
+                            <span className="truncate font-mono text-[13px]">
+                              {label}
+                            </span>
+                            {job.name?.trim() ? (
+                              <span
+                                className={clsx(
+                                  "shrink-0 font-mono text-[11px]",
+                                  TEXT_FAINT,
+                                )}
+                              >
+                                #{formatJobId(job.id)}
+                              </span>
+                            ) : null}
+                          </span>
+                          <span
+                            className={clsx(
+                              "shrink-0 truncate text-xs",
+                              TEXT_MUTED,
+                            )}
+                          >
+                            {queueDisplayName}
+                          </span>
+                        </ListBoxItem>
+                      );
+                    },
+                  )}
+                  {isFinding && !foundJobs?.length ? (
+                    <ListBoxItem
+                      id={`${JOB_KEY}searching`}
+                      textValue="Searching jobs"
+                      isDisabled
+                      className={clsx(OVERLAY_ITEM, "gap-2.5", TEXT_MUTED)}
+                    >
+                      <Loader2
+                        aria-hidden="true"
+                        className="size-3.5 animate-spin"
+                      />
+                      Searching every queue…
+                    </ListBoxItem>
+                  ) : null}
+                </ListBoxSection>
+              ) : null}
+
               {currentQueue && currentQueuePath ? (
                 <ListBoxSection id="here">
                   <SectionHeader>{currentQueue.displayName}</SectionHeader>
@@ -260,6 +425,13 @@ export const CommandPalette = ({
                     label="Errors"
                     icon={<AlertTriangle className="size-3.5" />}
                   />
+                  {currentQueue.supports.jobNames ? (
+                    <Item
+                      id="view:types"
+                      label="Job types"
+                      icon={<Shapes className="size-3.5" />}
+                    />
+                  ) : null}
                   {currentQueue.supports.schedulers ? (
                     <Item
                       id="view:schedulers"

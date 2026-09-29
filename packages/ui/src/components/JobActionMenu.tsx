@@ -1,4 +1,4 @@
-import { Check, CopyPlus, Rocket, RotateCw, Trash2 } from "lucide-react";
+import { Check, CopyPlus, Play, RotateCw, Trash2 } from "lucide-react";
 import { type ReactElement, useMemo, useState } from "react";
 
 import { mutationToasts } from "../utils/mutationToasts";
@@ -29,7 +29,13 @@ type JobAction = {
   tone?: "destructive";
 };
 
-export const JobActionMenu = ({
+/**
+ * A job's actions: the one it most likely needs (Retry, Run now) and the
+ * rest. The panel places them twice over - a button and a menu in the header
+ * on wider screens; a full-width button in the body and a menu in the top bar
+ * on a phone - so the logic lives here and each placement renders its part.
+ */
+const useJobActions = ({
   job,
   status,
   queueName,
@@ -106,12 +112,13 @@ export const JobActionMenu = ({
     if (showPromote) {
       nextActions.push({
         key: "promote",
-        label: "Promote",
+        // Promote, in BullMQ's words; what it does, in the panel's.
+        label: "Run now",
         onSelect: () =>
           promoteMutation.mutate(input, {
             onSuccess: () => onRemove?.(input.jobId),
           }),
-        icon: <Rocket className="size-4" />,
+        icon: <Play className="size-4" />,
         isLoading: promoteMutation.isPending,
       });
     }
@@ -168,9 +175,50 @@ export const JobActionMenu = ({
   const overflowActions = actions.filter((action) => action !== primaryAction);
   const isAnyActionLoading = actions.some((action) => action.isLoading);
 
+  const confirmation = (
+    <Alert
+      isOpen={confirmRemoveJobId !== null}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) setConfirmRemoveJobId(null);
+      }}
+      isPending={removeMutation.isPending}
+      title="Remove job?"
+      // Falls back to this menu's job - the one it is keyed to - while the
+      // dialog fades out, rather than reading "job null".
+      description={`This permanently removes job ${
+        confirmRemoveJobId ?? job.id
+      } from ${queue?.displayName ?? queueName}. It cannot be undone.`}
+      action={
+        <Button
+          variant="filled"
+          colorScheme="red"
+          label="Remove"
+          onClick={() => {
+            const jobId = confirmRemoveJobId;
+            if (jobId === null) return;
+            removeMutation.mutate(
+              { queueName, jobId },
+              {
+                onSuccess: () => onRemove?.(jobId),
+                onSettled: () => setConfirmRemoveJobId(null),
+              },
+            );
+          }}
+        />
+      }
+    />
+  );
+
+  return { primaryAction, overflowActions, isAnyActionLoading, confirmation };
+};
+
+/** The header's actions: a button and a menu, or on a phone just the menu. */
+export const JobActionMenu = (props: JobActionMenuProps) => {
+  const { primaryAction, overflowActions, isAnyActionLoading, confirmation } =
+    useJobActions(props);
+
   return (
     <>
-      {/* Desktop: keep the immediate queue action visible and tuck the rest away. */}
       <div className="hidden items-center gap-2 sm:flex">
         {primaryAction ? (
           <Button
@@ -191,48 +239,36 @@ export const JobActionMenu = ({
         ) : null}
       </div>
 
-      {/* Mobile: everything in dropdown */}
-      {actions.length > 0 ? (
+      {/* A phone's top bar: the rest of the actions. The main one is a
+          full-width button under the job's name. */}
+      {overflowActions.length > 0 ? (
         <div className="sm:hidden">
           <ActionMenu
-            actions={actions}
+            actions={overflowActions}
             isDisabled={isAnyActionLoading}
-            ariaLabel="Job actions"
+            ariaLabel="More job actions"
+            triggerClassName="grid size-11 place-items-center rounded-[10px] p-0"
           />
         </div>
       ) : null}
 
-      <Alert
-        isOpen={confirmRemoveJobId !== null}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setConfirmRemoveJobId(null);
-        }}
-        isPending={removeMutation.isPending}
-        title="Remove job?"
-        // Falls back to this menu's job - the one it is keyed to - while the
-        // dialog fades out, rather than reading "job null".
-        description={`This permanently removes job ${
-          confirmRemoveJobId ?? job.id
-        } from ${queue?.displayName ?? queueName}. It cannot be undone.`}
-        action={
-          <Button
-            variant="filled"
-            colorScheme="red"
-            label="Remove"
-            onClick={() => {
-              const jobId = confirmRemoveJobId;
-              if (jobId === null) return;
-              removeMutation.mutate(
-                { queueName, jobId },
-                {
-                  onSuccess: () => onRemove?.(jobId),
-                  onSettled: () => setConfirmRemoveJobId(null),
-                },
-              );
-            }}
-          />
-        }
-      />
+      {confirmation}
     </>
+  );
+};
+
+/** A phone's full-width button for the job's main action. */
+export const JobPrimaryAction = (props: JobActionMenuProps) => {
+  const { primaryAction } = useJobActions(props);
+  if (!primaryAction) return null;
+  return (
+    <Button
+      size="lg"
+      label={primaryAction.label}
+      icon={primaryAction.icon}
+      onClick={primaryAction.onSelect}
+      isLoading={primaryAction.isLoading}
+      className="h-11 w-full text-[15px]"
+    />
   );
 };

@@ -105,6 +105,7 @@ export const StatStrip = ({
   action,
   columns,
   collapsibleOnPhones = false,
+  phoneSummary,
   children,
 }: {
   label: string;
@@ -118,6 +119,8 @@ export const StatStrip = ({
    * the page is for; from `sm` up the strip is always open.
    */
   collapsibleOnPhones?: boolean;
+  /** The strip in one line, for its folded header on a phone. */
+  phoneSummary?: ReactNode;
   children: ReactNode;
 }) => {
   const [isOpenOnPhone, setIsOpenOnPhone] = useState(false);
@@ -126,35 +129,54 @@ export const StatStrip = ({
 
   return (
     <section aria-label={ariaLabel} className={clsx("rounded-xl", CARD_BORDER)}>
-      <div className="flex h-9 items-center justify-between pr-1.5 pl-4">
+      <div
+        className={clsx(
+          "flex h-9 items-center justify-between pr-1.5 pl-4",
+          collapsibleOnPhones && "max-sm:h-11 max-sm:gap-2 max-sm:px-0",
+        )}
+      >
         {collapsibleOnPhones ? (
           <>
+            {/* The whole header is the toggle on a phone, and folded it
+                carries the strip's one-line reading instead of an empty box. */}
             <button
               type="button"
               aria-expanded={isOpenOnPhone}
               aria-controls={bodyId}
               onClick={() => setIsOpenOnPhone((open) => !open)}
               className={clsx(
-                "-ml-1 flex h-7 items-center gap-1 rounded-md px-1 sm:hidden",
+                "flex h-full min-w-0 flex-1 items-center justify-between gap-3 rounded-xl pr-3 pl-3.5 sm:hidden",
                 FOCUS_RING,
               )}
             >
               <span className={SECTION_LABEL}>{label}</span>
-              <ChevronDown
-                aria-hidden="true"
-                className={clsx(
-                  "size-3.5 transition-transform duration-150",
-                  TEXT_MUTED,
-                  isOpenOnPhone && "rotate-180",
+              <span className="flex min-w-0 items-center gap-2">
+                {isOpenOnPhone || !phoneSummary ? null : (
+                  <span className="min-w-0 truncate font-mono text-xs text-gray-700 tabular-nums dark:text-slate-200">
+                    {phoneSummary}
+                  </span>
                 )}
-              />
+                <ChevronDown
+                  aria-hidden="true"
+                  className={clsx(
+                    "size-4 shrink-0 transition-transform duration-150",
+                    TEXT_MUTED,
+                    isOpenOnPhone && "rotate-180",
+                  )}
+                />
+              </span>
             </button>
             <h2 className={clsx("hidden sm:block", SECTION_LABEL)}>{label}</h2>
           </>
         ) : (
           <h2 className={SECTION_LABEL}>{label}</h2>
         )}
-        <div className={clsx(isClosedOnPhone && "hidden sm:block")}>
+        <div
+          className={clsx(
+            isClosedOnPhone && "hidden sm:block",
+            collapsibleOnPhones && "max-sm:pr-1.5",
+          )}
+        >
           {action}
         </div>
       </div>

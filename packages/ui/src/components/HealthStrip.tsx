@@ -13,6 +13,7 @@ import {
 import type { Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { useQueuedash } from "./QueuedashProvider";
+import { useQueueLimits } from "./QueueLimits";
 import { Select, type SelectOption } from "./Select";
 import { Sparkline } from "./Sparkline";
 import {
@@ -129,15 +130,15 @@ const getSuccessRate = (completed: number, failed: number) => {
   return total > 0 ? (completed / total) * 100 : null;
 };
 
-const MetricCells = ({
-  queueName,
-  timeRange,
-  sparklineFrom,
-}: {
-  queueName: string;
-  timeRange: TimeRange;
-  sparklineFrom: SparklineFrom;
-}) => {
+/**
+ * The window's completed and failed metrics. The cells and the phone summary
+ * both read them; React Query shares the one request.
+ */
+const useHealthMetrics = (
+  queueName: string,
+  timeRange: TimeRange,
+  enabled = true,
+) => {
   const { preferences } = useQueuedash();
   const minutes = TIME_RANGES[timeRange].minutes;
   // Complete minutes only. The current one is still filling: counting it read
@@ -149,7 +150,7 @@ const MetricCells = ({
     trpc.queue.metrics.useQuery(
       { queueName, type: "completed", ...metricsWindow },
       {
-        enabled: !!queueName,
+        enabled: !!queueName && enabled,
         refetchInterval: preferences.refreshIntervalMs,
         // The range is in the query key, so without this every range change
         // destroys the numbers the user is comparing.
@@ -161,13 +162,99 @@ const MetricCells = ({
     trpc.queue.metrics.useQuery(
       { queueName, type: "failed", ...metricsWindow },
       {
-        enabled: !!queueName,
+        enabled: !!queueName && enabled,
         refetchInterval: preferences.refreshIntervalMs,
         placeholderData: keepPreviousData,
       },
     );
 
-  if (!completedMetrics && !failedMetrics) {
+  const completedCount = completedMetrics?.count || 0;
+  const failedCount = failedMetrics?.count || 0;
+  const totalCount = completedCount + failedCount;
+  // A queue that ran nothing has no success rate and no throughput - reporting
+  // "100.0%" for it is a claim about jobs that never existed.
+  const successRate = getSuccessRate(completedCount, failedCount);
+  // Per minute the window has history for: a queue three days old has not had
+  // seven days to run jobs in, and dividing by them understated its rate.
+  const throughput =
+    totalCount > 0
+      ? formatThroughput(
+          completedCount / Math.max(1, completedMetrics?.coveredMinutes ?? 0),
+        )
+      : null;
+
+  return {
+    minutes,
+    completedMetrics,
+    failedMetrics,
+    isLoaded: Boolean(completedMetrics || failedMetrics),
+    isStale: isCompletedStale || isFailedStale,
+    completedCount,
+    failedCount,
+    totalCount,
+    successRate,
+    throughput,
+  };
+};
+
+/** "96% ok": floored, so a queue with failures never rounds up to 100%. */
+const formatSuccessShare = (rate: number) => {
+  const floored = Math.floor(rate * 10) / 10;
+  return `${Number.isInteger(floored) ? floored : floored.toFixed(1)}% ok`;
+};
+
+/** The strip folded to one line on a phone: "96% ok · 11/min · 27 failed". */
+const HealthSummary = ({
+  queueName,
+  timeRange,
+}: {
+  queueName: string;
+  timeRange: TimeRange;
+}) => {
+  const { isLoaded, successRate, throughput, failedCount } = useHealthMetrics(
+    queueName,
+    timeRange,
+  );
+  if (!isLoaded) return null;
+  if (successRate === null) return <>{EMPTY_PERIOD_LABEL}</>;
+  return (
+    <>
+      {formatSuccessShare(successRate)} · {throughput}
+      {" · "}
+      <span
+        className={
+          failedCount > 0 ? "text-red-600 dark:text-red-400" : undefined
+        }
+      >
+        {formatCount(failedCount)} failed
+      </span>
+    </>
+  );
+};
+
+const MetricCells = ({
+  queueName,
+  timeRange,
+  sparklineFrom,
+}: {
+  queueName: string;
+  timeRange: TimeRange;
+  sparklineFrom: SparklineFrom;
+}) => {
+  const {
+    minutes,
+    completedMetrics,
+    failedMetrics,
+    isLoaded,
+    isStale,
+    completedCount,
+    failedCount,
+    totalCount,
+    successRate,
+    throughput,
+  } = useHealthMetrics(queueName, timeRange);
+
+  if (!isLoaded) {
     return (
       <>
         {[...Array(4)].map((_, i) => (
@@ -177,14 +264,6 @@ const MetricCells = ({
     );
   }
 
-  const isStale = isCompletedStale || isFailedStale;
-  const completedCount = completedMetrics?.count || 0;
-  const failedCount = failedMetrics?.count || 0;
-  const totalCount = completedCount + failedCount;
-
-  // A queue that ran nothing has no success rate and no throughput - reporting
-  // "100.0%" for it is a claim about jobs that never existed.
-  const successRate = getSuccessRate(completedCount, failedCount);
   // Every baseline is the previous window, never `meta.prevCount`: that is the
   // library's running total, so trends against it read about -99% and a spike
   // of failures drew a green badge. The previous window's rate needs both of
@@ -210,14 +289,6 @@ const MetricCells = ({
   const failedTrend = failedMetrics
     ? calculateTrend(failedMetrics.count, failedMetrics.previousCount)
     : null;
-  // Per minute the window has history for: a queue three days old has not had
-  // seven days to run jobs in, and dividing by them understated its rate.
-  const throughput =
-    totalCount > 0
-      ? formatThroughput(
-          completedCount / Math.max(1, completedMetrics?.coveredMinutes ?? 0),
-        )
-      : null;
   const successRateSparkline =
     completedMetrics?.data && failedMetrics?.data
       ? completedMetrics.data.map((c, i) => {
@@ -251,7 +322,9 @@ const MetricCells = ({
         isStale={isStale}
         label="Throughput"
         value={throughput ?? "—"}
-        trend={<TrendIndicator trend={completedTrend} />}
+        trend={
+          throughput === null ? null : <TrendIndicator trend={completedTrend} />
+        }
         sub={
           throughput === null
             ? EMPTY_PERIOD_LABEL
@@ -363,10 +436,12 @@ const RunTimeCell = ({
  * opens on demand instead of sitting between the metrics and the jobs.
  */
 const WorkersCell = ({
+  queue,
   queueName,
   hasPendingWork,
   activeCount,
 }: {
+  queue: Queue | undefined;
   queueName: string;
   hasPendingWork: boolean;
   activeCount: number;
@@ -388,6 +463,17 @@ const WorkersCell = ({
     summary.tone === "warning"
       ? "text-amber-600 dark:text-amber-400"
       : undefined;
+  // Waiting out a rate-limit window: the workers are there, and idle for a
+  // reason worth saying. Only the context line turns amber.
+  const limitsReq = useQueueLimits(queue, queueName);
+  const rateLimitedForMs = limitsReq.data?.rateLimitedForMs ?? 0;
+  const isRateLimited = rateLimitedForMs > 0 && summary.tone !== "warning";
+  const sub = isRateLimited
+    ? `rate limited · ${formatDuration(rateLimitedForMs)}`
+    : summary.sub;
+  const subToneClass = isRateLimited
+    ? "text-amber-600 dark:text-amber-400"
+    : toneClass;
 
   return (
     <>
@@ -395,7 +481,11 @@ const WorkersCell = ({
         type="button"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label={`Workers: ${summary.value}, ${summary.sub}`}
+        aria-label={`Workers: ${summary.value}, ${
+          isRateLimited
+            ? `rate limited for ${formatDuration(rateLimitedForMs)}`
+            : summary.sub
+        }`}
         className={clsx(
           STAT_CELL,
           FOCUS_RING_INSET,
@@ -414,9 +504,7 @@ const WorkersCell = ({
               {summary.value}
             </span>
           </div>
-          <p className={clsx(STAT_SUB, toneClass ?? TEXT_MUTED)}>
-            {summary.sub}
-          </p>
+          <p className={clsx(STAT_SUB, subToneClass ?? TEXT_MUTED)}>{sub}</p>
         </div>
         <ChevronRight
           aria-hidden="true"
@@ -431,6 +519,7 @@ const WorkersCell = ({
           open={open}
           onOpenChange={setOpen}
           queueName={queueName}
+          queue={queue}
           workers={workersReq.data}
           isLoading={workersReq.isLoading}
           isError={workersReq.isError}
@@ -472,6 +561,11 @@ export const HealthStrip = ({
       ariaLabel="Queue health"
       columns={cellCount}
       collapsibleOnPhones
+      phoneSummary={
+        supportsMetrics ? (
+          <HealthSummary queueName={queueName} timeRange={timeRange} />
+        ) : null
+      }
       action={
         supportsMetrics ? (
           // Inside the strip because it scopes only these numbers - as a
@@ -494,6 +588,7 @@ export const HealthStrip = ({
       />
       {supportsWorkers ? (
         <WorkersCell
+          queue={queue}
           queueName={queueName}
           hasPendingWork={hasPendingWork}
           activeCount={queue?.counts.active ?? 0}

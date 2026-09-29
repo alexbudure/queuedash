@@ -3,10 +3,11 @@ import { Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { formatCountLabel, formatDurationFromSeconds } from "../utils/format";
-import { FOCUS_RING, TEXT_MUTED } from "../utils/styles";
-import type { RouterOutput } from "../utils/trpc";
+import { FOCUS_RING, SECTION_LABEL, TEXT_MUTED } from "../utils/styles";
+import type { Queue, RouterOutput } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { useQueuedash } from "./QueuedashProvider";
+import { hasQueueLimits, QueueLimitsSection } from "./QueueLimits";
 import { SidePanelDialog } from "./SidePanelDialog";
 
 type Worker = NonNullable<RouterOutput["queue"]["workers"]>[number];
@@ -83,6 +84,7 @@ export const WorkersPanel = ({
   open,
   onOpenChange,
   queueName,
+  queue,
   workers,
   isLoading,
   isError,
@@ -91,62 +93,77 @@ export const WorkersPanel = ({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   queueName: string;
-}) => (
-  <SidePanelDialog
-    title="Workers"
-    subtitle={queueName}
-    open={open}
-    onOpenChange={onOpenChange}
-    panelClassName="!max-w-[440px]"
-  >
-    <div className="px-6 py-5">
-      {isLoading ? (
-        <div className={clsx("flex items-center gap-2 text-xs", TEXT_MUTED)}>
-          <Loader2 className="size-3.5 animate-spin" />
-          Checking workers…
-        </div>
-      ) : isError ? (
-        <p className="text-xs text-red-600 dark:text-red-400">
-          Could not check workers.
-        </p>
-      ) : workers === null ? (
-        <p className={clsx("text-xs", TEXT_MUTED)}>
-          Worker inspection is unavailable from this Redis server.
-        </p>
-      ) : workers?.length ? (
-        <ul className="space-y-2">
-          {workers.map((worker) => {
-            const name = worker.name || `Worker ${worker.id}`;
-            return (
-              <li
-                key={worker.id}
-                className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-slate-800"
-              >
-                <div
-                  title={name}
-                  className="truncate font-mono text-xs font-medium text-gray-800 dark:text-slate-200"
-                >
-                  {name}
-                </div>
-                <div className={clsx("mt-1 text-[10px]", TEXT_MUTED)}>
-                  {formatConnected(worker.ageSeconds)}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : hasPendingWork ? (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          No workers connected — jobs will not be processed.
-        </p>
-      ) : (
-        <p className={clsx("text-xs", TEXT_MUTED)}>
-          No active workers reported.
-        </p>
-      )}
-    </div>
-  </SidePanelDialog>
-);
+  /** For the limits the workers follow, where the library keeps any. */
+  queue?: Queue;
+}) => {
+  const showLimits = queue !== undefined && hasQueueLimits(queue);
+  return (
+    <SidePanelDialog
+      title="Workers"
+      subtitle={queueName}
+      open={open}
+      onOpenChange={onOpenChange}
+      panelClassName="!max-w-[440px]"
+    >
+      <div className="space-y-6 px-6 py-5">
+        {showLimits ? (
+          <QueueLimitsSection queue={queue} queueName={queueName} />
+        ) : null}
+        <section aria-label="Connected workers">
+          {showLimits ? (
+            <h3 className={`${SECTION_LABEL} mb-3`}>Connected</h3>
+          ) : null}
+          {isLoading ? (
+            <div
+              className={clsx("flex items-center gap-2 text-xs", TEXT_MUTED)}
+            >
+              <Loader2 className="size-3.5 animate-spin" />
+              Checking workers…
+            </div>
+          ) : isError ? (
+            <p className="text-xs text-red-600 dark:text-red-400">
+              Could not check workers.
+            </p>
+          ) : workers === null ? (
+            <p className={clsx("text-xs", TEXT_MUTED)}>
+              Worker inspection is unavailable from this Redis server.
+            </p>
+          ) : workers?.length ? (
+            <ul className="space-y-2">
+              {workers.map((worker) => {
+                const name = worker.name || `Worker ${worker.id}`;
+                return (
+                  <li
+                    key={worker.id}
+                    className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-slate-800"
+                  >
+                    <div
+                      title={name}
+                      className="truncate font-mono text-xs font-medium text-gray-800 dark:text-slate-200"
+                    >
+                      {name}
+                    </div>
+                    <div className={clsx("mt-1 text-[10px]", TEXT_MUTED)}>
+                      {formatConnected(worker.ageSeconds)}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : hasPendingWork ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              No workers connected — jobs will not be processed.
+            </p>
+          ) : (
+            <p className={clsx("text-xs", TEXT_MUTED)}>
+              No active workers reported.
+            </p>
+          )}
+        </section>
+      </div>
+    </SidePanelDialog>
+  );
+};
 
 /**
  * The worker count as one more fact in a queue's subtitle, for queues with no
@@ -154,9 +171,11 @@ export const WorkersPanel = ({
  * amber when jobs are waiting and nobody is there to run them.
  */
 export const WorkersInline = ({
+  queue,
   queueName,
   hasPendingWork,
 }: {
+  queue?: Queue;
   queueName: string;
   hasPendingWork: boolean;
 }) => {
@@ -197,6 +216,7 @@ export const WorkersInline = ({
           open={open}
           onOpenChange={setOpen}
           queueName={queueName}
+          queue={queue}
           workers={workersReq.data}
           isLoading={workersReq.isLoading}
           isError={workersReq.isError}

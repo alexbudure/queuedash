@@ -8,7 +8,7 @@ import {
   Copy,
   RotateCcw,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { Link } from "react-router";
 
 import { formatCount } from "../utils/format";
@@ -182,15 +182,31 @@ export const FailureSummary = ({
           ) : null}
 
           {frame ? (
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div
+              className={clsx(
+                "mt-2 flex items-center justify-between gap-3 max-sm:mt-2.5 max-sm:min-h-11 max-sm:border-t max-sm:py-1.5",
+                tone.rule,
+              )}
+            >
               <span
                 title={`${frame.path}${frame.line === null ? "" : `:${frame.line}`}`}
                 className={clsx(
-                  "min-w-0 truncate font-mono text-xs",
+                  "min-w-0 truncate font-mono text-xs max-sm:hidden",
                   tone.text,
                 )}
               >
                 {formatFrame(frame)}
+              </span>
+              {/* A phone has no room for both on one line, and a truncated
+                  path was just "src/…": the file goes under the function. */}
+              <span className="min-w-0 font-mono text-xs leading-[17px] sm:hidden">
+                <span className={clsx("block truncate", tone.title)}>
+                  {frame.fn ?? "(anonymous)"}
+                </span>
+                <span className={clsx("block break-words", tone.text)}>
+                  <BreakablePath path={frame.label} />
+                  {frame.line === null ? "" : `:${frame.line}`}
+                </span>
               </span>
               <OpenInEditor
                 frame={frame}
@@ -417,8 +433,26 @@ const AttemptRow = ({
   );
 };
 
+// On a phone the file sits under the function, whole, rather than beside it
+// cut down to "src…".
+/** A path that wraps after a "/" rather than inside a name or a line number. */
+const BreakablePath = ({ path }: { path: string }) => (
+  <>
+    {path.split("/").map((part, index) => (
+      <Fragment key={index}>
+        {index > 0 ? (
+          <>
+            /<wbr />
+          </>
+        ) : null}
+        {part}
+      </Fragment>
+    ))}
+  </>
+);
+
 const FRAME_GRID =
-  "grid min-h-7 grid-cols-[minmax(0,13rem)_minmax(0,1fr)_1.5rem] items-center gap-x-3 rounded-md pr-0.5 pl-2";
+  "grid min-h-7 grid-cols-[minmax(0,13rem)_minmax(0,1fr)_1.5rem] items-center gap-x-3 rounded-md pr-0.5 pl-2 max-sm:min-h-12 max-sm:grid-cols-[minmax(0,1fr)_1.5rem] max-sm:py-1.5";
 
 const FrameRow = ({
   frame,
@@ -436,7 +470,7 @@ const FrameRow = ({
     <span
       title={frame.fn ?? undefined}
       className={clsx(
-        "truncate font-mono text-xs",
+        "truncate font-mono text-xs max-sm:col-start-1 max-sm:row-start-1 max-sm:text-[13px] max-sm:leading-[18px]",
         isLibrary ? TEXT_MUTED : "text-gray-900 dark:text-white",
       )}
     >
@@ -444,9 +478,12 @@ const FrameRow = ({
     </span>
     <span
       title={`${frame.path}${frame.line === null ? "" : `:${frame.line}:${frame.column ?? 1}`}`}
-      className={clsx("truncate font-mono text-xs", TEXT_MUTED)}
+      className={clsx(
+        "truncate font-mono text-xs max-sm:col-start-1 max-sm:row-start-2 max-sm:leading-4 max-sm:break-words max-sm:whitespace-normal",
+        TEXT_MUTED,
+      )}
     >
-      {frame.label}
+      <BreakablePath path={frame.label} />
       {frame.line === null ? null : (
         <span className={TEXT_FAINT}>
           :{frame.line}
@@ -454,11 +491,9 @@ const FrameRow = ({
         </span>
       )}
     </span>
-    {isLibrary ? (
-      <span aria-hidden="true" />
-    ) : (
-      <OpenInEditor frame={frame} variant="icon" />
-    )}
+    <span className="flex max-sm:col-start-2 max-sm:row-span-2 max-sm:row-start-1 max-sm:justify-center">
+      {isLibrary ? null : <OpenInEditor frame={frame} variant="icon" />}
+    </span>
   </div>
 );
 

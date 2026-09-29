@@ -141,6 +141,7 @@ export const QueueActionMenu = ({ queue }: QueueActionMenuProps) => {
             }
             isDisabled={isRunningActionPending}
             ariaLabel="Queue actions"
+            triggerClassName="grid size-11 place-items-center rounded-[10px] p-0"
           />
         </div>
       ) : null}

@@ -1,6 +1,7 @@
 import { clsx } from "clsx";
-import { Clock, Rocket } from "lucide-react";
+import { Clock, PlusCircle, Rocket, Timer } from "lucide-react";
 
+import { formatMoment } from "../utils/dateRange";
 import { formatDuration } from "../utils/format";
 import { isFailedJob, isRunningJob, STATUS_ICONS } from "../utils/status";
 import { TEXT_MUTED } from "../utils/styles";
@@ -11,9 +12,93 @@ type JobTimelineProps = {
   job: Job;
   /** The job's current status, when known. */
   status?: Status | null;
+  /** Offered beside a delayed job's due time, where it can be moved. */
+  onReschedule?: () => void;
 };
 
-export const JobTimeline = ({ job, status }: JobTimelineProps) => {
+/** When a delayed job is due: where the library scheduled it, or, where that
+ *  isn't known, when it was added plus its delay. */
+export const getJobRunAt = (job: Job): number | null => {
+  if (job.runAt) return new Date(job.runAt).getTime();
+  const delay = Number((job.opts as { delay?: unknown } | null)?.delay);
+  return job.createdAt && Number.isFinite(delay) && delay > 0
+    ? new Date(job.createdAt).getTime() + delay
+    : null;
+};
+
+/**
+ * A delayed job has not started a life to draw yet: it was added, and it runs
+ * at a set time. That time is the thing to know, and to move.
+ */
+const DelayedTimeline = ({
+  job,
+  onReschedule,
+}: {
+  job: Job;
+  onReschedule?: () => void;
+}) => {
+  const addedAt = job.createdAt ? new Date(job.createdAt) : null;
+  const runAt = getJobRunAt(job);
+  const now = Date.now();
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800">
+          <PlusCircle className="size-3 text-gray-500 dark:text-slate-400" />
+        </div>
+        <div className="flex min-w-0 flex-col text-xs">
+          <span className="font-medium text-gray-500 dark:text-slate-400">
+            Added
+          </span>
+          {addedAt ? (
+            <span className={clsx("tabular-nums", TEXT_MUTED)}>
+              <Timestamp value={addedAt} variant="time" />
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="h-px min-w-[20px] flex-1 bg-gray-100 dark:bg-slate-800" />
+
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-cyan-600 dark:bg-cyan-500">
+          <Timer className="size-3 text-white dark:text-slate-900" />
+        </div>
+        <div className="flex min-w-0 flex-col text-xs">
+          <span className="font-medium text-cyan-700 dark:text-cyan-400">
+            {runAt === null ? "Delayed" : `Runs at ${formatMoment(runAt, now)}`}
+          </span>
+          {runAt === null ? null : (
+            <span className={clsx("tabular-nums", TEXT_MUTED)}>
+              {runAt > now ? `in ${formatDuration(runAt - now)}` : "due now"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {onReschedule ? (
+        <button
+          type="button"
+          onClick={onReschedule}
+          className="ml-auto rounded text-xs font-medium text-gray-500 transition-colors duration-150 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none dark:text-slate-400 dark:hover:text-white"
+        >
+          Reschedule
+        </button>
+      ) : null}
+    </div>
+  );
+};
+
+export const JobTimeline = ({
+  job,
+  status,
+  onReschedule,
+}: JobTimelineProps) => {
+  if (status === "delayed") {
+    return <DelayedTimeline job={job} onReschedule={onReschedule} />;
+  }
+
   const addedAt = job.createdAt ? new Date(job.createdAt) : null;
   const processedAt = job.processedAt ? new Date(job.processedAt) : null;
   const finishedAt = job.finishedAt ? new Date(job.finishedAt) : null;

@@ -4,10 +4,10 @@ import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { formatCount } from "../utils/format";
 import { FOCUS_RING_DATA, TEXT_MUTED } from "../utils/styles";
 
-export type QueueView = "jobs" | "errors" | "schedulers";
+export type QueueView = "jobs" | "errors" | "types" | "schedulers";
 
 const TAB =
-  "relative -mb-px flex h-9 items-center gap-1.5 border-b-2 px-0.5 text-sm font-medium whitespace-nowrap transition-colors duration-150";
+  "relative flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-0.5 text-sm font-medium whitespace-nowrap transition-colors duration-150";
 
 /**
  * Schedulers are not a ninth job status - they are the things that *make*
@@ -19,12 +19,15 @@ export const QueueViewTabs = ({
   errorCount,
   schedulerCount,
   showSchedulers,
+  showTypes,
   onViewChange,
 }: {
   view: QueueView;
   errorCount: number | undefined;
   schedulerCount: number | undefined;
   showSchedulers: boolean;
+  /** Where jobs have names to group them by. */
+  showTypes: boolean;
   onViewChange: (view: QueueView) => void;
 }) => {
   const tabs: Array<{
@@ -35,6 +38,9 @@ export const QueueViewTabs = ({
   }> = [
     { id: "jobs", label: "Jobs", count: undefined },
     { id: "errors", label: "Errors", count: errorCount, isAlert: true },
+    ...(showTypes
+      ? [{ id: "types" as const, label: "Job types", count: undefined }]
+      : []),
     ...(showSchedulers
       ? [
           {
@@ -58,7 +64,11 @@ export const QueueViewTabs = ({
           onViewChange(next as QueueView);
         }
       }}
-      className="flex gap-5 border-b border-gray-100/60 dark:border-slate-800/60"
+      // Four tabs outgrow a phone, so the row scrolls there instead of wrapping.
+      // The rule under the tabs is an inset shadow rather than a border: a
+      // scroller clips at its border, which would cut the active tab's
+      // underline where it overlaps the rule.
+      className="flex gap-5 overflow-x-auto shadow-[inset_0_-1px_0_color-mix(in_oklab,var(--color-gray-100)_60%,transparent)] [scrollbar-width:none] dark:shadow-[inset_0_-1px_0_color-mix(in_oklab,var(--color-slate-800)_60%,transparent)] [&::-webkit-scrollbar]:hidden"
     >
       {tabs.map((tab) => {
         const isActive = tab.id === view;

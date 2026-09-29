@@ -30,7 +30,7 @@ export const DetailSection = ({
   const hasContent = Children.toArray(children).length > 0;
 
   return (
-    <section className="px-6 py-5">
+    <section className="px-6 py-5 max-sm:px-4">
       {title || action ? (
         <header
           className={clsx(
@@ -51,9 +51,10 @@ export const DetailSection = ({
  * Label on the left, value beside it, one row per fact. A two-column grid of
  * label-over-value pairs made "Priority 2" and "Attempt 1" float around each
  * other; a list keeps every label in one column and every value in another.
+ * A phone has no room for the label column, so each label sits over its value.
  */
 export const PropertyList = ({ children }: { children: ReactNode }) => (
-  <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
+  <dl className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm max-sm:grid-cols-1 max-sm:gap-y-0">
     {children}
   </dl>
 );
@@ -69,13 +70,18 @@ export const Property = ({
   mono?: boolean;
 }) => (
   <>
-    <dt className={clsx("truncate pt-px text-xs leading-5", TEXT_MUTED)}>
+    <dt
+      className={clsx(
+        "truncate pt-px text-xs leading-5 max-sm:text-[13px]",
+        TEXT_MUTED,
+      )}
+    >
       {label}
     </dt>
     <dd
       className={clsx(
-        "min-w-0 leading-5 break-words text-gray-900 dark:text-white",
-        mono && "font-mono text-[13px]",
+        "min-w-0 leading-5 break-words text-gray-900 max-sm:mb-2.5 max-sm:text-[15px] max-sm:leading-[22px] dark:text-white",
+        mono && "font-mono text-[13px] max-sm:text-sm",
       )}
     >
       {value}
