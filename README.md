@@ -40,7 +40,7 @@ change, and which job data reaches their browser.
         <img src="assets/screenshots/queue-light.png" alt="The Image processing queue, with its success rate, throughput, failures, run times, and workers above its jobs">
       </picture>
       <p><strong>Watch a queue's health</strong><br>
-      Success rate, throughput, failures, run times at p50 and p95, and its workers, from the last minute to the last week.</p>
+      Success rate, throughput, failures, run times at p50 and p95, and its workers, from the last minute to the last week. Job types break it down by job name, and the workers panel sets the queue's concurrency and rate limit.</p>
     </td>
   </tr>
   <tr>
@@ -68,7 +68,7 @@ change, and which job data reaches their browser.
         <img src="assets/screenshots/search-light.png" alt="Completed jobs filtered by the text password-reset">
       </picture>
       <p><strong>Find the job you need</strong><br>
-      Press <kbd>/</kbd> to filter by text, or sort by date. The view lives in the URL, so you can share it. <kbd>⌘</kbd> <kbd>K</kbd> jumps to any queue, status, or page.</p>
+      Press <kbd>/</kbd> to filter by text, pick a date range, or sort by date. The view lives in the URL, so you can share it. <kbd>⌘</kbd> <kbd>K</kbd> finds any job in any queue by its id or text, and jumps to any queue, status, or page.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -85,8 +85,8 @@ change, and which job data reaches their browser.
         <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/duplicate-dark.png">
         <img src="assets/screenshots/duplicate-light.png" alt="A failed email job duplicated, with the one line that changed marked">
       </picture>
-      <p><strong>Add and duplicate jobs</strong><br>
-      Add a job with its name, data, and options, or duplicate one to run it again with a change. Queuedash marks what you changed.</p>
+      <p><strong>Fix, add and duplicate jobs</strong><br>
+      Edit a failed job's data and retry that same job, move a delayed one, add a job, or duplicate one to run it again with a change. Queuedash marks what you changed.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
