@@ -12,9 +12,15 @@ import {
   OVERVIEW_STATS_GRID,
   OverviewQueueCard,
 } from "../components/OverviewQueueCard";
+import { PHONE_HAIRLINE, PHONE_ROW_LINE } from "../components/phoneStyles";
 import { useQueuedash } from "../components/QueuedashProvider";
 import { Skeleton } from "../components/Skeleton";
-import { StatCell, StatCellSkeleton, StatStrip } from "../components/StatStrip";
+import {
+  StatCell,
+  StatCellSkeleton,
+  StatStrip,
+  type StatTone,
+} from "../components/StatStrip";
 import { NUM_OF_RETRIES } from "../utils/config";
 import { formatCount, formatCountLabel } from "../utils/format";
 import { mutationToasts } from "../utils/mutationToasts";
@@ -22,8 +28,18 @@ import { SECTION_LABEL, TEXT_MUTED } from "../utils/styles";
 import { trpc } from "../utils/trpc";
 
 /** The overview is one list, not a stack of chips: the rows sit directly on the
- *  page's own card, separated by the standard hairline. */
-const LIST_DIVIDER = "divide-y divide-gray-100/60 dark:divide-slate-800/60";
+ *  page's own card, separated by the standard hairline. On a phone each row
+ *  draws its own top line instead: a queue renders a phone row and a hidden
+ *  desktop one, and a divider between children would fall between those. */
+const LIST_DIVIDER =
+  "divide-y divide-gray-100/60 max-sm:divide-y-0 dark:divide-slate-800/60";
+
+/** The strip's own tones, for the phone grid that stands in for it. */
+const PHONE_STAT_TONE: Record<StatTone, string> = {
+  neutral: "text-gray-900 dark:text-white",
+  negative: "text-red-600 dark:text-red-400",
+  warning: "text-amber-600 dark:text-amber-400",
+};
 
 type QueueSummary = {
   name: string;
@@ -141,6 +157,41 @@ export const HomePage = () => {
     ]
       .filter(Boolean)
       .join(" · ") || "all running";
+  // One set of numbers for the strip and for the phone grid that replaces it.
+  const stats: { label: string; value: string; sub: string; tone: StatTone }[] =
+    [
+      {
+        label: "Queues",
+        value: formatCount(data?.length ?? 0),
+        sub: queuesSub,
+        tone: fleet.unavailable > 0 ? "warning" : "neutral",
+      },
+      {
+        label: "Active",
+        value: formatCount(fleet.active),
+        sub:
+          fleet.busyQueues > 0
+            ? `in ${formatCountLabel(fleet.busyQueues, "queue")}`
+            : "nothing processing",
+        tone: "neutral",
+      },
+      {
+        label: "Waiting",
+        value: formatCount(fleet.waiting),
+        sub: `${formatCount(fleet.delayed)} delayed`,
+        tone: "neutral",
+      },
+      {
+        label: "Failed",
+        value: formatCount(fleet.failed),
+        sub:
+          fleet.failingQueues > 0
+            ? `in ${formatCountLabel(fleet.failingQueues, "queue")}`
+            : "none",
+        tone: fleet.failed > 0 ? "negative" : "neutral",
+      },
+    ];
+  const isSumming = isLoading || fleet.pending > 0;
 
   const pausableCount =
     data?.filter(
@@ -195,18 +246,26 @@ export const HomePage = () => {
     <Layout>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h1 className="text-lg font-semibold text-gray-900 max-sm:text-[22px] max-sm:leading-7 max-sm:tracking-[-0.01em] dark:text-white">
             Overview
           </h1>
           {/* Always rendered: dropping the line while loading pushed the list
               below it up by ~20px, then back down when the count arrived. */}
-          <p className={clsx("mt-0.5 text-sm", TEXT_MUTED)}>
+          <p className={clsx("mt-0.5 text-sm max-sm:mt-1", TEXT_MUTED)}>
             {data
               ? `${formatCountLabel(data.length, "queue")} on this dashboard`
               : " "}
           </p>
         </div>
-        {actions.length > 0 ? <ActionMenu actions={actions} /> : null}
+        {actions.length > 0 ? (
+          // A 44px touch target in a phone's corner, like the queue page's.
+          <div className="shrink-0 max-sm:-mt-2 max-sm:-mr-2.5">
+            <ActionMenu
+              actions={actions}
+              triggerClassName="max-sm:grid max-sm:size-11 max-sm:place-items-center max-sm:rounded-[10px] max-sm:p-0"
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* The same strip the queue page opens with, summed across the fleet:
@@ -214,49 +273,81 @@ export const HomePage = () => {
           wrong?", and four column totals answer it before the list is read. */}
       {isLoading || (data && data.length > 0) ? (
         <div className="mt-4">
-          <StatStrip label="Health" ariaLabel="Fleet health" columns={4}>
-            {isLoading || fleet.pending > 0 ? (
-              [...Array(4)].map((_, i) => <StatCellSkeleton key={i} />)
-            ) : (
-              <>
-                <StatCell
-                  label="Queues"
-                  value={formatCount(data?.length ?? 0)}
-                  sub={queuesSub}
-                  tone={fleet.unavailable > 0 ? "warning" : "neutral"}
-                />
-                <StatCell
-                  label="Active"
-                  value={formatCount(fleet.active)}
-                  sub={
-                    fleet.busyQueues > 0
-                      ? `in ${formatCountLabel(fleet.busyQueues, "queue")}`
-                      : "nothing processing"
-                  }
-                />
-                <StatCell
-                  label="Waiting"
-                  value={formatCount(fleet.waiting)}
-                  sub={`${formatCount(fleet.delayed)} delayed`}
-                />
-                <StatCell
-                  label="Failed"
-                  value={formatCount(fleet.failed)}
-                  tone={fleet.failed > 0 ? "negative" : "neutral"}
-                  sub={
-                    fleet.failingQueues > 0
-                      ? `in ${formatCountLabel(fleet.failingQueues, "queue")}`
-                      : "none"
-                  }
-                />
-              </>
+          <div className="max-sm:hidden">
+            <StatStrip label="Health" ariaLabel="Fleet health" columns={4}>
+              {isSumming
+                ? [...Array(4)].map((_, i) => <StatCellSkeleton key={i} />)
+                : stats.map((stat) => <StatCell key={stat.label} {...stat} />)}
+            </StatStrip>
+          </div>
+          {/* The same four numbers without the strip's header row: on a
+              phone the page title sits right above them, and "Health" only
+              repeated it. */}
+          <section
+            aria-label="Fleet health"
+            className={clsx(
+              "overflow-hidden rounded-xl border sm:hidden",
+              PHONE_HAIRLINE,
             )}
-          </StatStrip>
+          >
+            <div className="grid grid-cols-2">
+              {stats.map((stat, index) => (
+                <div
+                  key={stat.label}
+                  className={clsx(
+                    "px-4 py-3.5",
+                    PHONE_HAIRLINE,
+                    index % 2 === 1 && "border-l",
+                    index >= 2 && "border-t",
+                  )}
+                >
+                  {isSumming ? (
+                    <>
+                      <Skeleton className="h-4 w-16 rounded" />
+                      <Skeleton className="mt-1 h-[26px] w-14 rounded" />
+                      <Skeleton className="mt-1 h-4 w-24 rounded" />
+                    </>
+                  ) : (
+                    <>
+                      <p className={SECTION_LABEL}>{stat.label}</p>
+                      <p
+                        className={clsx(
+                          "mt-1 font-mono text-xl leading-[26px] tabular-nums",
+                          PHONE_STAT_TONE[stat.tone],
+                        )}
+                      >
+                        {stat.value}
+                      </p>
+                      <p
+                        className={clsx(
+                          "mt-1 truncate font-mono text-xs leading-4 tabular-nums",
+                          stat.tone === "warning"
+                            ? PHONE_STAT_TONE.warning
+                            : TEXT_MUTED,
+                        )}
+                      >
+                        {stat.sub}
+                      </p>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       ) : null}
 
       <section className="mt-5">
-        <h2 className="sr-only">Queues</h2>
+        {/* Visible on a phone, which has no column header row to stand in
+            for it; a pinned split names its own groups instead. */}
+        <h2
+          className={clsx(
+            SECTION_LABEL,
+            pinnedQueues.length > 0 ? "sr-only" : "max-sm:mb-2 sm:sr-only",
+          )}
+        >
+          Queues
+        </h2>
 
         {isLoading ? (
           // Same wrapper as the loaded list, so the rows do not shift when
@@ -265,8 +356,15 @@ export const HomePage = () => {
             <ColumnLabels />
             <div className={LIST_DIVIDER}>
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="-mx-3 px-3 py-2.5">
+                <div
+                  key={i}
+                  className={clsx(
+                    "-mx-3 px-3 py-2.5 max-sm:mx-0 max-sm:px-0 max-sm:py-3",
+                    PHONE_ROW_LINE,
+                  )}
+                >
                   <Skeleton className="h-5 rounded" />
+                  <Skeleton className="mt-1.5 h-4 w-40 rounded sm:hidden" />
                 </div>
               ))}
             </div>

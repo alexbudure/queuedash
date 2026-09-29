@@ -1,6 +1,6 @@
 import { keepPreviousData } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { AlertTriangle, RotateCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
@@ -14,9 +14,11 @@ import { Skeleton } from "../components/Skeleton";
 import { NUM_OF_RETRIES } from "../utils/config";
 import {
   type FlowJob,
+  type FlowSegment,
   flattenFlow,
   formatJobId,
   getFlowNodeKey,
+  getFlowSegments,
   getFlowWindow,
   getWaitingOn,
   summarizeFlow,
@@ -25,7 +27,7 @@ import {
 } from "../utils/flow";
 import { formatCount, formatDuration, pluralize } from "../utils/format";
 import { BULK_VERBS, bulkResultToast } from "../utils/mutationToasts";
-import { FOCUS_RING, TEXT_MUTED } from "../utils/styles";
+import { FOCUS_RING, TEXT_FAINT, TEXT_MUTED } from "../utils/styles";
 import type { Job } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { isShortcutExemptTarget } from "../utils/viewState";
@@ -55,12 +57,39 @@ const toJobSnapshot = (job: FlowJob): Job => ({
   attemptsMade: job.attemptsMade,
 });
 
-const LEGEND = [
-  { label: "Waiting", className: "bg-gray-300 dark:bg-slate-600" },
-  { label: "Waiting for children", className: "qd-flow-children" },
-  { label: "Active", className: "bg-blue-500" },
-  { label: "Ran", className: "bg-green-500" },
-  { label: "Failed attempt", className: "bg-red-500" },
+// `shortLabel` is the phone's, where the legend shares a line with the
+// clock's range.
+const LEGEND: ReadonlyArray<{
+  kind: FlowSegment["kind"];
+  label: string;
+  shortLabel: string;
+  className: string;
+}> = [
+  {
+    kind: "waiting",
+    label: "Waiting",
+    shortLabel: "Waiting",
+    className: "bg-gray-300 dark:bg-slate-600",
+  },
+  {
+    kind: "children",
+    label: "Waiting for children",
+    shortLabel: "Children",
+    className: "qd-flow-children",
+  },
+  {
+    kind: "running",
+    label: "Active",
+    shortLabel: "Active",
+    className: "bg-blue-500",
+  },
+  { kind: "ran", label: "Ran", shortLabel: "Ran", className: "bg-green-500" },
+  {
+    kind: "failed",
+    label: "Failed attempt",
+    shortLabel: "Failed",
+    className: "bg-red-500",
+  },
 ];
 
 const describeWaitingOn = (root: FlowJob, now: number) => {
@@ -373,6 +402,10 @@ const FlowView = ({
     summary.counts.failed && `${summary.counts.failed} failed`,
     summary.counts.waiting && `${summary.counts.waiting} waiting`,
   ].filter(Boolean);
+  // A phone's legend names only the bars on screen, so it fits one line.
+  const drawnKinds = new Set(
+    jobRows.flatMap((job) => getFlowSegments(job, now).map(({ kind }) => kind)),
+  );
 
   return (
     <Layout>
@@ -399,7 +432,7 @@ const FlowView = ({
         />
       ) : null}
 
-      <div className="space-y-5">
+      <div className="space-y-5 max-sm:space-y-3.5">
         <header>
           <nav
             aria-label="Breadcrumb"
@@ -408,37 +441,43 @@ const FlowView = ({
               TEXT_MUTED,
             )}
           >
+            {/* On a phone the trail is one step back, sized for a thumb. */}
             <Link
               to={`/queues/${encodeURIComponent(root.queueName)}`}
               className={clsx(
-                "rounded hover:text-gray-900 dark:hover:text-white",
+                "rounded hover:text-gray-900 max-sm:-my-1 max-sm:-ml-1 max-sm:inline-flex max-sm:h-10 max-sm:items-center max-sm:gap-0.5 max-sm:rounded-md max-sm:pr-2 max-sm:pl-1 max-sm:text-[13px] dark:hover:text-white",
                 FOCUS_RING,
               )}
             >
+              <ChevronLeft aria-hidden="true" className="size-4 sm:hidden" />
               {rootQueueLabel}
             </Link>
-            <span aria-hidden="true">/</span>
-            <span className="font-mono" title={root.id}>
+            <span aria-hidden="true" className="max-sm:hidden">
+              /
+            </span>
+            <span className="font-mono max-sm:hidden" title={root.id}>
               #{formatJobId(root.id)}
             </span>
-            <span aria-hidden="true">/</span>
-            <span>Flow</span>
+            <span aria-hidden="true" className="max-sm:hidden">
+              /
+            </span>
+            <span className="max-sm:hidden">Flow</span>
           </nav>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+          <div className="mt-1.5 flex flex-wrap items-center gap-2.5 max-sm:mt-1">
+            <h1 className="font-mono text-xl font-semibold tracking-tight text-gray-900 max-sm:text-lg max-sm:leading-[26px] dark:text-white">
               {root.name}
             </h1>
             <span
               title={root.id}
               className={clsx(
-                "rounded-md bg-gray-100 px-1.5 font-mono text-[11px] leading-[18px] dark:bg-slate-800",
+                "rounded-md bg-gray-100 px-1.5 font-mono text-[11px] leading-[18px] max-sm:hidden dark:bg-slate-800",
                 TEXT_MUTED,
               )}
             >
               #{formatJobId(root.id)}
             </span>
-            <FlowStatusPill job={root} />
-            <span className="flex-1" />
+            <FlowStatusPill job={root} className="max-sm:hidden" />
+            <span className="flex-1 max-sm:hidden" />
             {retryable.length > 0 ? (
               <Button
                 colorScheme="red"
@@ -446,38 +485,66 @@ const FlowView = ({
                 label={`Retry ${formatCount(retryable.length)} failed`}
                 isLoading={isRetrying}
                 onClick={retryFailed}
+                className="max-sm:hidden"
               />
             ) : null}
           </div>
           <p
             className={clsx(
-              "mt-1 font-mono text-[11px] tabular-nums",
+              "mt-1 font-mono text-[11px] tabular-nums max-sm:text-xs max-sm:leading-[18px]",
               TEXT_MUTED,
             )}
           >
-            {formatCount(summary.jobCount)} {pluralize(summary.jobCount, "job")}{" "}
-            in {formatCount(summary.queueCount)}{" "}
-            {pluralize(summary.queueCount, "queue")}
-            {summary.hidden > 0
-              ? `, and ${formatCount(summary.hidden)} you can't see`
-              : ""}
-            {" · "}
-            {clock.isOpen
-              ? `started ${formatDuration(now - clock.start)} ago`
-              : `took ${formatDuration(clock.end - clock.start)}`}
-            {countParts.length ? ` · ${countParts.join(", ")}` : ""}
+            {/* Each fact keeps its dot, so a wrap never leaves one behind. */}
+            <span className="whitespace-nowrap">
+              {formatCount(summary.jobCount)}{" "}
+              {pluralize(summary.jobCount, "job")} in{" "}
+              {formatCount(summary.queueCount)}{" "}
+              {pluralize(summary.queueCount, "queue")}
+              {summary.hidden > 0
+                ? `, and ${formatCount(summary.hidden)} you can't see`
+                : ""}
+            </span>{" "}
+            <span className="whitespace-nowrap">
+              {"· "}
+              {clock.isOpen
+                ? `started ${formatDuration(now - clock.start)} ago`
+                : `took ${formatDuration(clock.end - clock.start)}`}
+            </span>
+            {countParts.length ? (
+              <>
+                {" "}
+                <span className="whitespace-nowrap max-sm:hidden">
+                  {`· ${countParts.join(", ")}`}
+                </span>
+              </>
+            ) : null}
           </p>
           {tree.parentHidden ? (
             <p className={clsx("mt-1 text-xs", TEXT_MUTED)}>
               This flow continues above, in a queue you can't see.
             </p>
           ) : null}
+          {/* Phone: the pill and the action get a row under the facts. */}
+          <div className="mt-3 flex items-center justify-between gap-2 sm:hidden">
+            <FlowStatusPill job={root} />
+            {retryable.length > 0 ? (
+              <Button
+                colorScheme="red"
+                icon={<RotateCw className="size-4" />}
+                label={`Retry ${formatCount(retryable.length)} failed`}
+                isLoading={isRetrying}
+                onClick={retryFailed}
+                className="max-sm:h-10 max-sm:text-sm"
+              />
+            ) : null}
+          </div>
         </header>
 
         {waitingOn ? (
           <div
             role="note"
-            className="flex items-start gap-2.5 rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-2.5 text-sm text-gray-700 dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-slate-300"
+            className="flex items-start gap-2.5 rounded-xl border border-orange-200 bg-orange-50 px-3.5 py-2.5 text-sm text-gray-700 max-sm:rounded-[10px] max-sm:p-3 max-sm:text-[13px] max-sm:leading-[19px] dark:border-orange-900/60 dark:bg-orange-950/30 dark:text-slate-300"
           >
             <AlertTriangle
               aria-hidden="true"
@@ -493,28 +560,44 @@ const FlowView = ({
         ) : null}
 
         <div className="space-y-2.5">
-          <div
-            aria-label="Legend"
-            className={clsx(
-              "flex flex-wrap gap-x-4 gap-y-1.5 text-xs",
-              TEXT_MUTED,
-            )}
-          >
-            {LEGEND.map((item) => (
-              <span
-                key={item.label}
-                className="inline-flex items-center gap-1.5"
-              >
-                <i
-                  aria-hidden="true"
+          <div className="max-sm:flex max-sm:items-center max-sm:justify-between max-sm:gap-3">
+            <div
+              aria-label="Legend"
+              className={clsx(
+                "flex flex-wrap gap-x-4 gap-y-1.5 text-xs max-sm:gap-x-3",
+                TEXT_MUTED,
+              )}
+            >
+              {LEGEND.map((item) => (
+                <span
+                  key={item.label}
                   className={clsx(
-                    "inline-block h-2 w-3.5 rounded-sm",
-                    item.className,
+                    "inline-flex items-center gap-1.5",
+                    !drawnKinds.has(item.kind) && "max-sm:hidden",
                   )}
-                />
-                {item.label}
-              </span>
-            ))}
+                >
+                  <i
+                    aria-hidden="true"
+                    className={clsx(
+                      "inline-block h-2 w-3.5 rounded-sm",
+                      item.className,
+                    )}
+                  />
+                  <span className="max-sm:hidden">{item.label}</span>
+                  <span className="sm:hidden">{item.shortLabel}</span>
+                </span>
+              ))}
+            </div>
+            {/* The table's tick labels, reduced to the clock's two ends. */}
+            <span
+              className={clsx(
+                "shrink-0 font-mono text-[11px] tabular-nums sm:hidden",
+                TEXT_FAINT,
+              )}
+            >
+              0s →{" "}
+              {clock.isOpen ? "now" : formatDuration(clock.end - clock.start)}
+            </span>
           </div>
           <FlowWaterfall
             rows={rows}
