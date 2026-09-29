@@ -1,7 +1,7 @@
 import { FlowProducer } from "bullmq";
 import { NextResponse } from "next/server";
 
-import { queues } from "../../../utils/fake-data";
+import { crossQueueFlows, queues } from "../../../utils/fake-data";
 
 export async function GET() {
   for (const item of queues) {
@@ -73,5 +73,12 @@ export async function GET() {
       }
     }
   }
+  // After every queue is reset: these flows span several of them.
+  const flowProducer = new FlowProducer({ connection: {} });
+  for (const flow of crossQueueFlows()) {
+    await flowProducer.add(flow);
+  }
+  await flowProducer.close();
+
   return NextResponse.json({ ok: "ok" });
 }

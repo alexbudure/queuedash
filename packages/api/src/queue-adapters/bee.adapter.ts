@@ -8,6 +8,7 @@ import {
   type FeatureSupport,
   type JobPageMeta,
   type JobScanToken,
+  pickJobOptions,
   type WorkerInfo,
 } from "./base.adapter";
 
@@ -93,6 +94,7 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
 
   supports: FeatureSupport<BeeStatus> = {
     addJobOptions: false,
+    jobNames: false,
     addJobOptionKeys: [],
     pause: false,
     resume: false,
@@ -318,6 +320,22 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
   async addJob(data: Record<string, unknown>): Promise<AdaptedJob> {
     const job = await this.queue.createJob(data).save();
     return this.adaptJob(job);
+  }
+
+  async rerunJob(jobId: string): Promise<AdaptedJob> {
+    const [stored] = await this.readStoredJobs([jobId]);
+    if (!stored) throw new JobNotFoundError();
+    const rerun = this.queue.createJob(stored.data);
+    // Copied onto the options rather than set through retries() or backoff():
+    // backoff() rejects a strategy this process never registered, and workers
+    // can register their own. Bee-Queue counts `retries` down as a job fails,
+    // so a job that used some of its retries passes on only the rest.
+    const options = rerun.options as Record<string, unknown>;
+    Object.assign(
+      options,
+      pickJobOptions(stored.options, ["backoff", "retries", "timeout"]),
+    );
+    return this.adaptJob(await rerun.save());
   }
 
   async removeJob(jobId: string): Promise<void> {
@@ -549,13 +567,15 @@ export class BeeAdapter extends QueueAdapter<BeeStatus, BeeCleanableStatus> {
         : typeof jobOptions.timestamp === "string"
           ? Number(jobOptions.timestamp)
           : undefined;
+    // Bee-Queue keeps the newest failure first; every other library, and so
+    // `AdaptedJob`, keeps the oldest first.
     const stacktrace = Array.isArray(jobOptions.stacktraces)
-      ? jobOptions.stacktraces
+      ? [...jobOptions.stacktraces].reverse()
       : [];
     // Bee-Queue records each failure as the error's whole stack. The reason is
     // only its first line, the message; the frames stay in `stacktrace`, which
     // presentation can withhold, rather than leaking through the reason.
-    const latestFailure = stacktrace[0];
+    const latestFailure = stacktrace.at(-1);
     const failedReason =
       typeof latestFailure === "string"
         ? latestFailure.split(/\r?\n/, 1)[0]?.trim()

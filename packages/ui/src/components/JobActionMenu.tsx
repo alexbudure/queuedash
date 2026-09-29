@@ -16,10 +16,12 @@ type JobActionMenuProps = {
   queue?: Queue;
   /** Called with the job's id once an action has moved it out of this list. */
   onRemove?: (jobId: string) => void;
+  /** Opens this job as a new one to edit and add: Duplicate. */
+  onDuplicate?: () => void;
 };
 
 type JobAction = {
-  key: "retry" | "promote" | "discard" | "rerun" | "remove";
+  key: "retry" | "promote" | "discard" | "duplicate" | "remove";
   label: string;
   onSelect: () => void;
   icon: ReactElement;
@@ -33,6 +35,7 @@ export const JobActionMenu = ({
   queueName,
   queue,
   onRemove,
+  onDuplicate,
 }: JobActionMenuProps) => {
   // The id the confirmation was opened for, not a flag: the dialog must name
   // and remove that job even if the panel behind it has moved on.
@@ -57,10 +60,7 @@ export const JobActionMenu = ({
   const discardMutation = trpc.job.discard.useMutation(
     mutationToasts("Job discarded"),
   );
-  const rerunMutation = trpc.job.rerun.useMutation(
-    mutationToasts("Rerun added to the queue"),
-  );
-  // Discard and rerun leave the job where it is, so they correctly stay open.
+  // Discard and Duplicate leave the job where it is, so they correctly stay open.
   const removeMutation = trpc.job.remove.useMutation(
     mutationToasts("Job removed"),
   );
@@ -83,7 +83,10 @@ export const JobActionMenu = ({
     !job.finishedAt &&
     queue?.supports.discard === true &&
     queue.access.actions["job.discard"] === true;
-  const showRerun = queue?.access.actions["job.rerun"] === true;
+  // Duplicate is Rerun with a chance to edit first: it adds a job, so it needs
+  // what adding a job needs.
+  const showDuplicate =
+    onDuplicate !== undefined && queue?.access.actions["job.add"] === true;
   const showRemove = queue?.access.actions["job.remove"] === true;
 
   const actions = useMemo<JobAction[]>(() => {
@@ -121,13 +124,13 @@ export const JobActionMenu = ({
         isLoading: discardMutation.isPending,
       });
     }
-    if (showRerun) {
+    if (showDuplicate && onDuplicate) {
       nextActions.push({
-        key: "rerun",
-        label: "Rerun",
-        onSelect: () => rerunMutation.mutate(input),
+        key: "duplicate",
+        label: "Duplicate…",
+        onSelect: onDuplicate,
         icon: <CopyPlus className="size-4" />,
-        isLoading: rerunMutation.isPending,
+        isLoading: false,
       });
     }
     if (showRemove) {
@@ -147,15 +150,15 @@ export const JobActionMenu = ({
     showRetry,
     showPromote,
     showDiscard,
-    showRerun,
+    showDuplicate,
     showRemove,
     input,
     job.id,
+    onDuplicate,
     onRemove,
     retryMutation,
     promoteMutation,
     discardMutation,
-    rerunMutation,
     removeMutation,
   ]);
 

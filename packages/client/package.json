@@ -12,17 +12,13 @@
     "format": "oxfmt --config ../../.oxfmtrc.json .",
     "format:check": "oxfmt --config ../../.oxfmtrc.json --check ."
   },
-  "dependencies": {
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
-  },
   "devDependencies": {
     "@queuedash/ui": "workspace:*",
-    "@rollup/plugin-typescript": "^12.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
-    "rollup-plugin-typescript-paths": "^1.5.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "typescript": "^5.9.3",
     "vite": "^5.4.19"
   },

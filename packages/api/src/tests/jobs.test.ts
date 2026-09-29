@@ -13,6 +13,7 @@ import { appRouter } from "../routers/_app";
 import { type Context, transformContext } from "../trpc";
 import {
   bullmqMajor,
+  getBullMQRedisClient,
   initRedisInstance,
   NUM_OF_COMPLETED_JOBS,
   NUM_OF_FAILED_JOBS,
@@ -2146,6 +2147,103 @@ test("bulk retry by filter retries all failed jobs", async () => {
   expect(result.succeeded + result.failed).toBe(failedJobs.totalCount);
 });
 
+test("error groups gather a queue's failures by what went wrong", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+
+  const result = await caller.job.errorGroups({
+    queueName: firstQueue.queue.name,
+    range: "all",
+  });
+
+  // Every fixture failure throws the same error from the same worker.
+  expect(result.failedInRange).toBe(NUM_OF_FAILED_JOBS);
+  expect(result.groups).toHaveLength(1);
+  const [group] = result.groups;
+  expect(group).toMatchObject({
+    count: NUM_OF_FAILED_JOBS,
+    message: "Generic error",
+  });
+  expect(group.fingerprint).toMatch(/^[0-9a-f]{16}$/u);
+  // They all failed within the last hour: the newest bucket holds them.
+  expect(group.hourly).toHaveLength(24);
+  expect(group.hourly.reduce((sum, count) => sum + count, 0)).toBe(
+    NUM_OF_FAILED_JOBS,
+  );
+  expect(group.lastSeen).toBeGreaterThanOrEqual(group.firstSeen);
+});
+
+test("the job list filters to one error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+
+  const { groups } = await caller.job.errorGroups({ queueName, range: "all" });
+  const matching = await caller.job.list({
+    queueName,
+    status: "failed",
+    limit: 50,
+    error: groups[0].fingerprint,
+  });
+  expect(matching.totalCount).toBe(NUM_OF_FAILED_JOBS);
+  expect("errorGroup" in matching ? matching.errorGroup : null).toMatchObject({
+    fingerprint: groups[0].fingerprint,
+    message: "Generic error",
+  });
+
+  const other = await caller.job.list({
+    queueName,
+    status: "failed",
+    limit: 50,
+    error: "0123456789abcdef",
+  });
+  expect(other.totalCount).toBe(0);
+
+  await expectTRPCError(
+    () =>
+      caller.job.list({
+        queueName,
+        status: "failed",
+        limit: 50,
+        error: "not-a-fingerprint",
+      }),
+    "BAD_REQUEST",
+  );
+});
+
+test("retry and remove by filter act on one error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const { groups } = await caller.job.errorGroups({ queueName, range: "all" });
+
+  const none = await caller.job.bulkRemoveByFilter({
+    queueName,
+    status: "failed",
+    error: "0123456789abcdef",
+  });
+  expect(none.matched).toBe(0);
+
+  if (firstQueue.type === "bull" || firstQueue.type === "bullmq") {
+    const retried = await caller.job.bulkRetryByFilter({
+      queueName,
+      status: "failed",
+      error: groups[0].fingerprint,
+    });
+    expect(retried.matched).toBe(NUM_OF_FAILED_JOBS);
+    expect(retried.succeeded).toBe(NUM_OF_FAILED_JOBS);
+    return;
+  }
+
+  const removed = await caller.job.bulkRemoveByFilter({
+    queueName,
+    status: "failed",
+    error: groups[0].fingerprint,
+  });
+  expect(removed.matched).toBe(NUM_OF_FAILED_JOBS);
+  expect(removed.succeeded).toBe(NUM_OF_FAILED_JOBS);
+});
+
 test("list jobs by group id paginates correctly", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
@@ -2595,6 +2693,103 @@ test("a job looked up by id carries its live status", async () => {
   await expect(
     caller.job.byId({ queueName, jobId: "non-existent-job-id" }),
   ).resolves.toBeNull();
+});
+
+test("run times are the p50 and p95 of recently completed jobs", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  // The fixture's workers may still be finishing, and a scan is kept for
+  // seconds: ask once every completed fixture is there to be timed.
+  await vi.waitFor(
+    async () => {
+      const { jobs } = await caller.job.list({
+        queueName,
+        status: "completed",
+        limit: 50,
+      });
+      expect(jobs).toHaveLength(NUM_OF_COMPLETED_JOBS);
+    },
+    { timeout: 5_000 },
+  );
+
+  // The window is whole minutes, and the fixtures finished in the one under
+  // way: ask from a minute later, when theirs is the last whole minute.
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(Date.now() + 60_000);
+  const result = await caller.job
+    .runTimes({ queueName, minutes: 60 })
+    .finally(() => vi.useRealTimers());
+
+  expect(result.minutes).toBe(60);
+  expect(result.buckets).toHaveLength(20);
+  if (firstQueue.type === "bee") {
+    // Bee-Queue keeps no start time on a job, so there is no run to time.
+    expect(result).toMatchObject({ count: 0, p50: null, p95: null });
+    return;
+  }
+  expect(result.count).toBe(NUM_OF_COMPLETED_JOBS);
+  expect(result.p50).not.toBeNull();
+  expect(result.p95).toBeGreaterThanOrEqual(result.p50 ?? 0);
+  // Every fixture finished in the window's last slice.
+  expect(result.buckets.at(-1)).toBe(result.p50);
+});
+
+test("a failed job looked up by id names its error group", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const [{ groups }, failedPage, completedPage] = await Promise.all([
+    caller.job.errorGroups({ queueName, range: "all" }),
+    caller.job.list({ queueName, status: "failed", limit: 1 }),
+    caller.job.list({ queueName, status: "completed", limit: 1 }),
+  ]);
+  const [failed] = failedPage.jobs;
+  const [completed] = completedPage.jobs;
+  expect(groups).toHaveLength(1);
+  expect(failed && completed).toBeTruthy();
+  if (!failed || !completed) return;
+
+  await expect(
+    caller.job.byId({ queueName, jobId: failed.id }),
+  ).resolves.toMatchObject({ errorFingerprint: groups[0]?.fingerprint });
+  // These fixtures never failed, so there is no group to point at.
+  await expect(
+    caller.job.byId({ queueName, jobId: completed.id }),
+  ).resolves.toMatchObject({ errorFingerprint: null });
+});
+
+test("a job looked up by id says which worker ran it and how often it stalled", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const jobId = await addDelayedJob(firstQueue, { runFacts: true }, 600_000);
+
+  if (firstQueue.type !== "bullmq") {
+    const job = await caller.job.byId({ queueName, jobId });
+    expect(job?.processedBy).toBeUndefined();
+    expect(job?.attemptsStarted).toBeUndefined();
+    expect(job?.stalledCounter).toBeUndefined();
+    return;
+  }
+
+  // What BullMQ leaves on a job a worker named "payments-worker-2" started
+  // twice, once after its lock expired mid-run.
+  const client = await getBullMQRedisClient(firstQueue.queue);
+  await client.hset(
+    `${firstQueue.queue.qualifiedName}:${jobId}`,
+    "pb",
+    "payments-worker-2",
+    "ats",
+    "2",
+    "stc",
+    "1",
+  );
+  await expect(caller.job.byId({ queueName, jobId })).resolves.toMatchObject({
+    processedBy: "payments-worker-2",
+    attemptsStarted: 2,
+    stalledCounter: 1,
+  });
 });
 
 // ============================================================================
@@ -3139,29 +3334,214 @@ test("logs on a non-existent job are NOT_FOUND where logs exist", async () => {
   }
 });
 
-test("rerun job preserves data", async () => {
+test("rerun adds a new job with the original's data", async () => {
   const { ctx, firstQueue } = await initRedisInstance();
   const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
 
   const { jobs } = await caller.job.list({
     limit: 1,
     cursor: 0,
     status: "completed",
-    queueName: firstQueue.queue.name,
+    queueName,
+  });
+  const original = jobs[0];
+  expect(original).toBeDefined();
+
+  const rerun = await caller.job.rerun({ queueName, jobId: original.id });
+
+  expect(rerun.id).not.toBe(original.id);
+  expect(rerun.data).toEqual(original.data);
+});
+
+// Workers dispatch on the job name, and attempts or backoff are the
+// producer's choice, so a rerun carries them. The id, delay and schedule
+// belong to the original run.
+test("rerun keeps the job's name and run options", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const data = { to: "rerun@example.com" };
+  // Delayed, so no worker takes the original while the test reads it.
+  const delay = 60_000;
+
+  switch (firstQueue.type) {
+    case "bullmq": {
+      const original = await firstQueue.queue.add("send-email", data, {
+        jobId: "rerun-original",
+        attempts: 3,
+        backoff: { type: "fixed", delay: 50 },
+        priority: 4,
+        removeOnComplete: 5,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe("rerun-original");
+      expect(stored?.name).toBe("send-email");
+      expect(stored?.data).toEqual(data);
+      expect(stored?.opts).toMatchObject({
+        attempts: 3,
+        backoff: { type: "fixed", delay: 50 },
+        priority: 4,
+        removeOnComplete: 5,
+      });
+      expect(stored?.opts.delay ?? 0).toBe(0);
+      break;
+    }
+    case "bull": {
+      const original = await firstQueue.queue.add("send-email", data, {
+        jobId: "rerun-original",
+        attempts: 3,
+        backoff: 50,
+        priority: 4,
+        removeOnComplete: 5,
+        timeout: 1_000,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe("rerun-original");
+      expect(stored?.name).toBe("send-email");
+      expect(stored?.data).toEqual(data);
+      expect(stored?.opts).toMatchObject({
+        attempts: 3,
+        backoff: original.opts.backoff,
+        priority: 4,
+        removeOnComplete: 5,
+        timeout: 1_000,
+      });
+      expect(stored?.opts.delay ?? 0).toBe(0);
+
+      // An unnamed job stays unnamed, so a processor registered without a
+      // name still takes the rerun.
+      const { jobs } = await caller.job.list({
+        limit: 1,
+        cursor: 0,
+        status: "completed",
+        queueName,
+      });
+      const unnamed = await caller.job.rerun({ queueName, jobId: jobs[0].id });
+      expect((await firstQueue.queue.getJob(unnamed.id))?.name).toBe(
+        "__default__",
+      );
+      break;
+    }
+    case "bee": {
+      const original = await firstQueue.queue
+        .createJob(data)
+        .retries(2)
+        .timeout(1_000)
+        .backoff("fixed", 50)
+        .delayUntil(Date.now() + delay)
+        .save();
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: String(original.id),
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe(original.id);
+      expect(stored.data).toEqual(data);
+      expect(stored.options).toMatchObject({
+        retries: 2,
+        timeout: 1_000,
+        backoff: { strategy: "fixed", delay: 50 },
+      });
+      expect(stored.options.delay).toBeUndefined();
+      break;
+    }
+    case "groupmq": {
+      const original = await firstQueue.queue.add({
+        groupId: "rerun-group",
+        data,
+        maxAttempts: 4,
+        delay,
+      });
+      const rerun = await caller.job.rerun({
+        queueName,
+        jobId: original.id,
+      });
+      const stored = await firstQueue.queue.getJob(rerun.id);
+
+      expect(rerun.id).not.toBe(original.id);
+      expect(stored.groupId).toBe("rerun-group");
+      expect(stored.opts.attempts).toBe(4);
+      expect(stored.data).toEqual(data);
+      expect(
+        await firstQueue.queue.redis.zscore(
+          `${firstQueue.queue.namespace}:delayed`,
+          rerun.id,
+        ),
+      ).toBeNull();
+      break;
+    }
+  }
+});
+
+test("addJob names the job where the library has names", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
+  const queueName = firstQueue.queue.name;
+  const queue = await caller.queue.byName({ queueName });
+
+  if (firstQueue.type === "bee" || firstQueue.type === "groupmq") {
+    expect(queue.supports.jobNames).toBe(false);
+    await expectTRPCError(
+      () => caller.queue.addJob({ queueName, name: "send-receipt", data: {} }),
+      "BAD_REQUEST",
+    );
+    return;
+  }
+
+  expect(queue.supports.jobNames).toBe(true);
+  // Delayed, so no worker takes them while the test reads them back.
+  const opts = { delay: 600_000 };
+  await caller.queue.addJob({
+    queueName,
+    name: "send-receipt",
+    data: { named: true },
+    opts,
+  });
+  await caller.queue.addJob({
+    queueName,
+    name: "   ",
+    data: { unnamed: true },
+    opts,
+  });
+  const { jobs } = await caller.job.list({
+    queueName,
+    status: "delayed",
+    limit: 10,
   });
 
-  if (jobs.length > 0) {
-    const originalJob = jobs[0];
-    const originalData = originalJob.data;
+  expect(jobs.find((job) => job.data.named)?.rawName).toBe("send-receipt");
+  // A blank name is no name: each library's own default, as before.
+  expect(jobs.find((job) => job.data.unnamed)?.rawName).toBe(
+    firstQueue.type === "bullmq" ? "Manual add" : "__default__",
+  );
+});
 
-    await caller.job.rerun({
-      queueName: firstQueue.queue.name,
-      jobId: originalJob.id,
-    });
+test("rerun of an unknown job is NOT_FOUND", async () => {
+  const { ctx, firstQueue } = await initRedisInstance();
+  const caller = appRouter.createCaller(ctx);
 
-    // The returned job should have the same data
-    expect(originalJob.data).toEqual(originalData);
-  }
+  await expectTRPCError(
+    () =>
+      caller.job.rerun({
+        queueName: firstQueue.queue.name,
+        jobId: "no-such-job",
+      }),
+    "NOT_FOUND",
+  );
 });
 
 test("job list respects cursor offset correctly", async () => {

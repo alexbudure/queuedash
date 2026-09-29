@@ -274,15 +274,17 @@ The distributed stylesheet:
 - Keeps dark mode on the Queuedash root instead of the host `<html>` element
 
 This isolates Queuedash selectors and internal Tailwind variables while winning
-normal same-named host utility collisions. The stylesheet also imports Inter and
-JetBrains Mono from Google Fonts. A host stylesheet using `!important` or greater
-specificity can still override ordinary CSS; use an iframe if the embedding
-environment requires absolute style and resource isolation.
+normal same-named host utility collisions. The stylesheet brings its own Inter
+and JetBrains Mono from `dist/fonts/`, under Queuedash-specific family names, so
+it makes no requests to Google Fonts and leaves any Inter your app loads alone.
+Your bundler picks the font files up from the stylesheet's relative URLs. A host
+stylesheet using `!important` or greater specificity can still override
+ordinary CSS; use an iframe if the embedding environment requires absolute style
+and resource isolation.
 
-Monaco editor themes are global within a JavaScript realm. If two Queuedash
-mounts must show different editor themes at the same time, isolate the mounts
-in separate iframes; ordinary dashboard colors and browser preferences remain
-instance-scoped.
+The JSON editors in Add job and Add scheduler are CodeMirror, bundled into the
+package: opening one fetches nothing from a CDN and starts no web workers, and
+each mount's editors follow that mount's own light or dark theme.
 
 ## Authentication headers
 

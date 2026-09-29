@@ -109,14 +109,16 @@ export const SERVER_SCAN_MIN_REFRESH_INTERVAL_MS = 10_000;
 
 /** Whether the server builds this job list by scanning rather than reading a range. */
 export const isServerScannedJobList = ({
+  error,
   groupId,
   query,
   sort,
 }: {
+  error?: string | null;
   groupId?: string | null;
   query?: string;
   sort: JobSort;
-}) => Boolean(groupId || query || sort !== "queue");
+}) => Boolean(error || groupId || query || sort !== "queue");
 
 export const getJobListRefetchInterval = (
   loadedPageCount: number,
@@ -183,7 +185,7 @@ export const isShortcutExemptTarget = (target: EventTarget | null) => {
   }
   return (
     element.closest(
-      "[role='alertdialog'], [role='menu'], [role='listbox'], [role='textbox']",
+      "[role='alertdialog'], [role='menu'], [role='listbox'], [role='textbox'], [data-own-shortcuts]",
     ) !== null
   );
 };

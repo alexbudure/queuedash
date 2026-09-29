@@ -11,6 +11,8 @@ type ButtonProps = {
   size?: "sm" | "md" | "lg";
   icon?: ReactElement;
   label: string;
+  /** A key combination that does the same, shown after the label: "⌘↵". */
+  shortcut?: string;
   isLoading?: boolean;
   disabled?: boolean;
   className?: string;
@@ -24,6 +26,7 @@ export const Button = ({
   size = "md",
   icon,
   label,
+  shortcut,
   isLoading,
   onClick,
   disabled,
@@ -55,6 +58,22 @@ export const Button = ({
       {/* No second opacity here: the root already carries `opacity-70` while
           loading, and CSS opacity multiplies down the tree. */}
       <span className={clsx(isLoading && !icon && "invisible")}>{label}</span>
+
+      {shortcut ? (
+        <kbd
+          aria-hidden="true"
+          className={clsx(
+            // A phone has no keyboard to press it on, and its footers are tight.
+            "rounded border px-1 font-mono text-[10px] leading-4 max-sm:hidden",
+            isLoading && !icon && "invisible",
+            variant === "filled"
+              ? "border-white/35 text-white/85 dark:border-white/30"
+              : "border-gray-200 text-gray-500 dark:border-slate-700 dark:text-slate-400",
+          )}
+        >
+          {shortcut}
+        </kbd>
+      ) : null}
 
       {isLoading && !icon ? (
         <span className="absolute inset-0 flex items-center justify-center">

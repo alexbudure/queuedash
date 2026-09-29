@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only -O \"{\\\"module\\\":\\\"commonjs\\\"}\" utils/worker.ts & next dev",
+    "traffic": "ts-node-dev --transpile-only -O \"{\\\"module\\\":\\\"commonjs\\\"}\" utils/traffic.ts",
+    "screenshots": "ts-node-dev --transpile-only -O \"{\\\"module\\\":\\\"commonjs\\\"}\" utils/screenshots.ts",
     "build-next": "next build",
     "start": "next start",
     "lint": "oxlint --config ../../.oxlintrc.json --disable-nested-config .",

@@ -11,6 +11,14 @@ import { useParams, useSearchParams } from "react-router";
 
 import { Button } from "../components/Button";
 import { ErrorCard } from "../components/ErrorCard";
+import {
+  type ErrorRange,
+  type ErrorSort,
+  ErrorGroups,
+  formatErrorLabel,
+  isErrorFingerprint,
+  isErrorRange,
+} from "../components/ErrorGroups";
 import { GroupsSection } from "../components/GroupsSection";
 import { HealthStrip } from "../components/HealthStrip";
 import { JobSearch } from "../components/JobSearch";
@@ -91,7 +99,20 @@ export const QueuePage = () => {
     latestParamsRef.current = searchParams;
   }, [searchParams]);
 
-  const requestedSchedulersView = searchParams.get("view") === "schedulers";
+  const requestedView = searchParams.get("view");
+  const requestedSchedulersView = requestedView === "schedulers";
+  const isErrorsView = requestedView === "errors";
+  // An error group from the Errors tab, as a filter on the Jobs view.
+  const rawErrorFilter = searchParams.get("error");
+  const errorFingerprint = isErrorFingerprint(rawErrorFilter)
+    ? rawErrorFilter
+    : null;
+  const rawErrorRange = searchParams.get("range");
+  const errorRange: ErrorRange = isErrorRange(rawErrorRange)
+    ? rawErrorRange
+    : "24h";
+  const errorSort: ErrorSort =
+    searchParams.get("errorSort") === "recent" ? "recent" : "count";
   const rawQuery = searchParams.get("q")?.trim() ?? "";
   const query = rawQuery.slice(0, 200);
   const requestedSort = searchParams.get("sort");
@@ -142,11 +163,11 @@ export const QueuePage = () => {
   const handleViewChange = useCallback(
     (view: QueueView) => {
       updateParams((params) => {
-        if (view === "schedulers") {
-          params.set("view", "schedulers");
-          params.delete("status");
-        } else {
+        if (view === "jobs") {
           params.delete("view");
+        } else {
+          params.set("view", view);
+          params.delete("status");
         }
         params.delete("job");
       });
@@ -169,6 +190,7 @@ export const QueuePage = () => {
     updateParams((next) => {
       next.delete("q");
       next.delete("group");
+      next.delete("error");
     });
   }, [updateParams]);
 
@@ -230,6 +252,7 @@ export const QueuePage = () => {
   // A filtered, grouped or sorted list is rebuilt by a server-side scan on
   // every request, so it polls on a slower floor than a range read.
   const isServerScanned = isServerScannedJobList({
+    error: errorFingerprint,
     groupId: selectedGroupId,
     query,
     sort,
@@ -241,6 +264,7 @@ export const QueuePage = () => {
     status,
     groupId: selectedGroupId ?? undefined,
     query: query || undefined,
+    error: errorFingerprint ?? undefined,
     sort,
   };
 
@@ -258,6 +282,7 @@ export const QueuePage = () => {
     enabled:
       !!queueName &&
       !isSchedulersView &&
+      !isErrorsView &&
       !!queueReq.data &&
       queueReq.data.supports.statuses.includes(status),
     refetchInterval: (queryState) =>
@@ -277,13 +302,20 @@ export const QueuePage = () => {
       supportedStatuses &&
       shouldWriteEffectiveStatus({
         effectiveStatus: status,
-        isSchedulersView,
+        isSchedulersView: isSchedulersView || isErrorsView,
         params: searchParams,
       })
     ) {
       updateParams((next) => next.set("status", status), { replace: true });
     }
-  }, [isSchedulersView, searchParams, status, supportedStatuses, updateParams]);
+  }, [
+    isErrorsView,
+    isSchedulersView,
+    searchParams,
+    status,
+    supportedStatuses,
+    updateParams,
+  ]);
 
   useEffect(() => {
     if (
@@ -310,6 +342,12 @@ export const QueuePage = () => {
       refetchInterval: preferences.refreshIntervalMs,
       retry: NUM_OF_RETRIES,
     },
+  );
+
+  // The Errors view runs this query; the tab only reads what it last found.
+  const errorGroupsReq = trpc.job.errorGroups.useQuery(
+    { queueName, range: errorRange },
+    { enabled: false },
   );
 
   const jobs = flattenUniqueJobs(data?.pages);
@@ -451,7 +489,13 @@ export const QueuePage = () => {
   // empty: one incidental match in `completed` used to hide the only route to
   // the same job sitting in `failed`.
   const showCrossStatusSearch =
-    !isSchedulersView && !isError && !isJobListLoading && !!query;
+    !isSchedulersView &&
+    !isErrorsView &&
+    !isError &&
+    !isJobListLoading &&
+    !!query;
+  const errorGroup =
+    firstPage && "errorGroup" in firstPage ? firstPage.errorGroup : null;
   const hasMatchesInStatus = jobs.length > 0;
 
   // The query found the job across statuses, but kept, it would filter the
@@ -593,21 +637,31 @@ export const QueuePage = () => {
           />
 
           <div className="space-y-3">
-            {queueReq.data?.supports.schedulers ? (
+            {queueReq.data ? (
               <QueueViewTabs
-                view={isSchedulersView ? "schedulers" : "jobs"}
+                view={
+                  isSchedulersView
+                    ? "schedulers"
+                    : isErrorsView
+                      ? "errors"
+                      : "jobs"
+                }
+                errorCount={errorGroupsReq.data?.groups.length}
                 schedulerCount={schedulersReq.data?.length}
+                showSchedulers={queueReq.data.supports.schedulers}
                 onViewChange={handleViewChange}
               />
             ) : null}
-            {!isSchedulersView ? (
+            {!isSchedulersView && !isErrorsView ? (
               <QueueStatusFilter
                 status={status}
                 queue={queueReq.data}
                 onStatusChange={handleStatusChange}
               />
             ) : null}
-            {!isSchedulersView && queueReq.data?.supports.groups ? (
+            {!isSchedulersView &&
+            !isErrorsView &&
+            queueReq.data?.supports.groups ? (
               <GroupsSection
                 canRemoveJobs={queueReq.data.access.actions["job.remove"]}
                 queueName={queueName}
@@ -615,11 +669,24 @@ export const QueuePage = () => {
                 onSelectGroup={handleSelectGroup}
               />
             ) : null}
-            {!isSchedulersView ? (
+            {!isSchedulersView && !isErrorsView ? (
               <JobSearch
                 query={query}
                 sort={sort}
                 isLoading={isJobListLoading}
+                errorFilter={
+                  errorFingerprint
+                    ? {
+                        label: errorGroup
+                          ? formatErrorLabel(errorGroup)
+                          : "this error group",
+                        onClear: () =>
+                          updateParams((next) => {
+                            next.delete("error");
+                          }),
+                      }
+                    : undefined
+                }
                 onQueryChange={(nextQuery) => {
                   updateParams((current) =>
                     updateJobQueryParams(current, status, nextQuery),
@@ -632,7 +699,48 @@ export const QueuePage = () => {
                 }}
               />
             ) : null}
-            {isSchedulersView ? (
+            {isErrorsView ? (
+              <ErrorGroups
+                // Remounted per queue, like HealthStrip: the groups keep
+                // their previous data across a range change, never across
+                // queues.
+                key={queueName}
+                queueName={queueName}
+                queue={queueReq.data}
+                range={errorRange}
+                sort={errorSort}
+                onRangeChange={(nextRange) =>
+                  updateParams(
+                    (next) => {
+                      if (nextRange === "24h") next.delete("range");
+                      else next.set("range", nextRange);
+                    },
+                    { replace: true },
+                  )
+                }
+                onSortChange={(nextSort) =>
+                  updateParams(
+                    (next) => {
+                      if (nextSort === "count") next.delete("errorSort");
+                      else next.set("errorSort", nextSort);
+                    },
+                    { replace: true },
+                  )
+                }
+                onOpenGroup={(group) =>
+                  updateParams((next) => {
+                    next.delete("view");
+                    next.delete("range");
+                    next.delete("errorSort");
+                    next.delete("q");
+                    next.delete("group");
+                    next.delete("job");
+                    next.set("status", "failed");
+                    next.set("error", group.fingerprint);
+                  })
+                }
+              />
+            ) : isSchedulersView ? (
               <SchedulerTable
                 canRemove={
                   queueReq.data?.access.actions["scheduler.remove"] === true
@@ -662,6 +770,7 @@ export const QueuePage = () => {
                   queueName={queueName}
                   queue={queueReq.data}
                   selectedGroupId={selectedGroupId}
+                  errorFingerprint={errorFingerprint}
                   selectedJobId={selectedJobId}
                   onSelectJob={handleSelectJob}
                   onJobLeft={handleJobLeft}

@@ -15,6 +15,12 @@ import {
   useState,
 } from "react";
 
+import {
+  type CodeLinks,
+  EMPTY_CODE_LINKS,
+  parseCodeLinks,
+} from "../utils/codeLinks";
+
 export type UserPreferences = {
   defaultJobStatus: QueuedashDefaultJobStatus;
   density: QueuedashDensity;
@@ -41,6 +47,7 @@ type StoredPreferences = {
   overrides: PreferenceOverrides;
   lastJobStatus: UserPreferences["lastJobStatus"];
   pinnedQueues: string[];
+  codeLinks: CodeLinks;
 };
 
 type ResolvedBranding = {
@@ -51,6 +58,7 @@ type ResolvedBranding = {
 
 type QueuedashContextValue = {
   branding: ResolvedBranding;
+  codeLinks: CodeLinks;
   defaultPreferences: UserPreferences;
   documentTitle: boolean;
   isDark: boolean;
@@ -59,6 +67,7 @@ type QueuedashContextValue = {
   preferences: UserPreferences;
   preferenceScope: string;
   resetPreferences: () => void;
+  setCodeLinks: (codeLinks: CodeLinks) => void;
   setDefaultJobStatus: (status: QueuedashDefaultJobStatus) => void;
   setDensity: (density: QueuedashDensity) => void;
   setJobsPerPage: (jobsPerPage: UserPreferences["jobsPerPage"]) => void;
@@ -119,6 +128,7 @@ const EMPTY_STORED_PREFERENCES: StoredPreferences = {
   overrides: {},
   lastJobStatus: "completed",
   pinnedQueues: [],
+  codeLinks: EMPTY_CODE_LINKS,
 };
 
 const readStorageItem = (key: string): unknown => {
@@ -189,8 +199,15 @@ const parseOverrides = (value: unknown): PreferenceOverrides => {
 const parseUserState = (
   value: unknown,
 ): Partial<Omit<StoredPreferences, "overrides">> => {
-  const parsed = value as { lastJobStatus?: unknown; pinnedQueues?: unknown };
+  const parsed = value as {
+    codeLinks?: unknown;
+    lastJobStatus?: unknown;
+    pinnedQueues?: unknown;
+  };
   return {
+    ...(parsed?.codeLinks !== undefined
+      ? { codeLinks: parseCodeLinks(parsed.codeLinks) }
+      : {}),
     ...(isJobStatus(parsed?.lastJobStatus)
       ? { lastJobStatus: parsed.lastJobStatus }
       : {}),
@@ -408,6 +425,11 @@ export const QueuedashProvider = ({
       updateStored((current) => ({ ...current, lastJobStatus })),
     [updateStored],
   );
+  const setCodeLinks = useCallback(
+    (codeLinks: CodeLinks) =>
+      updateStored((current) => ({ ...current, codeLinks })),
+    [updateStored],
+  );
   const togglePinnedQueue = useCallback(
     (queueName: string) =>
       updateStored((current) => ({
@@ -443,6 +465,7 @@ export const QueuedashProvider = ({
   const value = useMemo<QueuedashContextValue>(
     () => ({
       branding,
+      codeLinks: stored.codeLinks,
       defaultPreferences,
       documentTitle: ui?.documentTitle === true,
       isDark:
@@ -453,6 +476,7 @@ export const QueuedashProvider = ({
       preferences,
       preferenceScope,
       resetPreferences,
+      setCodeLinks,
       setDefaultJobStatus,
       setDensity,
       setJobsPerPage,
@@ -468,11 +492,13 @@ export const QueuedashProvider = ({
       branding,
       defaultPreferences,
       ui?.documentTitle,
+      stored.codeLinks,
       stored.overrides,
       portalContainer,
       preferenceScope,
       preferences,
       resetPreferences,
+      setCodeLinks,
       setDefaultJobStatus,
       setDensity,
       setJobsPerPage,

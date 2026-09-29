@@ -1,0 +1,296 @@
+<!doctype html>
+<!--
+  The README hero: the app in a window on the brand's engineering paper, with
+  the pitch above it. packages/dev/utils/screenshots.ts fills in the theme and
+  the app shot and renders it at 1280x860, 2x. The tokens are Queuedash Pro's
+  marketing site's (styles/global.css, the `--lab-*` set).
+-->
+<html lang="en" data-theme="{{theme}}">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&display=block"
+    />
+    <style>
+      :root {
+        --paper: #f4f6f9;
+        --plate: #ffffff;
+        --ink: 14 17 22;
+        --accent: #3a48e0;
+        --grid: rgb(14 17 22 / 0.038);
+        --shadow:
+          0 1px 2px rgb(14 17 22 / 0.05), 0 40px 80px -40px rgb(14 17 22 / 0.35);
+      }
+      [data-theme="dark"] {
+        --paper: #0a0c10;
+        --plate: #11141a;
+        --ink: 230 233 239;
+        --accent: #8c97ff;
+        --grid: rgb(230 233 239 / 0.04);
+        --shadow:
+          0 1px 2px rgb(0 0 0 / 0.4), 0 40px 80px -40px rgb(0 0 0 / 0.9);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 860px;
+        overflow: hidden;
+      }
+      body {
+        position: relative;
+        background-color: var(--paper);
+        background-image:
+          linear-gradient(var(--grid) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+        background-size: 120px 120px;
+        background-position: center top;
+        color: rgb(var(--ink));
+        font-family: "Archivo", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .readout {
+        font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+      }
+      /* The page's rails: hairlines at the column's edges, top to bottom. */
+      .rails {
+        position: absolute;
+        inset: 0 64px;
+        border-inline: 1px solid rgb(var(--ink) / 0.1);
+      }
+      .column {
+        position: relative;
+        margin-inline: 64px;
+        padding: 40px 56px 0;
+      }
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 21px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .logo svg {
+        width: 30px;
+        height: 30px;
+      }
+      .top .readout {
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        color: rgb(var(--ink) / 0.6);
+      }
+      .top .readout b {
+        font-weight: 500;
+        color: var(--accent);
+      }
+      h1 {
+        margin: 40px 0 0;
+        font-size: 60px;
+        line-height: 0.98;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        font-stretch: 112.5%;
+      }
+      h1 .aside {
+        display: block;
+        font-weight: 300;
+        letter-spacing: -0.03em;
+        font-stretch: 100%;
+        color: rgb(var(--ink) / 0.5);
+      }
+      .lead {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 48px;
+        margin-top: 24px;
+      }
+      .lead p {
+        margin: 0;
+        max-width: 500px;
+        font-size: 17px;
+        line-height: 1.55;
+        color: rgb(var(--ink) / 0.65);
+        text-wrap: pretty;
+      }
+      .paths {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 0;
+      }
+      .paths div {
+        border-top: 1px solid rgb(var(--ink) / 0.1);
+        padding-top: 10px;
+      }
+      .paths dt {
+        font-size: 10.5px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgb(var(--ink) / 0.6);
+      }
+      .paths dd {
+        display: flex;
+        gap: 14px;
+        margin: 6px 0 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      /* The window: a mono tag pinned to its top edge, registration marks
+         just outside its corners, running off the bottom of the image. */
+      .figure {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        top: 372px;
+      }
+      .tag {
+        position: absolute;
+        left: 16px;
+        top: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 28px;
+        padding: 0 10px;
+        border: 1px solid rgb(var(--ink) / 0.15);
+        border-bottom: 0;
+        border-radius: 5px 5px 0 0;
+        background: var(--plate);
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        color: rgb(var(--ink) / 0.7);
+      }
+      .tag i {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+      .corner {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border: 0 solid rgb(var(--ink) / 0.3);
+      }
+      .corner.tl {
+        left: -8px;
+        top: 20px;
+        border-left-width: 1px;
+        border-top-width: 1px;
+      }
+      .corner.tr {
+        right: -8px;
+        top: 20px;
+        border-right-width: 1px;
+        border-top-width: 1px;
+      }
+      .window {
+        margin-top: 28px;
+        overflow: hidden;
+        border: 1px solid rgb(var(--ink) / 0.15);
+        border-radius: 8px;
+        background: var(--plate);
+        box-shadow: var(--shadow);
+      }
+      .window img {
+        display: block;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="rails"></div>
+    <div class="column">
+      <div class="top">
+        <div class="logo">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <defs>
+              <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#6b78ff" />
+                <stop offset="1" stop-color="#3040d8" />
+              </linearGradient>
+              <radialGradient id="sheen" cx="0.3" cy="0" r="0.9">
+                <stop offset="0" stop-color="#fff" stop-opacity="0.22" />
+                <stop offset="1" stop-color="#fff" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <path
+              id="squircle"
+              d="M64 32L63.9 46.2L63.6 50.6L63 53.8L62.2 56.3L61.2 58.2L59.9 59.9L58.2 61.2L56.3 62.2L53.8 63L50.6 63.6L46.2 63.9L32 64L17.8 63.9L13.4 63.6L10.2 63L7.7 62.2L5.8 61.2L4.1 59.9L2.8 58.2L1.8 56.3L1 53.8L0.4 50.6L0.1 46.2L0 32L0.1 17.8L0.4 13.4L1 10.2L1.8 7.7L2.8 5.8L4.1 4.1L5.8 2.8L7.7 1.8L10.2 1L13.4 0.4L17.8 0.1L32 0L46.2 0.1L50.6 0.4L53.8 1L56.3 1.8L58.2 2.8L59.9 4.1L61.2 5.8L62.2 7.7L63 10.2L63.6 13.4L63.9 17.8Z"
+              fill="url(#fill)"
+            />
+            <use href="#squircle" fill="url(#sheen)" />
+            <circle
+              cx="28.5"
+              cy="31"
+              r="15"
+              fill="none"
+              stroke="#fff"
+              stroke-width="7.5"
+            />
+            <path
+              d="M29 46H51"
+              fill="none"
+              stroke="#fff"
+              stroke-width="7.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          Queuedash
+        </div>
+        <span class="readout">Open source · <b>npm i @queuedash/api</b></span>
+      </div>
+
+      <h1>
+        See inside your job queues,
+        <span class="aside">right from your own server.</span>
+      </h1>
+
+      <div class="lead">
+        <p>
+          Queuedash mounts in the Node app you already run. Open any job for its
+          data, logs and every failed attempt, follow a flow across queues, see
+          which errors keep coming back, and retry what broke.
+        </p>
+        <dl class="paths">
+          <div>
+            <dt class="readout">Queues</dt>
+            <dd>
+              <span>BullMQ</span><span>Bull</span><span>Bee-Queue</span
+              ><span>GroupMQ</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="readout">Mounts in</dt>
+            <dd>
+              <span>Express</span><span>Fastify</span><span>Hono</span
+              ><span>Elysia</span><span>Next.js</span>
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="figure">
+      <span class="tag readout"><i></i>localhost:3000/queuedash</span>
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <div class="window"><img src="{{shot}}" alt="" /></div>
+    </div>
+  </body>
+</html>

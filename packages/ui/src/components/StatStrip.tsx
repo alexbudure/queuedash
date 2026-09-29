@@ -15,8 +15,9 @@ import { Skeleton } from "./Skeleton";
  * Two-up until there is room for the full row: at tablet widths four cells
  * squeezed the labels onto two lines and cut the sub-labels short.
  */
+// An odd cell out spans the two-up row rather than leaving half of it empty.
 export const STAT_CELL =
-  "flex min-w-0 items-end justify-between gap-3 border-gray-100/60 px-4 py-3 text-left [&:nth-child(even)]:border-l [&:nth-child(n+3)]:border-t xl:[&:not(:first-child)]:border-l xl:[&:nth-child(n+3)]:border-t-0 dark:border-slate-800/60";
+  "flex min-w-0 items-end justify-between gap-3 border-gray-100/60 px-4 py-3 text-left [&:nth-child(even)]:border-l [&:nth-child(n+3)]:border-t [&:last-child:nth-child(odd)]:col-span-2 xl:[&:not(:first-child)]:border-l xl:[&:nth-child(n+3)]:border-t-0 xl:[&:last-child:nth-child(odd)]:col-span-1 dark:border-slate-800/60";
 
 export const STAT_VALUE =
   "font-mono text-lg font-semibold tabular-nums leading-7";
@@ -27,6 +28,7 @@ const COLUMNS: Record<number, string> = {
   2: "grid-cols-2",
   3: "grid-cols-2 xl:grid-cols-3",
   4: "grid-cols-2 xl:grid-cols-4",
+  5: "grid-cols-2 xl:grid-cols-5",
 };
 
 const TONE_CLASS = {
@@ -109,7 +111,7 @@ export const StatStrip = ({
   ariaLabel: string;
   /** A control scoped to the numbers, e.g. a time range, at the strip's right. */
   action?: ReactNode;
-  columns: 1 | 2 | 3 | 4;
+  columns: 1 | 2 | 3 | 4 | 5;
   /**
    * Below `sm` the strip starts as just its header and opens on a tap. On a
    * phone four stacked cells were ~215px between the page title and the list

@@ -5,14 +5,23 @@ import type {
   QueuedashTimestampMode,
 } from "@queuedash/api";
 import { clsx } from "clsx";
-import { Check, RotateCcw, Shield, X } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Check,
+  Plus,
+  RotateCcw,
+  Shield,
+  X,
+} from "lucide-react";
+import { type ReactNode, useId } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 
 import { Alert } from "../components/Alert";
 import { Button } from "../components/Button";
 import { ErrorCard } from "../components/ErrorCard";
 import { Layout } from "../components/Layout";
+import { EDITOR_OPTIONS } from "../components/OpenInEditor";
 import {
   type UserPreferences,
   useQueuedash,
@@ -20,11 +29,20 @@ import {
 import { Select, type SelectOption } from "../components/Select";
 import { Skeleton } from "../components/Skeleton";
 import { Timestamp } from "../components/Timestamp";
+import {
+  type CodeLinks,
+  CUSTOM_URL_PLACEHOLDER,
+  type EditorId,
+  getFrameUrl,
+  mapPath,
+} from "../utils/codeLinks";
 import { formatCount, formatCountLabel } from "../utils/format";
 import {
   CARD,
+  FOCUS_FIELD,
   FOCUS_RING,
   FOCUS_RING_DATA,
+  INPUT_CLASS,
   SECTION_LABEL,
   TEXT_MUTED,
 } from "../utils/styles";
@@ -296,14 +314,288 @@ const PreferenceRow = ({
   </SettingRow>
 );
 
+type EditorChoice = EditorId | "off" | "unset";
+
+const EDITOR_CHOICES: Array<SelectOption<EditorChoice>> = [
+  { label: "Not set", value: "unset" },
+  ...EDITOR_OPTIONS,
+  { label: "Off", value: "off" },
+];
+
+/** A row whose control needs the card's width: a list, a URL, a preview. */
+const STACKED_ROW_CLASS =
+  "border-b border-gray-100 py-4 last:border-b-0 dark:border-slate-800";
+
+const PATH_INPUT = clsx(INPUT_CLASS, FOCUS_FIELD, "font-mono text-[13px]");
+
+const trimSlash = (path: string) => path.trim().replace(/\/+$/, "");
+
+/** `text` with the first `part` in it marked, for the preview's mapped folder. */
+const MarkedPart = ({ text, part }: { text: string; part: string }) => {
+  const index = part ? text.indexOf(part) : -1;
+  if (index === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, index)}
+      <span className="rounded-sm bg-brand-50 px-0.5 text-brand-700 dark:bg-brand-950/50 dark:text-brand-300">
+        {part}
+      </span>
+      {text.slice(index + part.length)}
+    </>
+  );
+};
+
+/**
+ * Where stack frames open. Per browser, like everything under My dashboard,
+ * because everyone's checkout lives somewhere else; the job panel sets it up
+ * the first time a frame is opened, so this is mostly for changing it.
+ */
+const CodeLinksSettings = ({
+  codeLinks,
+  onChange,
+}: {
+  codeLinks: CodeLinks;
+  onChange: (codeLinks: CodeLinks) => void;
+}) => {
+  const customUrlId = useId();
+  const choice: EditorChoice = codeLinks.editor ?? "unset";
+  const isOn = codeLinks.editor !== null && codeLinks.editor !== "off";
+  const firstFrom = trimSlash(codeLinks.mappings[0]?.from ?? "");
+  const examplePath =
+    codeLinks.examplePath ?? `${firstFrom || "/app"}/src/index.ts`;
+  const exampleUrl = getFrameUrl(codeLinks, {
+    fn: null,
+    path: examplePath,
+    line: 1,
+    column: 1,
+    isLibrary: false,
+    pkg: null,
+    label: "",
+  });
+  const mappedPath = mapPath(examplePath, codeLinks.mappings);
+  const mapping = codeLinks.mappings.find(
+    ({ from, to }) =>
+      trimSlash(from) &&
+      trimSlash(to) &&
+      mappedPath.startsWith(trimSlash(to)) &&
+      examplePath.startsWith(trimSlash(from)),
+  );
+  const mappedTo = mapping ? trimSlash(mapping.to) : "";
+  const urlPart = exampleUrl
+    ? ([encodeURI(mappedTo), encodeURIComponent(mappedTo)].find(
+        (part) => part && exampleUrl.includes(part),
+      ) ?? "")
+    : "";
+
+  const setMappings = (mappings: CodeLinks["mappings"]) =>
+    onChange({ ...codeLinks, mappings });
+
+  return (
+    <section className="mt-7">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className={SECTION_LABEL}>Code links</h2>
+        <p className={clsx("text-xs", TEXT_MUTED)}>Saved in this browser</p>
+      </div>
+      <div className={clsx(CARD, "mt-2 px-4")}>
+        <SettingRow
+          label="Editor"
+          description={
+            codeLinks.editor === null
+              ? "The job panel asks the first time you open a stack frame"
+              : codeLinks.editor === "off"
+                ? "Stack frames show no editor links"
+                : "Stack frames in the job panel open at the failing line"
+          }
+        >
+          <Select
+            ariaLabel="Editor"
+            options={EDITOR_CHOICES}
+            value={choice}
+            onChange={(next) =>
+              onChange({
+                ...codeLinks,
+                editor: next === "unset" ? null : next,
+              })
+            }
+          />
+        </SettingRow>
+
+        {codeLinks.editor === "custom" ? (
+          <div className={STACKED_ROW_CLASS}>
+            <label
+              htmlFor={customUrlId}
+              className="text-sm font-medium text-gray-900 dark:text-white"
+            >
+              Editor URL
+            </label>
+            <p className={clsx("mt-0.5 text-xs", TEXT_MUTED)}>
+              {"{path}"}, {"{line}"} and {"{column}"} are filled in from the
+              frame
+            </p>
+            <input
+              id={customUrlId}
+              value={codeLinks.customUrl}
+              onChange={(event) =>
+                onChange({ ...codeLinks, customUrl: event.target.value })
+              }
+              placeholder={CUSTOM_URL_PLACEHOLDER}
+              spellCheck={false}
+              className={clsx(PATH_INPUT, "mt-3 text-xs")}
+            />
+          </div>
+        ) : null}
+
+        <div className={STACKED_ROW_CLASS}>
+          <div className="text-sm font-medium text-gray-900 dark:text-white">
+            Path mapping
+          </div>
+          <div className={clsx("mt-0.5 max-w-md text-xs", TEXT_MUTED)}>
+            Workers report paths from where they run. Map each one to the same
+            folder on this machine.
+          </div>
+          {codeLinks.mappings.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {codeLinks.mappings.map((pathMapping, index) => (
+                <div
+                  // Rows are only appended or removed, never reordered.
+                  key={index}
+                  className="grid grid-cols-[minmax(0,12.5rem)_14px_minmax(0,1fr)_28px] items-center gap-x-2.5"
+                >
+                  <input
+                    aria-label={`Path on the workers, mapping ${index + 1}`}
+                    value={pathMapping.from}
+                    onChange={(event) =>
+                      setMappings(
+                        codeLinks.mappings.map((current, at) =>
+                          at === index
+                            ? { ...current, from: event.target.value }
+                            : current,
+                        ),
+                      )
+                    }
+                    placeholder="/app"
+                    spellCheck={false}
+                    className={PATH_INPUT}
+                  />
+                  <ArrowRight
+                    aria-hidden="true"
+                    className="size-3.5 text-gray-400 dark:text-slate-500"
+                  />
+                  <input
+                    aria-label={`Path on this machine, mapping ${index + 1}`}
+                    value={pathMapping.to}
+                    onChange={(event) =>
+                      setMappings(
+                        codeLinks.mappings.map((current, at) =>
+                          at === index
+                            ? { ...current, to: event.target.value }
+                            : current,
+                        ),
+                      )
+                    }
+                    placeholder="/Users/you/code/app"
+                    spellCheck={false}
+                    className={PATH_INPUT}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Remove mapping ${index + 1}`}
+                    onClick={() =>
+                      setMappings(
+                        codeLinks.mappings.filter((_, at) => at !== index),
+                      )
+                    }
+                    className={clsx(
+                      "flex size-7 items-center justify-center rounded-md transition-colors duration-150 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200 dark:hover:bg-slate-800 dark:hover:text-white dark:active:bg-slate-700",
+                      TEXT_MUTED,
+                      FOCUS_RING,
+                    )}
+                  >
+                    <X aria-hidden="true" className="size-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() =>
+              setMappings([...codeLinks.mappings, { from: "", to: "" }])
+            }
+            className={clsx(
+              "mt-3 inline-flex items-center gap-1 rounded text-xs font-medium text-brand-600 transition-colors duration-150 hover:text-brand-700 active:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200",
+              FOCUS_RING,
+            )}
+          >
+            <Plus aria-hidden="true" className="size-3" />
+            Add mapping
+          </button>
+        </div>
+
+        {isOn ? (
+          <div className={STACKED_ROW_CLASS}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                Preview
+              </div>
+              <span className={clsx("text-xs", TEXT_MUTED)}>
+                {codeLinks.examplePath
+                  ? "The last frame you set this up from"
+                  : "An example path"}
+              </span>
+            </div>
+            <div className="mt-2.5 rounded-lg border border-gray-100/80 bg-gray-50/50 px-3 py-2.5 font-mono text-xs leading-5 dark:border-slate-800/60 dark:bg-slate-900/50">
+              <div className={clsx("break-all", TEXT_MUTED)}>
+                <MarkedPart
+                  text={`${examplePath}:1:1`}
+                  part={mapping ? trimSlash(mapping.from) : ""}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="min-w-0 break-all text-gray-900 dark:text-white">
+                  {exampleUrl ? (
+                    <MarkedPart text={exampleUrl} part={urlPart} />
+                  ) : (
+                    "Add the editor's URL above"
+                  )}
+                </span>
+                {exampleUrl ? (
+                  <a
+                    href={exampleUrl}
+                    className={clsx(
+                      "inline-flex shrink-0 items-center gap-1 rounded font-sans text-xs font-medium text-brand-600 transition-colors duration-150 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200",
+                      FOCUS_RING,
+                    )}
+                  >
+                    Try it
+                    <ArrowUpRight aria-hidden="true" className="size-3" />
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <p className={clsx("mt-2 text-xs", TEXT_MUTED)}>
+        Frames point at compiled <span className="font-mono">dist/*.js</span>?
+        Start your workers with{" "}
+        <span className="font-mono">node --enable-source-maps</span> and
+        they&apos;ll point at your source.
+      </p>
+    </section>
+  );
+};
+
 export const SettingsPage = () => {
   const {
     branding,
+    codeLinks,
     defaultPreferences,
     overrides,
     preferenceScope,
     preferences,
     resetPreferences,
+    setCodeLinks,
     setDefaultJobStatus,
     setDensity,
     setJobsPerPage,
@@ -335,6 +627,9 @@ export const SettingsPage = () => {
     pinnedCount > 0
       ? `, and unpins ${formatCountLabel(pinnedCount, "queue")}`
       : "";
+  const hasCodeLinks =
+    codeLinks.editor !== null || codeLinks.mappings.length > 0;
+  const codeLinksNote = hasCodeLinks ? ", and forgets your code links" : "";
 
   return (
     <Layout>
@@ -516,6 +811,8 @@ export const SettingsPage = () => {
             </PreferenceRow>
           </div>
         </section>
+
+        <CodeLinksSettings codeLinks={codeLinks} onChange={setCodeLinks} />
 
         <section className="mt-7">
           <div className="flex flex-wrap items-center gap-2">
@@ -715,11 +1012,11 @@ export const SettingsPage = () => {
           <div className="mt-2 rounded-xl border border-red-200/70 px-4 dark:border-red-900/60">
             <SettingRow
               label="Reset local settings"
-              description={`Restores appearance, auto-refresh, jobs per load, default tab, density and timestamps to the server defaults${pinnedNote}. Preference scope: ${preferenceScope}`}
+              description={`Restores appearance, auto-refresh, jobs per load, default tab, density and timestamps to the server defaults${pinnedNote}${codeLinksNote}. Preference scope: ${preferenceScope}`}
             >
               <Alert
                 title="Reset local settings?"
-                description={`Every dashboard preference in this browser goes back to the server default${pinnedNote}. This cannot be undone.`}
+                description={`Every dashboard preference in this browser goes back to the server default${pinnedNote}${codeLinksNote}. This cannot be undone.`}
                 action={
                   <Button
                     variant="filled"

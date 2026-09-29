@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=JetBrains+Mono:wght@100..800&display=swap");
+@import "./fonts.css";
 
 @import "tailwindcss";
 
@@ -6,10 +6,12 @@
   (&:where([data-queuedash-root].dark, [data-queuedash-root].dark *));
 
 @theme {
-  --font-sans: "Inter", "Inter var", ui-sans-serif, system-ui, sans-serif;
+  --font-sans:
+    "Queuedash Inter", "Inter", "Inter var", ui-sans-serif, system-ui,
+    sans-serif;
   --font-mono:
-    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+    "Queuedash JetBrains Mono", "JetBrains Mono", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
   --color-brand-50: #f2f6ff;
   --color-brand-100: #e5ebff;
@@ -412,6 +414,231 @@
   animation: var(--animate-alert-show);
 }
 
+/* Flow bars. A running job's stripes drift, so a bar that is still growing
+   reads as live; a parent waiting on its children is hatched, like the
+   waiting-children pill's colour. Hex values, because Tailwind only emits
+   the colour variables a class uses. */
+.qd-flow-running {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #3b82f6 0 6px,
+    #93c5fd 6px 12px
+  );
+  background-size: 17px 17px;
+  animation: qd-flow-running 1.2s linear infinite;
+}
+
+[data-queuedash-root].dark .qd-flow-running {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #3b82f6 0 6px,
+    #1e40af 6px 12px
+  );
+}
+
+@keyframes qd-flow-running {
+  to {
+    background-position: 17px 0;
+  }
+}
+
+.qd-flow-children {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #fdba74 0 3px,
+    #ffedd5 3px 6px
+  );
+}
+
+[data-queuedash-root].dark .qd-flow-children {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #c2410c 0 3px,
+    #431407 3px 6px
+  );
+}
+
+/* The JSON editor (CodeMirror). The scoped reset outranks CodeMirror's own
+   base theme, so the padding, borders and inline boxes it depends on are set
+   again here. Colours come from the tokens the JSON trees use. */
+.qd-cm .cm-editor {
+  max-height: var(--qd-cm-max, 520px);
+  background-color: var(--color-gray-50);
+  color: var(--color-gray-900);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.qd-cm .cm-editor.cm-focused {
+  outline: none;
+}
+
+.qd-cm .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+  line-height: 20px;
+}
+
+.qd-cm .cm-content,
+.qd-cm .cm-gutter {
+  min-height: var(--qd-cm-min, 240px);
+}
+
+.qd-cm .cm-content {
+  padding: 12px 0;
+  caret-color: var(--color-gray-900);
+}
+
+.qd-cm .cm-line {
+  padding: 0 12px 0 4px;
+}
+
+.qd-cm .cm-gutters {
+  border: 0;
+  background-color: transparent;
+  color: var(--color-gray-400);
+}
+
+.qd-cm .cm-lineNumbers .cm-gutterElement {
+  min-width: 40px;
+  padding: 0 12px 0 10px;
+  font-size: 12px;
+}
+
+.qd-cm .cm-activeLine {
+  background-color: var(--color-gray-100);
+}
+
+.qd-cm .cm-activeLineGutter {
+  background-color: transparent;
+  color: var(--color-gray-500);
+}
+
+/* The line you are on, only while you are on it. */
+.qd-cm .cm-editor:not(.cm-focused) .cm-activeLine {
+  background-color: transparent;
+}
+
+.qd-cm .cm-editor:not(.cm-focused) .cm-activeLineGutter {
+  color: inherit;
+}
+
+.qd-cm .cm-cursor,
+.qd-cm .cm-dropCursor {
+  margin-left: -0.6px;
+  border-left: 1.2px solid var(--color-gray-900);
+}
+
+.qd-cm .cm-selectionBackground,
+.qd-cm
+  .cm-editor.cm-focused
+  > .cm-scroller
+  > .cm-selectionLayer
+  .cm-selectionBackground {
+  background-color: var(--color-brand-200);
+}
+
+.qd-cm .cm-editor.cm-focused .cm-matchingBracket {
+  background-color: color-mix(in srgb, var(--color-brand-200) 70%, transparent);
+}
+
+.qd-cm .cm-editor.cm-focused .cm-nonmatchingBracket {
+  background-color: color-mix(in srgb, var(--color-red-200) 70%, transparent);
+}
+
+/* The preflight makes every img a block; CodeMirror's caret spacers are
+   inline images. */
+.qd-cm .cm-widgetBuffer {
+  display: inline;
+  width: 0;
+  height: 1em;
+  vertical-align: text-top;
+}
+
+/* A line Duplicate changed from the job it copies. As specific as the
+   unfocused-active-line rule above, and after it, so the mark survives it. */
+.qd-cm .cm-editor .cm-line.qd-cm-changed {
+  background-color: color-mix(in srgb, var(--color-brand-100) 70%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-brand-400);
+}
+
+.qd-cm-key {
+  color: var(--color-gray-700);
+}
+
+.qd-cm-string {
+  color: var(--color-green-600);
+}
+
+.qd-cm-number {
+  color: var(--color-brand-600);
+}
+
+.qd-cm-keyword {
+  color: var(--color-purple-600);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-editor {
+  background-color: var(--color-slate-900);
+  color: var(--color-slate-200);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-content {
+  caret-color: var(--color-slate-100);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-gutters {
+  color: var(--color-slate-600);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-activeLine {
+  background-color: var(--color-slate-950);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-activeLineGutter {
+  color: var(--color-slate-400);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-cursor,
+[data-queuedash-root].dark .qd-cm .cm-dropCursor {
+  border-left-color: var(--color-slate-100);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-selectionBackground,
+[data-queuedash-root].dark
+  .qd-cm
+  .cm-editor.cm-focused
+  > .cm-scroller
+  > .cm-selectionLayer
+  .cm-selectionBackground {
+  background-color: var(--color-brand-800);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-editor.cm-focused .cm-matchingBracket {
+  background-color: color-mix(in srgb, var(--color-brand-800) 80%, transparent);
+}
+
+[data-queuedash-root].dark .qd-cm .cm-editor .cm-line.qd-cm-changed {
+  background-color: color-mix(in srgb, var(--color-brand-950) 80%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-brand-600);
+}
+
+[data-queuedash-root].dark .qd-cm-key {
+  color: var(--color-slate-400);
+}
+
+[data-queuedash-root].dark .qd-cm-string {
+  color: var(--color-green-400);
+}
+
+[data-queuedash-root].dark .qd-cm-number {
+  color: var(--color-brand-400);
+}
+
+[data-queuedash-root].dark .qd-cm-keyword {
+  color: var(--color-purple-400);
+}
+
 /* Scoped to the dashboard root: this ships as an embeddable library, so a bare
    universal selector would flatten the host app's motion too.
    .animate-spin is deliberately left alone - a frozen spinner reads as a hung
@@ -433,6 +660,10 @@
   [data-queuedash-root] .animate-heartbeat {
     animation: none !important;
     opacity: 0.65;
+  }
+
+  [data-queuedash-root] .qd-flow-running {
+    animation: none !important;
   }
 
   [data-queuedash-root] *,

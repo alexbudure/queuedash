@@ -9,6 +9,7 @@ import {
   TEXT_FAINT,
 } from "../utils/styles";
 import type { JobSort } from "../utils/viewState";
+import { ErrorFilterChip } from "./ErrorGroups";
 import { Select, type SelectOption } from "./Select";
 
 const SORT_OPTIONS: ReadonlyArray<SelectOption<JobSort>> = [
@@ -21,6 +22,8 @@ type JobSearchProps = {
   query: string;
   sort: JobSort;
   isLoading?: boolean;
+  // Set while the list shows one error group from the Errors tab.
+  errorFilter?: { label: string; onClear: () => void };
   onQueryChange: (query: string) => void;
   onSortChange: (sort: JobSort) => void;
 };
@@ -29,6 +32,7 @@ export const JobSearch = ({
   query,
   sort,
   isLoading = false,
+  errorFilter,
   onQueryChange,
   onSortChange,
 }: JobSearchProps) => {
@@ -56,7 +60,18 @@ export const JobSearch = ({
 
   return (
     <div>
-      <div className="flex max-w-2xl flex-col gap-2 sm:flex-row">
+      <div
+        className={clsx(
+          "flex flex-col gap-2 sm:flex-row",
+          errorFilter ? "max-w-4xl" : "max-w-2xl",
+        )}
+      >
+        {errorFilter ? (
+          <ErrorFilterChip
+            label={errorFilter.label}
+            onClear={errorFilter.onClear}
+          />
+        ) : null}
         <form
           onSubmit={(event) => {
             event.preventDefault();

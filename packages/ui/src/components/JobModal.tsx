@@ -1,18 +1,15 @@
 import { clsx } from "clsx";
-import { AlertTriangle, ChevronDown, ChevronUp, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, Layers } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 
-import { formatDuration } from "../utils/format";
+import { formatCount, formatDuration } from "../utils/format";
 import { parseDataOrNull, parseUnknownJson } from "../utils/json";
+import { getAttempts } from "../utils/stack";
 import { isFailedJob, isRunningJob } from "../utils/status";
-import {
-  CARD_BORDER,
-  FOCUS_RING,
-  TEXT_FAINT,
-  TEXT_MUTED,
-} from "../utils/styles";
+import { CARD_BORDER, FOCUS_RING, TEXT_MUTED } from "../utils/styles";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
+import { AddJobModal, type DuplicateSource } from "./AddJobModal";
 import { CopyButton } from "./CopyButton";
 import {
   DetailBody,
@@ -22,6 +19,8 @@ import {
   Property,
   PropertyList,
 } from "./DetailView";
+import { AttemptsSection, FailureSummary } from "./FailureDetail";
+import { FlowSection } from "./FlowSection";
 import { JobActionMenu } from "./JobActionMenu";
 import { JobTimeline } from "./JobTimeline";
 import { JsonPane } from "./JsonPane";
@@ -137,6 +136,10 @@ export const JobModal = ({
   // since run kept its "Delayed" badge, and a Promote the server refused, next
   // to a live timeline that said Completed.
   const status = liveJob?.status ?? listStatus;
+  // The job as it was when Duplicate opened: j/k may step this panel on while
+  // the copy is being edited, and the copy is of the job it was opened from.
+  const [duplicateSource, setDuplicateSource] =
+    useState<DuplicateSource | null>(null);
 
   return (
     <SidePanelDialog
@@ -200,6 +203,7 @@ export const JobModal = ({
             queueName={queueName}
             queue={queueReq.data ?? undefined}
             onRemove={onJobLeft}
+            onDuplicate={() => setDuplicateSource({ job, status })}
           />
         </>
       }
@@ -215,7 +219,16 @@ export const JobModal = ({
         status={status}
         queueName={queueName}
         queue={queueReq.data ?? undefined}
+        errorFingerprint={liveJob?.errorFingerprint ?? null}
       />
+      {/* Inside the panel's tree, so it stacks over it as its own modal. */}
+      {duplicateSource && queueReq.data ? (
+        <AddJobModal
+          queue={queueReq.data}
+          source={duplicateSource}
+          onDismiss={() => setDuplicateSource(null)}
+        />
+      ) : null}
     </SidePanelDialog>
   );
 };
@@ -225,36 +238,22 @@ type JobDetailsProps = {
   status?: Status | null;
   queueName: string;
   queue?: Queue;
+  /** The error group of a failure, from the live job; null in list snapshots. */
+  errorFingerprint: string | null;
 };
 
-const FAILED_TONE = {
-  box: "bg-red-50/80 dark:bg-red-950/20",
-  icon: "text-red-500 dark:text-red-400",
-  title: "text-red-800 dark:text-red-300",
-  text: "text-red-700/90 dark:text-red-400/80",
-  link: "text-red-600 hover:text-red-800 active:text-red-900 dark:text-red-400 dark:hover:text-red-300 dark:active:text-red-200",
-};
-
-// Bull and BullMQ keep a job's last failure reason after a retry succeeds, so
-// on a job that did not end in failure the reason is history, not the outcome.
-const EARLIER_FAILURE_TONE = {
-  box: "bg-gray-50/80 dark:bg-slate-800/40",
-  icon: TEXT_FAINT,
-  title: "text-gray-900 dark:text-white",
-  text: "text-gray-600 dark:text-slate-300",
-  link: `${TEXT_MUTED} hover:text-gray-900 active:text-gray-600 dark:hover:text-white dark:active:text-slate-300`,
-};
-
-const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
+const JobDetails = ({
+  job,
+  status,
+  queueName,
+  queue,
+  errorFingerprint,
+}: JobDetailsProps) => {
   const failed = isFailedJob(job, status);
-  const errorTone = failed ? FAILED_TONE : EARLIER_FAILURE_TONE;
   const [showOpts, setShowOpts] = useState(false);
-  const [showFullError, setShowFullError] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [showTrace, setShowTrace] = useState(false);
   const logsId = useId();
   const optsId = useId();
-  const traceId = useId();
 
   const { data: logs } = trpc.job.logs.useQuery({
     jobId: job.id,
@@ -331,7 +330,30 @@ const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
   const hasRawOpts = !!parsedOpts && Object.keys(parsedOpts).length > 0;
   const supportsLogs = queue?.supports.logs === true;
   const logLines = Array.isArray(logs) ? logs : null;
-  const stacktrace = job.stacktrace ?? [];
+
+  const attempts = useMemo(
+    () =>
+      getAttempts(job.stacktrace ?? [], {
+        attemptsMade: job.attemptsMade ?? null,
+        hasFailed: failed,
+        stackTraceLimit: parsedOpts
+          ? readNumber(parsedOpts.stackTraceLimit)
+          : null,
+      }),
+    [failed, job.attemptsMade, job.stacktrace, parsedOpts],
+  );
+  const stalledCounter = job.stalledCounter ?? 0;
+  // Runs and attempts only settle once the job has finished: before that a
+  // run may be under way that no attempt counts yet.
+  const isFinished = status === "completed" || status === "failed";
+  const stall =
+    stalledCounter > 0
+      ? {
+          stalledCounter,
+          runsStarted: isFinished ? (job.attemptsStarted ?? null) : null,
+          attemptsCounted: isFinished ? (job.attemptsMade ?? null) : null,
+        }
+      : null;
 
   return (
     <DetailBody>
@@ -381,74 +403,25 @@ const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
 
         <JobTimeline job={job} status={status} />
 
-        {job.failedReason ? (
-          <div className={clsx("mt-4 rounded-lg p-3", errorTone.box)}>
-            <div className="flex items-start gap-2.5">
-              <AlertTriangle
-                className={clsx("mt-0.5 size-3.5 shrink-0", errorTone.icon)}
-              />
-              <div className="min-w-0 flex-1">
-                <p
-                  className={clsx(
-                    "mb-1.5 text-xs font-medium",
-                    errorTone.title,
-                  )}
-                >
-                  {failed ? "Failed reason" : "An earlier attempt failed"}
-                </p>
-                <pre
-                  className={clsx(
-                    "overflow-wrap-anywhere font-mono text-xs break-all whitespace-pre-wrap",
-                    errorTone.text,
-                  )}
-                >
-                  {showFullError || job.failedReason.length <= 300
-                    ? job.failedReason
-                    : `${job.failedReason.slice(0, 300)}…`}
-                </pre>
-                <div className="mt-1.5 flex flex-wrap gap-x-3">
-                  {job.failedReason.length > 300 ? (
-                    <button
-                      type="button"
-                      aria-expanded={showFullError}
-                      onClick={() => setShowFullError((prev) => !prev)}
-                      className={clsx(
-                        "rounded text-xs font-medium transition-colors duration-150",
-                        errorTone.link,
-                        FOCUS_RING,
-                      )}
-                    >
-                      {showFullError ? "Show less" : "Show more"}
-                    </button>
-                  ) : null}
-                  {stacktrace.length > 0 ? (
-                    <button
-                      type="button"
-                      aria-expanded={showTrace}
-                      aria-controls={traceId}
-                      onClick={() => setShowTrace((prev) => !prev)}
-                      className={clsx(
-                        "rounded text-xs font-medium transition-colors duration-150",
-                        errorTone.link,
-                        FOCUS_RING,
-                      )}
-                    >
-                      {showTrace ? "Hide" : "Show"} stack trace
-                    </button>
-                  ) : null}
-                </div>
-                <div id={traceId}>
-                  {showTrace && stacktrace.length > 0 ? (
-                    <div className="mt-2.5">
-                      <LinesPane lines={stacktrace} tone="error" />
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
+        {job.failedReason || attempts.length > 0 ? (
+          <FailureSummary
+            job={job}
+            failed={failed}
+            attempts={attempts}
+            errorFingerprint={errorFingerprint}
+            queueName={queueName}
+          />
         ) : null}
       </DetailSection>
+
+      {attempts.length > 0 || stall ? (
+        <AttemptsSection attempts={attempts} stall={stall} />
+      ) : null}
+
+      {/* Where the job sits in its flow comes straight after where it is in
+          its life: a child stuck on its parent, or a parent on a child, is
+          the next thing to know. */}
+      <FlowSection jobId={job.id} queueName={queueName} queue={queue} />
 
       <DetailSection
         title="Properties"
@@ -481,11 +454,33 @@ const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
               }
             />
           ) : null}
+          {job.processedBy ? (
+            <Property
+              label="Worker"
+              value={
+                <WorkerValue
+                  name={job.processedBy}
+                  queueName={queueName}
+                  canInspect={queue?.supports.workers === true}
+                />
+              }
+            />
+          ) : null}
           {priority !== null ? (
             <Property label="Priority" mono value={String(priority)} />
           ) : null}
           {attemptsValue !== null ? (
             <Property label="Attempts" mono value={attemptsValue} />
+          ) : null}
+          {stalledCounter > 0 ? (
+            <Property
+              label="Stalled"
+              value={
+                stalledCounter === 1
+                  ? "1 time"
+                  : `${formatCount(stalledCounter)} times`
+              }
+            />
           ) : null}
           {optionRows.map((row) => (
             <Property
@@ -559,29 +554,54 @@ const JobDetails = ({ job, status, queueName, queue }: JobDetailsProps) => {
           ) : null}
         </DetailSection>
       ) : null}
-
-      {/* Only when there is no error to nest it under - a stack trace without
-          a failed reason has nowhere else to go. */}
-      {!job.failedReason && stacktrace.length > 0 ? (
-        <DetailSection
-          title="Stack trace"
-          action={
-            <DisclosureButton
-              isOpen={showTrace}
-              controls={traceId}
-              onToggle={() => setShowTrace((prev) => !prev)}
-            >
-              {showTrace ? "Hide" : "Show"}
-            </DisclosureButton>
-          }
-        >
-          {showTrace ? (
-            <div id={traceId}>
-              <LinesPane lines={stacktrace} />
-            </div>
-          ) : null}
-        </DetailSection>
-      ) : null}
     </DetailBody>
+  );
+};
+
+/**
+ * The named worker that last ran the job, and whether it is still connected:
+ * a job that stalled on a worker that has since gone is a crash, not a bug.
+ */
+const WorkerValue = ({
+  name,
+  queueName,
+  canInspect,
+}: {
+  name: string;
+  queueName: string;
+  canInspect: boolean;
+}) => {
+  const workersReq = trpc.queue.workers.useQuery(
+    { queueName },
+    { enabled: canInspect, staleTime: 10_000 },
+  );
+  const workers = workersReq.data;
+  const isConnected = Array.isArray(workers)
+    ? workers.some((worker) => worker.name === name)
+    : null;
+
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5">
+      <span className="min-w-0 font-mono text-[13px] break-all">{name}</span>
+      {isConnected === null ? null : (
+        <span
+          className={clsx(
+            "inline-flex items-center gap-1.5 text-xs",
+            TEXT_MUTED,
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={clsx(
+              "size-1.5 rounded-full",
+              isConnected
+                ? "bg-green-500 dark:bg-green-400"
+                : "bg-gray-300 dark:bg-slate-600",
+            )}
+          />
+          {isConnected ? "Connected" : "Not connected"}
+        </span>
+      )}
+    </span>
   );
 };

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
-import { toast, Toaster } from "sonner";
+import { toast } from "sonner";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginLoading, LoginPage } from "./components/LoginPage";
@@ -17,6 +17,8 @@ import {
   QueuedashProvider,
   useQueuedash,
 } from "./components/QueuedashProvider";
+import { Toaster } from "./components/Toaster";
+import { FlowPage } from "./pages/FlowPage";
 import { HomePage } from "./pages/HomePage";
 import { QueuePage } from "./pages/QueuePage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -53,6 +55,7 @@ const RoutedContent = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/queues/:id" element={<QueuePage />} />
+        <Route path="/queues/:id/jobs/:jobId/flow" element={<FlowPage />} />
         {/* Keep non-reserved v3 queue bookmarks working. */}
         <Route path="/:id" element={<QueuePage />} />
       </Routes>
@@ -122,7 +125,7 @@ const QueuedashRoot = ({ children }: PropsWithChildren) => {
     >
       {/* Above the auth boundary: a background 401 unmounts the application
           subtree, and a toast cannot be shown from a tree that is going away. */}
-      <Toaster theme={isDark ? "dark" : "light"} position="bottom-right" />
+      <Toaster isDark={isDark} />
       {children}
     </div>
   );

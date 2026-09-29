@@ -1,7 +1,12 @@
 Dockerfile
 .dockerignore
-node_modules
+# Any depth: pnpm gives every workspace package its own node_modules, and a
+# host copy must not land on top of the one the image installs.
+**/node_modules
 npm-debug.log
 README.md
-.next
+**/.next
 .git
+# Build outputs and turbo's cache: the image builds everything from source.
+**/dist
+**/.turbo

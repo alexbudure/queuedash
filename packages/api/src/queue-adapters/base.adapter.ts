@@ -26,15 +26,39 @@ export type AdaptedJob = {
   processedAt: Date | null;
   finishedAt: Date | null;
   failedReason?: string;
+  // One entry per failed attempt that kept its trace, oldest first. A library
+  // may keep only the latest few (BullMQ's `stackTraceLimit`), or only one.
   stacktrace?: string[];
   retriedAt: Date | null;
   returnValue?: unknown;
   groupId?: string; // Group identifier for GroupMQ and BullMQ Pro
   progress?: number; // Job progress (0-100)
   attemptsMade?: number; // Number of attempts made
+  // The name the job was added under, before a `jobName` display mapping:
+  // what a worker dispatches on, so a copy of the job must keep it. Only for
+  // libraries whose jobs have names.
+  rawName?: string;
+  // BullMQ 5+: the named Worker that last picked the job up, how many times it
+  // was started (a stalled run starts again without counting an attempt), and
+  // how many times its lock expired mid-run.
+  processedBy?: string;
+  attemptsStarted?: number;
+  stalledCounter?: number;
 };
 
 export type JobCounts = Partial<Record<string, number>>;
+
+/** The listed options that are set on `opts`, to carry them to another job. */
+export const pickJobOptions = (
+  opts: Record<string, unknown> | undefined,
+  keys: readonly string[],
+): Record<string, unknown> => {
+  const picked: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (opts?.[key] !== undefined) picked[key] = opts[key];
+  }
+  return picked;
+};
 
 export type JobPageMeta = {
   capped: boolean;
@@ -56,6 +80,7 @@ export type JobScanToken = symbol;
 export type FeatureSupport<SupportedStatus extends string = string> = {
   addJobOptions: boolean;
   addJobOptionKeys: readonly string[]; // The exact option keys a manually added job may set
+  jobNames: boolean; // Whether jobs carry a name a worker can dispatch on
   pause: boolean;
   resume: boolean;
   clean: boolean | { supportedStatuses: SupportedStatus[] }; // Can specify which statuses are cleanable
@@ -123,6 +148,29 @@ export type QueueMetrics = {
     prevTS: number; // Previous timestamp
     prevCount: number; // Count from previous period
   };
+};
+
+// A job's parent in a BullMQ flow. `queueKey` is the parent queue's Redis key
+// prefix ("bull:orders"), which is all a job records about where it lives.
+export type FlowParent = {
+  queueKey: string;
+  id: string;
+  // Whether the child was added with failParentOnFailure,
+  // ignoreDependencyOnFailure, removeDependencyOnFailure or
+  // continueParentOnFailure. Without any of them a failed child holds its
+  // parent in waiting-children until it is retried or removed.
+  failureHandled: boolean;
+};
+
+// Where BullMQ keeps a child: `processed` once it completed, `unprocessed`
+// until then (a failed child with no failure handling stays here), `failed`
+// and `ignored` for failures the parent was told to act on or skip.
+export type FlowChildSet = "processed" | "unprocessed" | "failed" | "ignored";
+
+export type FlowChildren = {
+  total: number;
+  // Child job keys (`${queueKey}:${id}`), the ones still pending first.
+  keys: Array<{ key: string; set: FlowChildSet }>;
 };
 
 export type GroupInfo = {
@@ -203,10 +251,18 @@ export abstract class QueueAdapter<
     void jobId;
     return null;
   }
+  // `name` only reaches adapters whose `supports.jobNames` is true; without
+  // one, each library keeps the name it always gave a manually added job.
   abstract addJob(
     data: Record<string, unknown>,
     opts?: Record<string, unknown>,
+    name?: string,
   ): Promise<AdaptedJob>;
+  // Adds a new job with an existing job's name, data and the options that
+  // decide how it runs: workers dispatch on the name, and attempts or backoff
+  // are the producer's choice. Never its id, delay, schedule or flow parent: a
+  // rerun is a new job that runs now. Throws JobNotFoundError for an unknown id.
+  abstract rerunJob(jobId: string): Promise<AdaptedJob>;
   abstract removeJob(jobId: string): Promise<void>;
   abstract retryJob(jobId: string): Promise<void>;
   abstract promoteJob(jobId: string): Promise<void>;
@@ -233,6 +289,13 @@ export abstract class QueueAdapter<
     start: number,
     end: number,
   ): Promise<QueueMetrics>;
+
+  // Flow operations (optional - only for queues that support flows)
+  // The queue's Redis key prefix, which is how flows name a job's queue.
+  getQueueKey?(): string;
+  getJobParent?(jobId: string): Promise<FlowParent | null>;
+  // Up to `limit` of the job's children; throws JobNotFoundError.
+  getJobChildren?(jobId: string, limit: number): Promise<FlowChildren>;
 
   // Group operations (optional - only for queues that support it)
   async getGroups(): Promise<GroupInfo[]> {

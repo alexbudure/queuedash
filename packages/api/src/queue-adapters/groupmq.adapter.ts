@@ -354,6 +354,7 @@ export class GroupMQAdapter extends QueueAdapter<
 
   supports: FeatureSupport<GroupMQStatus> = {
     addJobOptions: true,
+    jobNames: false,
     addJobOptionKeys: [
       "delay",
       "groupId",
@@ -605,6 +606,28 @@ export class GroupMQAdapter extends QueueAdapter<
       data,
     });
     return this.adaptJob(job);
+  }
+
+  async rerunJob(jobId: string): Promise<AdaptedJob> {
+    let job: GroupMQJob | null;
+    try {
+      job = await this.queue.getJob(jobId);
+    } catch (error) {
+      if (!(error instanceof Error && /not found/i.test(error.message))) {
+        throw error;
+      }
+      job = null;
+    }
+    if (!job) throw new JobNotFoundError();
+    // In its own group: a group's jobs run one at a time and in order, and a
+    // rerun in a new random group would run beside the jobs it belongs behind.
+    // GroupMQ reads a job's stored maxAttempts back as `opts.attempts`.
+    const rerun = await this.queue.add({
+      groupId: job.groupId,
+      data: job.data,
+      maxAttempts: job.opts.attempts,
+    });
+    return this.adaptJob(rerun);
   }
 
   async removeJob(jobId: string): Promise<void> {
