@@ -46,6 +46,10 @@ export const TableRow = ({
         getTableGridClassName(layoutVariant, selectable),
         getTableMinWidthClassName(layoutVariant),
         hasSeparator && "border-b",
+        // The phone pages' hairline: with no card edge beside it, the table's
+        // own is too faint (see phoneStyles).
+        layoutVariant === "job" &&
+          "max-sm:border-gray-200/60 dark:max-sm:border-slate-800/80",
         isSelected
           ? "bg-gray-50 active:bg-gray-100 dark:bg-slate-800/60 dark:active:bg-slate-800"
           : "hover:bg-gray-50/50 active:bg-gray-100/70 dark:hover:bg-slate-800/30 dark:active:bg-slate-800/60",

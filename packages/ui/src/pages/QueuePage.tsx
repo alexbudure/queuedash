@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -23,6 +24,13 @@ import { GroupsSection } from "../components/GroupsSection";
 import { HealthStrip } from "../components/HealthStrip";
 import { JobSearch } from "../components/JobSearch";
 import { JobTable } from "../components/JobTable";
+import {
+  formatJobTypeName,
+  isJobTypeRange,
+  type JobType,
+  type JobTypeRange,
+  JobTypes,
+} from "../components/JobTypes";
 import { Layout } from "../components/Layout";
 import {
   canToggleQueueRunning,
@@ -35,6 +43,13 @@ import { SchedulerTable } from "../components/SchedulerTable";
 import { Skeleton } from "../components/Skeleton";
 import { isWaitingOnWorkers, WorkersInline } from "../components/WorkersPanel";
 import { NUM_OF_RETRIES } from "../utils/config";
+import {
+  type DateRange,
+  hasDateRange,
+  readDateRange,
+  toDateRangeInput,
+  writeDateRange,
+} from "../utils/dateRange";
 import { formatCount } from "../utils/format";
 import {
   CARD_BORDER,
@@ -102,6 +117,7 @@ export const QueuePage = () => {
   const requestedView = searchParams.get("view");
   const requestedSchedulersView = requestedView === "schedulers";
   const isErrorsView = requestedView === "errors";
+  const requestedTypesView = requestedView === "types";
   // An error group from the Errors tab, as a filter on the Jobs view.
   const rawErrorFilter = searchParams.get("error");
   const errorFingerprint = isErrorFingerprint(rawErrorFilter)
@@ -113,6 +129,9 @@ export const QueuePage = () => {
     : "24h";
   const errorSort: ErrorSort =
     searchParams.get("errorSort") === "recent" ? "recent" : "count";
+  const typeRange: JobTypeRange = isJobTypeRange(rawErrorRange)
+    ? rawErrorRange
+    : "24h";
   const rawQuery = searchParams.get("q")?.trim() ?? "";
   const query = rawQuery.slice(0, 200);
   const requestedSort = searchParams.get("sort");
@@ -120,6 +139,15 @@ export const QueuePage = () => {
     requestedSort === "newest" || requestedSort === "oldest"
       ? requestedSort
       : "queue";
+  // A job name from the Job types tab.
+  const jobName = searchParams.get("name")?.slice(0, 200) || null;
+  // Presets as offsets (`from=now-1h`), custom ranges as moments.
+  const rawFrom = searchParams.get("from");
+  const rawTo = searchParams.get("to");
+  const dateRange = useMemo(
+    () => readDateRange(rawFrom, rawTo),
+    [rawFrom, rawTo],
+  );
   // Every other filter lives in the URL; a group kept in component state made
   // a filtered view unshareable and silently dropped it on reload while the
   // destructive buttons still said "Remove matches".
@@ -191,6 +219,8 @@ export const QueuePage = () => {
       next.delete("q");
       next.delete("group");
       next.delete("error");
+      next.delete("name");
+      writeDateRange(next, {});
     });
   }, [updateParams]);
 
@@ -232,6 +262,10 @@ export const QueuePage = () => {
   );
   const isSchedulersView =
     requestedSchedulersView && queueReq.data?.supports.schedulers !== false;
+  const isTypesView =
+    requestedTypesView && queueReq.data?.supports.jobNames !== false;
+  // Views that aren't a job list: no status, no search, no list query.
+  const isOtherView = isSchedulersView || isErrorsView || isTypesView;
 
   // Derived on every render - the URL, then the preference, then what the
   // queue supports - rather than held in state and corrected by an effect.
@@ -250,11 +284,20 @@ export const QueuePage = () => {
       : candidateStatus
   ) as Status;
   // A filtered, grouped or sorted list is rebuilt by a server-side scan on
-  // every request, so it polls on a slower floor than a range read.
+  // every request, so it polls on a slower floor than a range read. A date
+  // range is a range read only for the finished jobs BullMQ and Bull keep
+  // sorted by finish time.
   const isServerScanned = isServerScannedJobList({
     error: errorFingerprint,
     groupId: selectedGroupId,
+    name: jobName,
     query,
+    scansRange:
+      hasDateRange(dateRange) &&
+      !(
+        (status === "completed" || status === "failed") &&
+        (queueReq.data?.type === "bullmq" || queueReq.data?.type === "bull")
+      ),
     sort,
   });
 
@@ -265,6 +308,8 @@ export const QueuePage = () => {
     groupId: selectedGroupId ?? undefined,
     query: query || undefined,
     error: errorFingerprint ?? undefined,
+    name: jobName ?? undefined,
+    ...toDateRangeInput(dateRange),
     sort,
   };
 
@@ -281,8 +326,7 @@ export const QueuePage = () => {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled:
       !!queueName &&
-      !isSchedulersView &&
-      !isErrorsView &&
+      !isOtherView &&
       !!queueReq.data &&
       queueReq.data.supports.statuses.includes(status),
     refetchInterval: (queryState) =>
@@ -302,20 +346,13 @@ export const QueuePage = () => {
       supportedStatuses &&
       shouldWriteEffectiveStatus({
         effectiveStatus: status,
-        isSchedulersView: isSchedulersView || isErrorsView,
+        isSchedulersView: isOtherView,
         params: searchParams,
       })
     ) {
       updateParams((next) => next.set("status", status), { replace: true });
     }
-  }, [
-    isErrorsView,
-    isSchedulersView,
-    searchParams,
-    status,
-    supportedStatuses,
-    updateParams,
-  ]);
+  }, [isOtherView, searchParams, status, supportedStatuses, updateParams]);
 
   useEffect(() => {
     if (
@@ -328,6 +365,32 @@ export const QueuePage = () => {
 
     updateParams((next) => next.delete("view"), { replace: true });
   }, [queueReq.data, requestedSchedulersView, updateParams]);
+
+  useEffect(() => {
+    if (requestedTypesView && queueReq.data?.supports.jobNames === false) {
+      updateParams((next) => next.delete("view"), { replace: true });
+    }
+  }, [queueReq.data, requestedTypesView, updateParams]);
+
+  // A type opens as its jobs over the same window: its failures, if it had
+  // any, else its completions.
+  const handleOpenType = (type: JobType) => {
+    updateParams((next) => {
+      next.delete("view");
+      next.delete("range");
+      next.delete("q");
+      next.delete("group");
+      next.delete("error");
+      next.delete("job");
+      next.set("name", type.name);
+      next.set("status", type.failed > 0 ? "failed" : "completed");
+      writeDateRange(next, {
+        from: {
+          offset: -{ "1h": 60, "24h": 1_440, "7d": 10_080 }[typeRange] * 60_000,
+        },
+      });
+    });
+  };
 
   useEffect(() => {
     if (queueReq.data && !queueReq.data.supports.groups && selectedGroupId) {
@@ -489,11 +552,7 @@ export const QueuePage = () => {
   // empty: one incidental match in `completed` used to hide the only route to
   // the same job sitting in `failed`.
   const showCrossStatusSearch =
-    !isSchedulersView &&
-    !isErrorsView &&
-    !isError &&
-    !isJobListLoading &&
-    !!query;
+    !isOtherView && !isError && !isJobListLoading && !!query;
   const errorGroup =
     firstPage && "errorGroup" in firstPage ? firstPage.errorGroup : null;
   const hasMatchesInStatus = jobs.length > 0;
@@ -506,7 +565,16 @@ export const QueuePage = () => {
       next.delete("view");
       next.delete("group");
       next.delete("q");
+      next.delete("name");
+      writeDateRange(next, {});
       next.set("job", jobId);
+    });
+  };
+
+  const handleDateRangeChange = (range: DateRange) => {
+    updateParams((next) => {
+      writeDateRange(next, range);
+      next.set("status", status);
     });
   };
 
@@ -519,35 +587,46 @@ export const QueuePage = () => {
   // permanent slot on the page.
   const connectionMeta =
     queueReq.data && client ? (
+      // Each fact carries the "·" before it and never breaks inside, so a
+      // narrow screen wraps before a dot rather than leaving one at a line end.
       <p
         className={clsx(
-          "mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] tabular-nums",
+          "mt-1 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] tabular-nums max-sm:text-xs max-sm:leading-[18px]",
           TEXT_MUTED,
         )}
       >
         <span>{ADAPTER_LABELS[queueReq.data.type] ?? queueReq.data.type}</span>
-        <span aria-hidden="true">·</span>
-        <span>Redis {client.version}</span>
-        <span aria-hidden="true">·</span>
-        <span>{formatCount(client.connectedClients)} clients</span>
+        <span className="whitespace-nowrap">
+          <span aria-hidden="true">· </span>Redis {client.version}
+        </span>
+        <span className="whitespace-nowrap">
+          <span aria-hidden="true">· </span>
+          {formatCount(client.connectedClients)} clients
+        </span>
         {/* No blocked-clients count: INFO reports it for the whole server,
             and every idle worker blocks while it waits for a job, so healthy
             queues always have some. */}
-        <span aria-hidden="true">·</span>
-        <span className={memoryToneClass(memoryPercentage)}>
+        <span
+          className={clsx(
+            "whitespace-nowrap",
+            memoryToneClass(memoryPercentage),
+          )}
+        >
+          <span aria-hidden="true">· </span>
           {client.usedMemoryHuman} of {client.totalMemoryHuman} memory
         </span>
         {/* Queues with metrics show workers in the Health strip; the rest
             have no strip, so the count joins the other facts here. */}
         {queueReq.data.supports.workers === true &&
         !queueReq.data.supports.metrics ? (
-          <>
-            <span aria-hidden="true">·</span>
+          <span className="whitespace-nowrap">
+            <span aria-hidden="true">· </span>
             <WorkersInline
+              queue={queueReq.data}
               queueName={queueName}
               hasPendingWork={isWaitingOnWorkers(queueReq.data.counts)}
             />
-          </>
+          </span>
         ) : null}
       </p>
     ) : queueReq.data ? null : (
@@ -576,10 +655,10 @@ export const QueuePage = () => {
         )
       ) : (
         <div className="space-y-5">
-          <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-            <div className="min-w-0">
+          <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 max-sm:flex-nowrap">
+            <div className="min-w-0 max-sm:flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">
+                <h1 className="text-xl font-semibold tracking-tight text-gray-900 max-sm:text-[22px] max-sm:leading-7 dark:text-white">
                   {queueReq.data ? (
                     queueReq.data.displayName
                   ) : (
@@ -627,7 +706,13 @@ export const QueuePage = () => {
             </div>
             {/* Actions sit at the far edge, where every other page puts them,
                 instead of in the run of badges after the title. */}
-            {queueReq.data ? <QueueActionMenu queue={queueReq.data} /> : null}
+            {queueReq.data ? (
+              // A phone's 44px "…" sits in the corner, its padding hanging
+              // past the title's line like the mockup's.
+              <div className="shrink-0 max-sm:-mt-2 max-sm:-mr-2.5">
+                <QueueActionMenu queue={queueReq.data} />
+              </div>
+            ) : null}
           </header>
 
           <HealthStrip
@@ -644,24 +729,25 @@ export const QueuePage = () => {
                     ? "schedulers"
                     : isErrorsView
                       ? "errors"
-                      : "jobs"
+                      : isTypesView
+                        ? "types"
+                        : "jobs"
                 }
                 errorCount={errorGroupsReq.data?.groups.length}
                 schedulerCount={schedulersReq.data?.length}
                 showSchedulers={queueReq.data.supports.schedulers}
+                showTypes={queueReq.data.supports.jobNames}
                 onViewChange={handleViewChange}
               />
             ) : null}
-            {!isSchedulersView && !isErrorsView ? (
+            {!isOtherView ? (
               <QueueStatusFilter
                 status={status}
                 queue={queueReq.data}
                 onStatusChange={handleStatusChange}
               />
             ) : null}
-            {!isSchedulersView &&
-            !isErrorsView &&
-            queueReq.data?.supports.groups ? (
+            {!isOtherView && queueReq.data?.supports.groups ? (
               <GroupsSection
                 canRemoveJobs={queueReq.data.access.actions["job.remove"]}
                 queueName={queueName}
@@ -669,11 +755,33 @@ export const QueuePage = () => {
                 onSelectGroup={handleSelectGroup}
               />
             ) : null}
-            {!isSchedulersView && !isErrorsView ? (
+            {!isOtherView ? (
               <JobSearch
+                status={status}
                 query={query}
                 sort={sort}
+                dateRange={dateRange}
                 isLoading={isJobListLoading}
+                countInput={{
+                  queueName,
+                  status,
+                  groupId: jobListInput.groupId,
+                  query: jobListInput.query,
+                  error: jobListInput.error,
+                  name: jobListInput.name,
+                }}
+                onDateRangeChange={handleDateRangeChange}
+                nameFilter={
+                  jobName
+                    ? {
+                        label: formatJobTypeName(jobName),
+                        onClear: () =>
+                          updateParams((next) => {
+                            next.delete("name");
+                          }),
+                      }
+                    : undefined
+                }
                 errorFilter={
                   errorFingerprint
                     ? {
@@ -699,7 +807,24 @@ export const QueuePage = () => {
                 }}
               />
             ) : null}
-            {isErrorsView ? (
+            {isTypesView ? (
+              <JobTypes
+                key={queueName}
+                queueName={queueName}
+                queue={queueReq.data}
+                range={typeRange}
+                onRangeChange={(nextRange) =>
+                  updateParams(
+                    (next) => {
+                      if (nextRange === "24h") next.delete("range");
+                      else next.set("range", nextRange);
+                    },
+                    { replace: true },
+                  )
+                }
+                onOpenType={handleOpenType}
+              />
+            ) : isErrorsView ? (
               <ErrorGroups
                 // Remounted per queue, like HealthStrip: the groups keep
                 // their previous data across a range change, never across
@@ -771,6 +896,9 @@ export const QueuePage = () => {
                   queue={queueReq.data}
                   selectedGroupId={selectedGroupId}
                   errorFingerprint={errorFingerprint}
+                  jobName={jobName}
+                  dateRange={dateRange}
+                  sort={sort}
                   selectedJobId={selectedJobId}
                   onSelectJob={handleSelectJob}
                   onJobLeft={handleJobLeft}

@@ -214,6 +214,17 @@ export const crossQueueFlows = (): FakeFlowJob[] =>
 
 // --- Queues ---
 
+/** What a real producer would call the job, from what it carries. */
+export const nameFor = (data: Record<string, unknown>) =>
+  String(
+    data.type ??
+      data.template ??
+      data.operation ??
+      data.event ??
+      data.action ??
+      "job",
+  );
+
 export const queues: FakeQueue[] = [
   // ─── 1. Payment Processing (BullMQ) ──────────────────────────
   {

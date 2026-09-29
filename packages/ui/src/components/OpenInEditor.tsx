@@ -102,7 +102,9 @@ export const OpenInEditor = ({
   const editor = getEditorLabel(codeLinks.editor);
   return variant === "text" ? (
     <a href={url} className={clsx(TEXT_LINK, className, FOCUS_RING)}>
-      Open in {editor}
+      {/* A phone's frame line needs the room for the file path. */}
+      <span className="max-sm:hidden">Open in {editor}</span>
+      <span className="sm:hidden">Open</span>
       <ArrowUpRight aria-hidden="true" className="size-3" />
     </a>
   ) : (
@@ -134,7 +136,8 @@ const EditorSetup = ({
       {variant === "text" ? (
         <AriaButton className={clsx(TEXT_LINK, className, FOCUS_RING_DATA)}>
           <Code2 aria-hidden="true" className="size-3" />
-          Open in editor
+          <span className="max-sm:hidden">Open in editor</span>
+          <span className="sm:hidden">Open</span>
         </AriaButton>
       ) : (
         <AriaButton

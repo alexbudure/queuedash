@@ -1,11 +1,11 @@
 import { clsx } from "clsx";
 import { ChevronDown, ChevronUp, Layers } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
 
 import { formatCount, formatDuration } from "../utils/format";
 import { parseDataOrNull, parseUnknownJson } from "../utils/json";
 import { getAttempts } from "../utils/stack";
-import { isFailedJob, isRunningJob } from "../utils/status";
+import { isFailedJob, isRunningJob, STATUS_LABELS } from "../utils/status";
 import { CARD_BORDER, FOCUS_RING, TEXT_MUTED } from "../utils/styles";
 import type { Job, Queue, Status } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
@@ -21,8 +21,14 @@ import {
 } from "./DetailView";
 import { AttemptsSection, FailureSummary } from "./FailureDetail";
 import { FlowSection } from "./FlowSection";
-import { JobActionMenu } from "./JobActionMenu";
-import { JobTimeline } from "./JobTimeline";
+import { JobActionMenu, JobPrimaryAction } from "./JobActionMenu";
+import {
+  DeduplicationValue,
+  JobDataSection,
+  PriorityValue,
+  RescheduleSection,
+} from "./JobEditors";
+import { getJobRunAt, JobTimeline } from "./JobTimeline";
 import { JsonPane } from "./JsonPane";
 import { useQueuedash } from "./QueuedashProvider";
 import { SidePanelDialog } from "./SidePanelDialog";
@@ -140,11 +146,25 @@ export const JobModal = ({
   // the copy is being edited, and the copy is of the job it was opened from.
   const [duplicateSource, setDuplicateSource] =
     useState<DuplicateSource | null>(null);
+  const actionProps = {
+    job,
+    status,
+    queueName,
+    queue: queueReq.data ?? undefined,
+    onRemove: onJobLeft,
+    onDuplicate: () => setDuplicateSource({ job, status }),
+  };
 
   return (
     <SidePanelDialog
       title={job.name}
       titleClassName="font-mono text-[15px]"
+      // A phone gets the whole screen: close, where the job is, and the rest
+      // of its actions across the top; its name wraps in the body instead.
+      phoneContext={`${queueReq.data?.displayName ?? queueName}${
+        status ? ` · ${STATUS_LABELS[status]}` : ""
+      }`}
+      phoneActions={<JobActionMenu key={job.id} {...actionProps} />}
       subtitle={
         <>
           {/* The id is content, not chrome, so it overrides the header's
@@ -196,15 +216,7 @@ export const JobModal = ({
               </button>
             </span>
           ) : null}
-          <JobActionMenu
-            key={job.id}
-            job={job}
-            status={status}
-            queueName={queueName}
-            queue={queueReq.data ?? undefined}
-            onRemove={onJobLeft}
-            onDuplicate={() => setDuplicateSource({ job, status })}
-          />
+          <JobActionMenu key={job.id} {...actionProps} />
         </>
       }
     >
@@ -220,6 +232,24 @@ export const JobModal = ({
         queueName={queueName}
         queue={queueReq.data ?? undefined}
         errorFingerprint={liveJob?.errorFingerprint ?? null}
+        onJobLeft={onJobLeft}
+        phoneIntro={
+          <div className="mb-4 sm:hidden">
+            <h2 className="font-mono text-[17px] leading-6 font-semibold break-words text-gray-900 dark:text-white">
+              {job.name}
+            </h2>
+            <div className="mt-2 flex min-w-0 items-center gap-2 text-xs">
+              {status ? <StatusBadge status={status} /> : null}
+              <span className={clsx("truncate font-mono", TEXT_MUTED)}>
+                {job.id}
+              </span>
+              <CopyButton key={job.id} value={job.id} label="Job id" />
+            </div>
+            <div className="mt-3.5 empty:hidden">
+              <JobPrimaryAction key={job.id} {...actionProps} />
+            </div>
+          </div>
+        }
       />
       {/* Inside the panel's tree, so it stacks over it as its own modal. */}
       {duplicateSource && queueReq.data ? (
@@ -240,7 +270,19 @@ type JobDetailsProps = {
   queue?: Queue;
   /** The error group of a failure, from the live job; null in list snapshots. */
   errorFingerprint: string | null;
+  onJobLeft: (jobId: string) => void;
+  /** A phone's name, status and main action, above the timeline. */
+  phoneIntro: ReactNode;
 };
+
+// Statuses whose jobs haven't started, which a priority still orders.
+const PRIORITIZABLE_STATUSES: ReadonlyArray<Status> = [
+  "waiting",
+  "prioritized",
+  "delayed",
+  "paused",
+  "waiting-children",
+];
 
 const JobDetails = ({
   job,
@@ -248,8 +290,22 @@ const JobDetails = ({
   queueName,
   queue,
   errorFingerprint,
+  onJobLeft,
+  phoneIntro,
 }: JobDetailsProps) => {
   const failed = isFailedJob(job, status);
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const runAt = getJobRunAt(job);
+  const canReschedule =
+    status === "delayed" &&
+    runAt !== null &&
+    queue?.supports.changeDelay === true &&
+    queue.access.actions["job.changeDelay"] === true;
+  const canChangePriority =
+    !!status &&
+    PRIORITIZABLE_STATUSES.includes(status) &&
+    queue?.supports.changePriority === true &&
+    queue.access.actions["job.changePriority"] === true;
   const [showOpts, setShowOpts] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
   const logsId = useId();
@@ -315,7 +371,11 @@ const JobDetails = ({
     return rows;
   }, [parsedOpts]);
 
-  const priority = parsedOpts ? readNumber(parsedOpts.priority) : null;
+  // BullMQ's live priority, which a change rewrites; the option it was added
+  // with elsewhere. 0 is no priority.
+  const priority =
+    (job.priority ?? (parsedOpts ? readNumber(parsedOpts.priority) : null)) ||
+    null;
   const attemptsMax = parsedOpts ? readNumber(parsedOpts.attempts) : null;
   const attemptsMade = job.attemptsMade ?? 0;
   const attemptsValue =
@@ -360,6 +420,7 @@ const JobDetails = ({
       {/* Where the job is in its life, and - if it failed - why. The failure
           leads: on a failed job the error is what the panel was opened for. */}
       <DetailSection>
+        {phoneIntro}
         {progress !== null && isRunningJob(job, status) ? (
           <div className="mb-4 rounded-lg bg-gray-50/80 px-3 py-2.5 dark:bg-slate-800/40">
             <div className="mb-2 flex items-center justify-between">
@@ -401,7 +462,15 @@ const JobDetails = ({
           </div>
         ) : null}
 
-        <JobTimeline job={job} status={status} />
+        <JobTimeline
+          job={job}
+          status={status}
+          onReschedule={
+            canReschedule && !isRescheduling
+              ? () => setIsRescheduling(true)
+              : undefined
+          }
+        />
 
         {job.failedReason || attempts.length > 0 ? (
           <FailureSummary
@@ -413,6 +482,15 @@ const JobDetails = ({
           />
         ) : null}
       </DetailSection>
+
+      {canReschedule && isRescheduling && runAt !== null ? (
+        <RescheduleSection
+          job={job}
+          queueName={queueName}
+          runAt={runAt}
+          onDone={() => setIsRescheduling(false)}
+        />
+      ) : null}
 
       {attempts.length > 0 || stall ? (
         <AttemptsSection attempts={attempts} stall={stall} />
@@ -466,8 +544,34 @@ const JobDetails = ({
               }
             />
           ) : null}
-          {priority !== null ? (
-            <Property label="Priority" mono value={String(priority)} />
+          {priority !== null || canChangePriority ? (
+            <Property
+              label="Priority"
+              value={
+                <PriorityValue
+                  job={job}
+                  queueName={queueName}
+                  priority={priority}
+                  canChange={canChangePriority}
+                />
+              }
+            />
+          ) : null}
+          {job.deduplicationId ? (
+            <Property
+              label="Deduplication"
+              value={
+                <DeduplicationValue
+                  job={job}
+                  queueName={queueName}
+                  deduplicationId={job.deduplicationId}
+                  canRelease={
+                    queue?.supports.deduplication === true &&
+                    queue.access.actions["job.removeDeduplication"] === true
+                  }
+                />
+              }
+            />
           ) : null}
           {attemptsValue !== null ? (
             <Property label="Attempts" mono value={attemptsValue} />
@@ -509,9 +613,14 @@ const JobDetails = ({
       </DetailSection>
 
       {parsedData !== null ? (
-        <DetailSection title="Job data">
-          <JsonPane data={parsedData} />
-        </DetailSection>
+        <JobDataSection
+          job={job}
+          status={status}
+          queueName={queueName}
+          queue={queue}
+          data={parsedData}
+          onJobLeft={onJobLeft}
+        />
       ) : null}
 
       {parsedReturnValue !== null ? (

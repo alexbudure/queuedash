@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { Check, ChevronDown } from "lucide-react";
+import type { ReactElement } from "react";
 import {
   Button,
   ListBox,
@@ -33,6 +34,9 @@ type SelectProps<T extends string> = {
   size?: "sm" | "md" | "lg";
   /** `ghost` has no fill of its own until it is hovered. */
   variant?: "filled" | "ghost";
+  /** Below `sm`, the trigger is a 44px square showing just this icon, so a
+   *  text field beside it gets the row. */
+  phoneIcon?: ReactElement;
 };
 
 const SIZE_CLASS = {
@@ -62,6 +66,7 @@ export const Select = <T extends string>({
   value,
   size = "md",
   variant = "filled",
+  phoneIcon,
 }: SelectProps<T>) => {
   const { portalContainer } = useQueuedash();
 
@@ -81,15 +86,27 @@ export const Select = <T extends string>({
           "group inline-flex max-w-full min-w-0 items-center font-medium whitespace-nowrap transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
           SIZE_CLASS[size],
           VARIANT_CLASS[variant],
+          phoneIcon &&
+            "max-sm:size-11 max-sm:justify-center max-sm:rounded-[10px] max-sm:p-0 max-sm:text-gray-700 dark:max-sm:text-slate-200",
           FOCUS_RING_DATA,
         )}
       >
-        <SelectValue className="min-w-0 truncate">
+        {phoneIcon ? (
+          <span aria-hidden="true" className="flex sm:hidden">
+            {phoneIcon}
+          </span>
+        ) : null}
+        <SelectValue
+          className={clsx("min-w-0 truncate", phoneIcon && "max-sm:sr-only")}
+        >
           {({ selectedText }) => selectedText}
         </SelectValue>
         <ChevronDown
           aria-hidden="true"
-          className="size-3.5 shrink-0 text-gray-500 transition-transform duration-150 group-aria-[expanded=true]:rotate-180 dark:text-slate-400"
+          className={clsx(
+            "size-3.5 shrink-0 text-gray-500 transition-transform duration-150 group-aria-[expanded=true]:rotate-180 dark:text-slate-400",
+            phoneIcon && "max-sm:hidden",
+          )}
         />
       </Button>
 

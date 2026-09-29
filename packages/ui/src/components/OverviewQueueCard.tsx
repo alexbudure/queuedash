@@ -8,9 +8,13 @@ import { FOCUS_RING, TEXT_FAINT, TEXT_MUTED } from "../utils/styles";
 import type { Queue } from "../utils/trpc";
 import { trpc } from "../utils/trpc";
 import { getQueuePath } from "../utils/viewState";
+import { PHONE_HAIRLINE, PHONE_ROW_LINE } from "./phoneStyles";
 import { useQueuedash } from "./QueuedashProvider";
 import { Skeleton } from "./Skeleton";
 import { Sparkline } from "./Sparkline";
+
+const PAUSED_PILL =
+  "flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-px text-[10px] font-medium text-gray-600 dark:bg-slate-800 dark:text-slate-300";
 
 const statConfig = [
   {
@@ -58,9 +62,13 @@ const STAT_CELL = "flex items-center justify-end";
 /**
  * Rows bleed 12px past the content edge so the hover fill has a margin while
  * the queue name lines up with the page title above it. Anything a row has to
- * say (read-only, paused, unavailable) trails the name as a glyph.
+ * say (read-only, paused, unavailable) trails the name as a glyph. A phone's
+ * rows sit flush in the gutter, like the two-line rows beside them.
  */
-const ROW_CLASS = "-mx-3 flex min-h-10 items-center gap-4 px-3 py-2.5";
+const ROW_CLASS = clsx(
+  "-mx-3 flex min-h-10 items-center gap-4 px-3 py-2.5 max-sm:mx-0 max-sm:px-0 max-sm:py-3",
+  PHONE_ROW_LINE,
+);
 
 type OverviewQueueCardProps = {
   queueName: string;
@@ -157,115 +165,189 @@ export const OverviewQueueCard = ({
   const sparklineMax = Math.max(0, ...completedData, ...failedData);
 
   const queuePath = getQueuePath(queue.name);
+  // The phone's one-line summary: everything but failed, which gets the
+  // right-hand side, and active only once there is any.
+  const summary = [
+    `${formatCompactCount(queue.counts.completed)} completed`,
+    queue.counts.active > 0 &&
+      `${formatCompactCount(queue.counts.active)} active`,
+    `${formatCompactCount(queue.counts.waiting)} waiting`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <div
-      ref={visibilityRef}
-      className={clsx(
-        ROW_CLASS,
-        "relative transition-colors hover:bg-gray-100/60 has-[a:active]:bg-gray-100 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-brand-400 has-[a:focus-visible]:ring-inset dark:hover:bg-slate-800/50 dark:has-[a:active]:bg-slate-800 dark:has-[a:focus-visible]:ring-brand-600",
-      )}
-    >
-      {/* Queue name */}
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <h3 className="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">
-          <Link
-            to={queuePath}
-            title={queue.displayName}
-            className="outline-none after:absolute after:inset-0"
-          >
-            {queue.displayName}
-          </Link>
-        </h3>
-        {/* The same glyph the sidebar uses, so one queue is marked one way. */}
-        {queue.access.mode === "read-only" ? (
-          <span title="Read-only" className="flex shrink-0">
-            <LockKeyhole
-              aria-hidden="true"
-              className={clsx("size-3", TEXT_FAINT)}
-            />
-            <span className="sr-only">(read-only)</span>
-          </span>
-        ) : null}
-        {/* Neutral, not amber: amber already means "waiting" two columns over. */}
-        {queue.paused && (
-          <span className="flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-px text-[10px] font-medium text-gray-600 dark:bg-slate-800 dark:text-slate-300">
-            <Pause aria-hidden="true" className="size-2.5" />
-            Paused
-          </span>
+    <>
+      {/* Phone: no unlabelled number columns. The failed count sits at the
+          right, and the rest of the numbers read as a sentence below. */}
+      <div
+        className={clsx(
+          "relative border-t py-3 transition-colors has-[a:active]:bg-gray-100 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-brand-400 has-[a:focus-visible]:ring-inset sm:hidden dark:has-[a:active]:bg-slate-800 dark:has-[a:focus-visible]:ring-brand-600",
+          PHONE_HAIRLINE,
         )}
-      </div>
-
-      {/* Sparklines are decoration for the numbers beside them, and at 375px
-          the fixed 112px they occupy is what pushes this row off screen. */}
-      {supportsMetrics ? (
-        <div
-          aria-hidden="true"
-          className="hidden w-28 shrink-0 items-center gap-1.5 sm:flex"
-        >
-          <Sparkline
-            data={completedData}
-            color="#22c55e"
-            height={24}
-            domainMax={sparklineMax}
-          />
-          <Sparkline
-            data={failedData}
-            color="#f04438"
-            height={24}
-            domainMax={sparklineMax}
-          />
-        </div>
-      ) : null}
-
-      {/* Stats */}
-      <div className={OVERVIEW_STATS_GRID}>
-        {statConfig.map((stat) => {
-          const count = queue.counts[stat.key];
-          const isZero = !count;
-          const body = (
-            <>
-              {/* The header row is decorative, so the row keeps its own labels. */}
-              <span className="sr-only">{stat.label}: </span>
-              <span
-                className={clsx(
-                  "truncate text-right font-mono text-xs tabular-nums",
-                  isZero && TEXT_FAINT,
-                  !isZero &&
-                    (stat.key === "failed"
-                      ? "font-semibold text-red-600 dark:text-red-400"
-                      : "text-gray-700 dark:text-slate-200"),
-                )}
-              >
-                {formatCompactCount(count)}
-              </span>
-            </>
-          );
-
-          // Landing on the queue's default tab when you clicked "12 failed" is
-          // the long way round to the thing you were looking at.
-          return stat.status ? (
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="flex min-w-0 items-center gap-1.5 text-base leading-[22px] text-gray-900 dark:text-white">
             <Link
-              key={stat.key}
-              to={`${queuePath}?status=${stat.status}`}
+              to={queuePath}
+              title={queue.displayName}
+              className="min-w-0 truncate outline-none after:absolute after:inset-0"
+            >
+              {queue.displayName}
+            </Link>
+            {queue.access.mode === "read-only" ? (
+              <span title="Read-only" className="flex shrink-0">
+                <LockKeyhole
+                  aria-hidden="true"
+                  className={clsx("size-3.5", TEXT_FAINT)}
+                />
+                <span className="sr-only">(read-only)</span>
+              </span>
+            ) : null}
+            {queue.paused && (
+              <span className={PAUSED_PILL}>
+                <Pause aria-hidden="true" className="size-2.5" />
+                Paused
+              </span>
+            )}
+          </h3>
+          {queue.counts.failed > 0 ? (
+            <Link
+              to={`${queuePath}?status=failed`}
               className={clsx(
-                STAT_CELL,
-                // The negative margins bleed the hover background past the
-                // track without moving the track itself, so the columns still
-                // line up while the tap target reaches 24px.
-                "relative z-10 -mx-1 -my-1 rounded px-1 py-1 transition-colors hover:bg-gray-200/70 active:bg-gray-300/70 dark:hover:bg-slate-700 dark:active:bg-slate-600",
+                "relative z-10 -my-2.5 -mr-2 flex h-10 shrink-0 items-center rounded-md px-2 font-mono text-[13px] text-red-600 tabular-nums active:bg-gray-100 dark:text-red-400 dark:active:bg-slate-800",
                 FOCUS_RING,
               )}
             >
-              {body}
+              {formatCompactCount(queue.counts.failed)} failed
             </Link>
           ) : (
-            <span key={stat.key} className={STAT_CELL}>
-              {body}
+            <span
+              className={clsx("shrink-0 font-mono text-[13px]", TEXT_FAINT)}
+            >
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">none failed</span>
             </span>
-          );
-        })}
+          )}
+        </div>
+        <p
+          className={clsx(
+            "mt-1 truncate font-mono text-xs leading-4 tabular-nums",
+            TEXT_MUTED,
+          )}
+        >
+          {summary}
+        </p>
       </div>
-    </div>
+
+      <div
+        ref={visibilityRef}
+        className={clsx(
+          ROW_CLASS,
+          "relative transition-colors hover:bg-gray-100/60 has-[a:active]:bg-gray-100 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-brand-400 has-[a:focus-visible]:ring-inset max-sm:hidden dark:hover:bg-slate-800/50 dark:has-[a:active]:bg-slate-800 dark:has-[a:focus-visible]:ring-brand-600",
+        )}
+      >
+        {/* Queue name */}
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <h3 className="min-w-0 truncate text-sm font-medium text-gray-900 dark:text-white">
+            <Link
+              to={queuePath}
+              title={queue.displayName}
+              className="outline-none after:absolute after:inset-0"
+            >
+              {queue.displayName}
+            </Link>
+          </h3>
+          {/* The same glyph the sidebar uses, so one queue is marked one way. */}
+          {queue.access.mode === "read-only" ? (
+            <span title="Read-only" className="flex shrink-0">
+              <LockKeyhole
+                aria-hidden="true"
+                className={clsx("size-3", TEXT_FAINT)}
+              />
+              <span className="sr-only">(read-only)</span>
+            </span>
+          ) : null}
+          {/* Neutral, not amber: amber already means "waiting" two columns over. */}
+          {queue.paused && (
+            <span className={PAUSED_PILL}>
+              <Pause aria-hidden="true" className="size-2.5" />
+              Paused
+            </span>
+          )}
+        </div>
+
+        {/* Sparklines are decoration for the numbers beside them, and at 375px
+          the fixed 112px they occupy is what pushes this row off screen. */}
+        {supportsMetrics ? (
+          <div
+            aria-hidden="true"
+            className="hidden w-28 shrink-0 items-center gap-1.5 sm:flex"
+          >
+            <Sparkline
+              data={completedData}
+              color="#22c55e"
+              height={24}
+              domainMax={sparklineMax}
+            />
+            <Sparkline
+              data={failedData}
+              color="#f04438"
+              height={24}
+              domainMax={sparklineMax}
+            />
+          </div>
+        ) : null}
+
+        {/* Stats */}
+        <div className={OVERVIEW_STATS_GRID}>
+          {statConfig.map((stat) => {
+            const count = queue.counts[stat.key];
+            const isZero = !count;
+            const body = (
+              <>
+                {/* The header row is decorative, so the row keeps its own labels. */}
+                <span className="sr-only">{stat.label}: </span>
+                <span
+                  className={clsx(
+                    "truncate text-right font-mono text-xs tabular-nums",
+                    isZero && TEXT_FAINT,
+                    !isZero &&
+                      (stat.key === "failed"
+                        ? "font-semibold text-red-600 dark:text-red-400"
+                        : "text-gray-700 dark:text-slate-200"),
+                  )}
+                >
+                  {formatCompactCount(count)}
+                </span>
+              </>
+            );
+
+            // Landing on the queue's default tab when you clicked "12 failed" is
+            // the long way round to the thing you were looking at.
+            return stat.status ? (
+              <Link
+                key={stat.key}
+                to={`${queuePath}?status=${stat.status}`}
+                className={clsx(
+                  STAT_CELL,
+                  // The negative margins bleed the hover background past the
+                  // track without moving the track itself, so the columns still
+                  // line up while the tap target reaches 24px.
+                  "relative z-10 -mx-1 -my-1 rounded px-1 py-1 transition-colors hover:bg-gray-200/70 active:bg-gray-300/70 dark:hover:bg-slate-700 dark:active:bg-slate-600",
+                  FOCUS_RING,
+                )}
+              >
+                {body}
+              </Link>
+            ) : (
+              <span key={stat.key} className={STAT_CELL}>
+                {body}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </>
   );
 };

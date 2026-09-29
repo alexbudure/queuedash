@@ -32,6 +32,14 @@ type SidePanelDialogProps = {
   /** Keeps the page's own shortcuts (j/k, Escape) out of this panel: set on a
    *  panel opened over another, like Duplicate over the job it copies. */
   ownsShortcuts?: boolean;
+  /**
+   * Below `sm` the panel is the whole screen, and with this set it gets an app
+   * bar instead of the desktop header: close on the left, this line of
+   * context in the middle, `phoneActions` on the right. The title is then the
+   * caller's to show in the body, where it can wrap.
+   */
+  phoneContext?: ReactNode;
+  phoneActions?: ReactNode;
 };
 
 export const SidePanelDialog = ({
@@ -48,6 +56,8 @@ export const SidePanelDialog = ({
   isKeyboardDismissDisabled = false,
   onCloseAttempt,
   ownsShortcuts = false,
+  phoneContext,
+  phoneActions,
 }: SidePanelDialogProps) => {
   const { portalContainer } = useQueuedash();
   // The X has to obey the same guard as Escape and the scrim. `isDismissable`
@@ -85,7 +95,33 @@ export const SidePanelDialog = ({
             className="flex h-full flex-col overflow-hidden outline-none"
             data-own-shortcuts={ownsShortcuts ? "" : undefined}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
+            {phoneContext ? (
+              <div className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-gray-100 bg-white px-1.5 sm:hidden dark:border-slate-800 dark:bg-slate-900">
+                <AriaButton
+                  onPress={handleClose}
+                  aria-label="Close panel"
+                  className={clsx(
+                    "grid size-11 shrink-0 place-items-center rounded-[10px] text-gray-500 transition-colors duration-150 active:bg-gray-100 dark:text-slate-400 dark:active:bg-slate-800",
+                    FOCUS_RING_DATA,
+                  )}
+                >
+                  <X className="size-5" />
+                </AriaButton>
+                <span className="min-w-0 truncate text-[13px] text-gray-500 dark:text-slate-400">
+                  {phoneContext}
+                </span>
+                {/* Holds the bar's balance when there is nothing to put here. */}
+                <div className="flex size-11 shrink-0 items-center justify-center">
+                  {phoneActions}
+                </div>
+              </div>
+            ) : null}
+            <div
+              className={clsx(
+                "sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900",
+                phoneContext && "max-sm:hidden",
+              )}
+            >
               <div className="min-w-0 flex-1 pr-3">
                 <Heading
                   slot="title"

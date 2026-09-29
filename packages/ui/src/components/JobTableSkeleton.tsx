@@ -25,6 +25,8 @@ type LayoutShape = {
    *  no label pops in from nothing when the data arrives. */
   headers: (string | null)[];
   cells: (() => ReactNode)[];
+  /** A phone's single summary cell, in place of the columns. */
+  phoneCell?: () => ReactNode;
 };
 
 const LAYOUTS: Record<TableLayoutVariant, LayoutShape> = {
@@ -49,6 +51,15 @@ const LAYOUTS: Record<TableLayoutVariant, LayoutShape> = {
       ),
       () => <Skeleton className="size-5 rounded-full" />,
     ],
+    phoneCell: () => (
+      <div className="flex w-full flex-col gap-2 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-4 w-40 rounded" />
+          <Skeleton className="h-3 w-10 rounded" />
+        </div>
+        <Skeleton className="h-4 w-48 rounded" />
+      </div>
+    ),
   },
   // Schedulers are three single-line columns, not the job lifecycle cluster.
   scheduler: {
@@ -79,7 +90,7 @@ export const JobTableSkeleton = ({
     "flex h-full items-center px-1.5",
     getTableCellPaddingClassName(preferences.density),
   );
-  const { cells, headers } = LAYOUTS[layoutVariant];
+  const { cells, headers, phoneCell } = LAYOUTS[layoutVariant];
 
   return (
     <div className={getTableMinWidthClassName(layoutVariant)}>
@@ -93,7 +104,13 @@ export const JobTableSkeleton = ({
       >
         {selectable ? <div /> : null}
         {headers.map((width, index) => (
-          <div className="flex h-full items-center px-1.5" key={index}>
+          <div
+            className={clsx(
+              "flex h-full items-center px-1.5",
+              phoneCell && "max-sm:hidden",
+            )}
+            key={index}
+          >
             {width ? <Skeleton className={clsx("h-4 rounded", width)} /> : null}
           </div>
         ))}
@@ -116,10 +133,18 @@ export const JobTableSkeleton = ({
             </div>
           ) : null}
           {cells.map((renderCell, cellIndex) => (
-            <div className={cellClassName} key={cellIndex}>
+            <div
+              className={clsx(cellClassName, phoneCell && "max-sm:hidden")}
+              key={cellIndex}
+            >
               {renderCell()}
             </div>
           ))}
+          {phoneCell ? (
+            <div className="flex min-w-0 items-center px-1.5 sm:hidden">
+              {phoneCell()}
+            </div>
+          ) : null}
         </div>
       ))}
       {withFooterRow ? <div aria-hidden="true" className="h-12" /> : null}

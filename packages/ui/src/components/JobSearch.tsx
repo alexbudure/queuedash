@@ -1,14 +1,18 @@
 import { clsx } from "clsx";
-import { Loader2, Search, X } from "lucide-react";
+import { ArrowUpDown, Loader2, Search, Tag, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import type { DateRange } from "../utils/dateRange";
 import {
   FOCUS_FIELD,
   FOCUS_RING,
   INPUT_CLASS,
   TEXT_FAINT,
 } from "../utils/styles";
-import type { JobSort } from "../utils/viewState";
+import type { Status } from "../utils/trpc";
+import { PHONE_MEDIA_QUERY, useMediaQuery } from "../utils/useMediaQuery";
+import { getStatusDisplayName, type JobSort } from "../utils/viewState";
+import { type DateRangeCountInput, DateRangeFilter } from "./DateRangeFilter";
 import { ErrorFilterChip } from "./ErrorGroups";
 import { Select, type SelectOption } from "./Select";
 
@@ -19,24 +23,39 @@ const SORT_OPTIONS: ReadonlyArray<SelectOption<JobSort>> = [
 ];
 
 type JobSearchProps = {
+  status: Status;
   query: string;
   sort: JobSort;
+  dateRange: DateRange;
   isLoading?: boolean;
   // Set while the list shows one error group from the Errors tab.
   errorFilter?: { label: string; onClear: () => void };
+  // Set while the list shows one job name from the Job types tab.
+  nameFilter?: { label: string; onClear: () => void };
+  /** The list the date filter's phone sheet counts against. */
+  countInput: DateRangeCountInput;
   onQueryChange: (query: string) => void;
   onSortChange: (sort: JobSort) => void;
+  onDateRangeChange: (range: DateRange) => void;
 };
 
 export const JobSearch = ({
+  status,
   query,
   sort,
+  dateRange,
   isLoading = false,
   errorFilter,
+  nameFilter,
+  countInput,
   onQueryChange,
   onSortChange,
+  onDateRangeChange,
 }: JobSearchProps) => {
   const [draft, setDraft] = useState(query);
+  // The full hint is cut mid-word on a phone, where the field shares its row
+  // with two icon buttons.
+  const isPhone = useMediaQuery(PHONE_MEDIA_QUERY);
 
   useEffect(() => {
     setDraft(query);
@@ -62,15 +81,44 @@ export const JobSearch = ({
     <div>
       <div
         className={clsx(
-          "flex flex-col gap-2 sm:flex-row",
-          errorFilter ? "max-w-4xl" : "max-w-2xl",
+          "flex flex-wrap gap-2 sm:flex-nowrap",
+          errorFilter || nameFilter ? "max-w-5xl" : "max-w-3xl",
         )}
       >
+        {nameFilter ? (
+          <span className="inline-flex h-9 max-w-full min-w-0 items-center gap-1.5 rounded-lg bg-gray-100 pr-1 pl-2.5 text-gray-800 ring-1 ring-gray-200 ring-inset max-sm:basis-full sm:max-w-[35%] dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700">
+            <Tag
+              aria-hidden="true"
+              className="size-3.5 shrink-0 text-gray-500 dark:text-slate-400"
+            />
+            <span
+              className="min-w-0 flex-1 truncate font-mono text-xs"
+              title={nameFilter.label}
+            >
+              {nameFilter.label}
+            </span>
+            <button
+              type="button"
+              onClick={nameFilter.onClear}
+              aria-label="Stop filtering by this job name"
+              className={clsx(
+                "grid size-6 shrink-0 place-items-center rounded-md text-gray-500 transition-colors duration-150 hover:bg-gray-200 hover:text-gray-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white",
+                FOCUS_RING,
+              )}
+            >
+              <X aria-hidden="true" className="size-3.5" />
+            </button>
+          </span>
+        ) : null}
         {errorFilter ? (
-          <ErrorFilterChip
-            label={errorFilter.label}
-            onClear={errorFilter.onClear}
-          />
+          // Its own row on a phone; on wider screens the wrapper steps aside so
+          // the chip's width cap is measured against the whole row.
+          <div className="flex min-w-0 basis-full sm:contents">
+            <ErrorFilterChip
+              label={errorFilter.label}
+              onClear={errorFilter.onClear}
+            />
+          </div>
         ) : null}
         <form
           onSubmit={(event) => {
@@ -82,7 +130,7 @@ export const JobSearch = ({
           <Search
             aria-hidden="true"
             className={clsx(
-              "pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2",
+              "pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 max-sm:size-[18px]",
               TEXT_FAINT,
             )}
           />
@@ -91,8 +139,18 @@ export const JobSearch = ({
             maxLength={200}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="Filter jobs"
-            placeholder="Filter this status by ID, name, group, or visible data"
-            className={clsx(INPUT_CLASS, FOCUS_FIELD, "pl-9", trailingPadding)}
+            placeholder={
+              isPhone
+                ? `Filter ${getStatusDisplayName(status)} jobs`
+                : "Filter this status by ID, name, group, or visible data"
+            }
+            className={clsx(
+              INPUT_CLASS,
+              FOCUS_FIELD,
+              // 16px on a phone: iOS zooms into any smaller field on focus.
+              "pl-9 max-sm:h-11 max-sm:rounded-[10px] max-sm:pl-10 max-sm:text-base",
+              trailingPadding,
+            )}
           />
           <div className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
             {draft ? (
@@ -134,6 +192,13 @@ export const JobSearch = ({
           </div>
         </form>
 
+        <DateRangeFilter
+          status={status}
+          range={dateRange}
+          onChange={onDateRangeChange}
+          countInput={countInput}
+        />
+
         <Select<JobSort>
           ariaLabel="Sort jobs"
           size="lg"
@@ -142,6 +207,7 @@ export const JobSearch = ({
           onChange={onSortChange}
           options={SORT_OPTIONS}
           value={sort}
+          phoneIcon={<ArrowUpDown className="size-[18px]" />}
         />
       </div>
     </div>

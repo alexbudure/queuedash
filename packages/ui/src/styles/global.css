@@ -156,6 +156,8 @@
   --animate-overlay-hide: overlayHide 140ms var(--ease-in-quart);
   --animate-side-panel-in: sidePanelIn 280ms var(--ease-out-expo);
   --animate-side-panel-out: sidePanelOut 180ms var(--ease-in-quart);
+  --animate-sheet-in: sheetIn 280ms var(--ease-out-expo);
+  --animate-sheet-out: sheetOut 180ms var(--ease-in-quart);
   --animate-popover-show: popoverShow 150ms var(--ease-out-expo);
   --animate-popover-hide: popoverHide 110ms var(--ease-in-quart);
   --animate-alert-show: alertShow 180ms var(--ease-out-expo);
@@ -194,6 +196,24 @@
     }
     to {
       transform: translateX(100%);
+    }
+  }
+
+  @keyframes sheetIn {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes sheetOut {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
     }
   }
 
@@ -386,6 +406,32 @@
 
 .side-panel[data-exiting] {
   animation: var(--animate-side-panel-out);
+}
+
+/* A phone's bottom sheet: a darker scrim than the side panel's, since the
+   sheet covers only part of the page and the rest has to recede. */
+.qd-sheet-overlay {
+  background: rgb(16 18 21 / 40%);
+}
+
+[data-queuedash-root].dark .qd-sheet-overlay {
+  background: rgb(0 0 0 / 60%);
+}
+
+.qd-sheet-overlay[data-entering] {
+  animation: var(--animate-overlay-show);
+}
+
+.qd-sheet-overlay[data-exiting] {
+  animation: var(--animate-overlay-hide);
+}
+
+.qd-sheet[data-entering] {
+  animation: var(--animate-sheet-in);
+}
+
+.qd-sheet[data-exiting] {
+  animation: var(--animate-sheet-out);
 }
 
 /* react-aria stamps data-entering/data-exiting on popovers for free; the
@@ -648,6 +694,10 @@
   [data-queuedash-root] .side-panel[data-exiting],
   [data-queuedash-root] .side-panel-overlay[data-entering],
   [data-queuedash-root] .side-panel-overlay[data-exiting],
+  [data-queuedash-root] .qd-sheet[data-entering],
+  [data-queuedash-root] .qd-sheet[data-exiting],
+  [data-queuedash-root] .qd-sheet-overlay[data-entering],
+  [data-queuedash-root] .qd-sheet-overlay[data-exiting],
   [data-queuedash-root] .qd-popover[data-entering],
   [data-queuedash-root] .qd-popover[data-exiting],
   [data-queuedash-root] .alert-overlay[data-entering],

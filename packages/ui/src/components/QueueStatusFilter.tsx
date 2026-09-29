@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ToggleButton, ToggleButtonGroup } from "react-aria-components";
 
 import { formatCount } from "../utils/format";
@@ -21,8 +21,9 @@ const statusPressedMap: Record<Status, string> = {
   paused: "data-[pressed]:bg-gray-200 dark:data-[pressed]:bg-slate-700",
 };
 
+// A touch-sized pill on a phone.
 const PILL =
-  "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-150";
+  "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium whitespace-nowrap transition-colors duration-150 max-sm:h-9 max-sm:text-sm";
 
 const INACTIVE =
   "border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white";
@@ -44,6 +45,24 @@ export const QueueStatusFilter = ({
   onStatusChange,
 }: QueueStatusFilterProps) => {
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  // On a phone the row scrolls; its trailing edge fades while there is more
+  // to the right, and not once the last pill is in view.
+  const [hasMoreRight, setHasMoreRight] = useState(false);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () =>
+      setHasMoreRight(row.scrollLeft < row.scrollWidth - row.clientWidth - 1);
+    update();
+    row.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(row);
+    return () => {
+      row.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [queue]);
 
   // On a phone the row scrolls, and a status picked from a link or a
   // bookmark can start out of view. Only the row moves - scrollIntoView
@@ -107,8 +126,12 @@ export const QueueStatusFilter = ({
           onStatusChange(next as Status);
         }
       }}
+      ref={rowRef}
       // Bleeds to the card edge on phones so a cut-off pill says "more".
-      className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden"
+      className={clsx(
+        "-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 [&::-webkit-scrollbar]:hidden",
+        hasMoreRight && "qd-scroll-fade-end",
+      )}
     >
       {tabs.map((tab) => {
         const isActive = tab.status === status;

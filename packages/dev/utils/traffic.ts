@@ -6,7 +6,7 @@
  *   pnpm traffic        # 70 minutes
  *   pnpm traffic 20     # 20 minutes
  */
-import { queues } from "./fake-data";
+import { nameFor, queues } from "./fake-data";
 
 const minutes = Number(process.argv[2] ?? 70);
 const stopAt = Date.now() + minutes * 60_000;
@@ -25,17 +25,6 @@ const RATE_PER_MINUTE: Record<string, number> = {
 
 const pick = <T>(items: T[]): T =>
   items[Math.floor(Math.random() * items.length)] as T;
-
-/** What a real producer would call the job, from what it carries. */
-const nameFor = (data: Record<string, unknown>) =>
-  String(
-    data.type ??
-      data.template ??
-      data.operation ??
-      data.event ??
-      data.action ??
-      "job",
-  );
 
 const addOne = async (item: (typeof queues)[number]) => {
   switch (item.type) {

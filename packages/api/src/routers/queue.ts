@@ -25,6 +25,10 @@ import {
 } from "../utils/global.utils";
 
 const MAX_GROUPMQ_GROUP_ID_LENGTH = 256;
+// Global limits are counts of jobs; anything past this is a typo.
+const MAX_LIMIT = 1_000_000;
+// A rate-limit window longer than a day is a pause, not a rate.
+const MAX_RATE_LIMIT_DURATION_MS = 24 * 60 * 60 * 1000;
 const UNSAFE_GROUPMQ_GROUP_ID_CHARACTERS = /[:\p{Cc}]/u;
 // The metrics adapters' own limit (BullMQ's longest metrics preset). A window
 // they would refuse is refused here as a bad request instead: an adapter's
@@ -374,6 +378,12 @@ export const queueRouter = router({
             queueInCtx.adapter.supports.schedulerUpdate &&
             resolvePrivacyExposure(internalCtx.privacy).schedulerData &&
             !internalCtx.privacy?.redact,
+          // Saving what the viewer edited would write redacted or hidden
+          // values back over the real ones.
+          updateData:
+            queueInCtx.adapter.supports.updateData &&
+            resolvePrivacyExposure(internalCtx.privacy).jobData &&
+            !internalCtx.privacy?.redact,
         },
         access: resolveQueueAccess(
           queueName,
@@ -528,5 +538,95 @@ export const queueRouter = router({
           ? worker.id
           : (workers[index]?.id ?? worker.id),
       }));
+    }),
+  // The queue's global limits, which every worker on it follows, and whether
+  // it is rate limited right now. Null where the library has none.
+  limits: procedure
+    .input(z.object({ queueName: z.string() }))
+    .query(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      const { adapter } = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      if (
+        !adapter.getLimits ||
+        (!adapter.supports.concurrencyLimit && !adapter.supports.rateLimit)
+      ) {
+        return null;
+      }
+      return adapter.getLimits();
+    }),
+  setConcurrency: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        // Null removes the limit.
+        concurrency: z.number().int().min(1).max(MAX_LIMIT).nullable(),
+      }),
+    )
+    .mutation(async ({ input: { queueName, concurrency }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.setConcurrency");
+      const { adapter } = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      if (!adapter.supports.concurrencyLimit || !adapter.setConcurrencyLimit) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${adapter.getType()} has no global concurrency limit`,
+        });
+      }
+      await adapter.setConcurrencyLimit(concurrency);
+      return { success: true };
+    }),
+  setRateLimit: procedure
+    .input(
+      z.object({
+        queueName: z.string(),
+        // At most `max` jobs every `duration` ms. Null removes the limit.
+        limit: z
+          .object({
+            max: z.number().int().min(1).max(MAX_LIMIT),
+            duration: z.number().int().min(1).max(MAX_RATE_LIMIT_DURATION_MS),
+          })
+          .nullable(),
+      }),
+    )
+    .mutation(async ({ input: { queueName, limit }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.setRateLimit");
+      const { adapter } = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      if (!adapter.supports.rateLimit || !adapter.setRateLimit) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${adapter.getType()} has no global rate limit`,
+        });
+      }
+      await adapter.setRateLimit(limit);
+      return { success: true };
+    }),
+  // Ends the current rate-limit window, so workers pick jobs up right away.
+  clearRateLimit: procedure
+    .input(z.object({ queueName: z.string() }))
+    .mutation(async ({ input: { queueName }, ctx }) => {
+      const internalCtx = await transformContext(ctx);
+      assertQueueActionAllowed(internalCtx, queueName, "queue.clearRateLimit");
+      const { adapter } = findQueueInCtxOrFail({
+        queues: internalCtx.queues,
+        queueName,
+      });
+      if (!adapter.supports.rateLimit || !adapter.clearRateLimit) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${adapter.getType()} has no global rate limit`,
+        });
+      }
+      await adapter.clearRateLimit();
+      return { success: true };
     }),
 });

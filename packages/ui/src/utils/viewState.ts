@@ -111,14 +111,20 @@ export const SERVER_SCAN_MIN_REFRESH_INTERVAL_MS = 10_000;
 export const isServerScannedJobList = ({
   error,
   groupId,
+  name,
   query,
+  scansRange = false,
   sort,
 }: {
   error?: string | null;
   groupId?: string | null;
+  name?: string | null;
   query?: string;
+  /** A date range the server can't read as a stretch of the list. */
+  scansRange?: boolean;
   sort: JobSort;
-}) => Boolean(error || groupId || query || sort !== "queue");
+}) =>
+  Boolean(error || groupId || name || query || scansRange || sort !== "queue");
 
 export const getJobListRefetchInterval = (
   loadedPageCount: number,
@@ -291,7 +297,13 @@ export const getSchedulerTimezoneOptions = (
   );
 
 export const hasSharedJobViewParams = (params: URLSearchParams) =>
-  Boolean(params.get("q")?.trim() || params.has("sort"));
+  Boolean(
+    params.get("q")?.trim() ||
+    params.has("sort") ||
+    params.has("name") ||
+    params.has("from") ||
+    params.has("to"),
+  );
 
 export const updateJobQueryParams = (
   current: URLSearchParams,
@@ -361,9 +373,10 @@ export const getTableGridClassName = (
     // line up row to row, which overlapped each other when squeezed. It has
     // to be a length: every row is its own grid, so a content-sized floor
     // would put each row's column boundary somewhere else.
+    // A phone gets two tracks: the checkbox and a two-line summary.
     return selectable
-      ? "grid-cols-[36px_minmax(0,22rem)_minmax(33.5rem,1fr)_100px]"
-      : "grid-cols-[minmax(0,22rem)_minmax(33.5rem,1fr)_100px]";
+      ? "grid-cols-[36px_minmax(0,22rem)_minmax(33.5rem,1fr)_100px] max-sm:grid-cols-[32px_minmax(0,1fr)]"
+      : "grid-cols-[minmax(0,22rem)_minmax(33.5rem,1fr)_100px] max-sm:grid-cols-[minmax(0,1fr)]";
   }
 
   return selectable
@@ -381,7 +394,7 @@ export const getTableGridClassName = (
  * over for the job name - still inside the card on a 1280px screen.
  */
 export const getTableMinWidthClassName = (variant: TableLayoutVariant) =>
-  variant === "job" ? "min-w-[912px]" : "min-w-[640px]";
+  variant === "job" ? "min-w-[912px] max-sm:min-w-0" : "min-w-[640px]";
 
 /**
  * Row and header padding, derived from density.

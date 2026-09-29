@@ -27,11 +27,14 @@ type ActionMenuProps = {
   actions: Action[];
   isDisabled?: boolean;
   ariaLabel?: string;
+  /** Sizes the trigger, e.g. a 44px touch target in a phone's header. */
+  triggerClassName?: string;
 };
 export const ActionMenu = ({
   actions,
   isDisabled = false,
   ariaLabel = "Actions",
+  triggerClassName,
 }: ActionMenuProps) => {
   const { portalContainer } = useQueuedash();
   const [isOpen, setIsOpen] = useState(false);
@@ -42,6 +45,7 @@ export const ActionMenu = ({
         className={clsx(
           "rounded-md p-1.5 transition-colors duration-150 disabled:opacity-50",
           FOCUS_RING_DATA,
+          triggerClassName,
           isDisabled
             ? ""
             : isOpen

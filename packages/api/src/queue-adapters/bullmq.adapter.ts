@@ -15,10 +15,13 @@ import {
   type FlowParent,
   type JobCounts,
   type FeatureSupport,
+  type FinishedRange,
   type GroupInfo,
   JobNotFoundError,
   type JobPageMeta,
+  type JobTimeRange,
   pickJobOptions,
+  type QueueLimits,
   type QueueMetrics,
   type SchedulerInfo,
   UnsupportedSchedulerUpdateError,
@@ -146,6 +149,53 @@ return 0
 
 type SchedulerLockCommand = keyof typeof SCHEDULER_LOCK_COMMANDS;
 
+// Read-only lookups BullMQ has no API for, run the same way as the locks.
+const QUERY_COMMANDS = {
+  // Where a score range starts in a highest-first listing and how long it
+  // is: members scoring above ARGV[2], then members from ARGV[1] to ARGV[2].
+  queuedashRangeOffsets: `
+local above = 0
+if ARGV[2] ~= "+inf" then
+  above = redis.call("ZCOUNT", KEYS[1], "(" .. ARGV[2], "+inf")
+end
+return { above, redis.call("ZCOUNT", KEYS[1], ARGV[1], ARGV[2]) }
+`,
+  // Each member's score, nil where it isn't in the set.
+  queuedashScores: `
+local scores = {}
+for index, member in ipairs(ARGV) do
+  scores[index] = redis.call("ZSCORE", KEYS[1], member)
+end
+return scores
+`,
+} as const;
+
+type QueryCommand = keyof typeof QUERY_COMMANDS;
+
+// BullMQ scores a delayed job by when it is due, times 0x1000, plus a counter
+// that keeps jobs due in the same millisecond in order.
+const DELAYED_SCORE_FACTOR = 0x1000;
+
+// BullMQ's global limits, detected on the instance: 5.60, the oldest BullMQ
+// Queuedash supports, predates some of them.
+type BullMQLimitsQueue = {
+  getGlobalConcurrency?: () => Promise<number | null>;
+  setGlobalConcurrency?: (concurrency: number) => Promise<unknown>;
+  removeGlobalConcurrency?: () => Promise<unknown>;
+  getGlobalRateLimit?: () => Promise<{
+    max: number | string;
+    duration: number | string;
+  } | null>;
+  setGlobalRateLimit?: (max: number, duration: number) => Promise<unknown>;
+  removeGlobalRateLimit?: () => Promise<unknown>;
+  getRateLimitTtl?: (maxJobs?: number) => Promise<number>;
+  removeRateLimitKey?: () => Promise<unknown>;
+};
+
+type BullMQJobEdits = {
+  removeDeduplicationKey?: () => Promise<boolean>;
+};
+
 /**
  * The Redis client as BullMQ hands it over. From 5.78 on, and for every client
  * 6 supports, that is BullMQ's own wrapper, which runs Lua through
@@ -173,18 +223,19 @@ type BullMQQueueCompat = {
   removeRepeatableByKey?: (key: string) => Promise<unknown>;
 };
 
-const clientsWithLockCommands = new WeakSet<BullMQRedisClient>();
+const QUEUEDASH_COMMANDS = { ...SCHEDULER_LOCK_COMMANDS, ...QUERY_COMMANDS };
+const clientsWithQueuedashCommands = new WeakSet<BullMQRedisClient>();
 
-const runSchedulerLockCommand = (
+const runQueuedashCommand = (
   client: BullMQRedisClient,
-  name: SchedulerLockCommand,
+  name: SchedulerLockCommand | QueryCommand,
   args: string[],
 ): Promise<unknown> => {
-  if (!clientsWithLockCommands.has(client)) {
-    for (const [commandName, lua] of Object.entries(SCHEDULER_LOCK_COMMANDS)) {
+  if (!clientsWithQueuedashCommands.has(client)) {
+    for (const [commandName, lua] of Object.entries(QUEUEDASH_COMMANDS)) {
       client.defineCommand(commandName, { numberOfKeys: 1, lua });
     }
-    clientsWithLockCommands.add(client);
+    clientsWithQueuedashCommands.add(client);
   }
   if (typeof client.runCommand === "function") {
     return client.runCommand(name, args);
@@ -192,7 +243,7 @@ const runSchedulerLockCommand = (
   // ioredis flattens an array argument, the same call BullMQ's wrapper makes.
   return (
     client as unknown as Record<
-      SchedulerLockCommand,
+      SchedulerLockCommand | QueryCommand,
       (args: string[]) => Promise<unknown>
     >
   )[name](args);
@@ -258,6 +309,12 @@ export class BullMQAdapter extends QueueAdapter<
     ],
     groups: false,
     workers: true,
+    updateData: true,
+    changeDelay: true,
+    changePriority: true,
+    deduplication: false,
+    concurrencyLimit: false,
+    rateLimit: false,
   };
 
   constructor(
@@ -268,6 +325,25 @@ export class BullMQAdapter extends QueueAdapter<
     super(displayName, jobNameFn);
     this.queue = queue;
     this.supports.groups = this.hasRuntimeGroupSupport();
+    const limits = this.limitsQueue;
+    this.supports.concurrencyLimit =
+      typeof limits.getGlobalConcurrency === "function" &&
+      typeof limits.setGlobalConcurrency === "function" &&
+      typeof limits.removeGlobalConcurrency === "function";
+    this.supports.rateLimit =
+      typeof limits.getGlobalRateLimit === "function" &&
+      typeof limits.setGlobalRateLimit === "function" &&
+      typeof limits.removeGlobalRateLimit === "function" &&
+      typeof limits.removeRateLimitKey === "function";
+    // Releasing an id is a Job method; the Queue gained its counterpart in the
+    // same release, so that is where it can be seen without a job at hand.
+    this.supports.deduplication =
+      typeof (queue as unknown as { removeDeduplicationKey?: unknown })
+        .removeDeduplicationKey === "function";
+  }
+
+  private get limitsQueue(): BullMQLimitsQueue {
+    return this.queue as unknown as BullMQLimitsQueue;
   }
 
   private get compat(): BullMQQueueCompat {
@@ -501,6 +577,115 @@ export class BullMQAdapter extends QueueAdapter<
     if (!(await this.findJob(jobId))) throw new JobNotFoundError();
     const { logs } = await this.queue.getJobLogs(jobId);
     return logs;
+  }
+
+  // Completed and failed are sorted sets scored by finish time, read highest
+  // first, so a time range is a run of consecutive jobs in that listing.
+  async getFinishedRange(
+    status: "completed" | "failed",
+    { from, to }: JobTimeRange,
+  ): Promise<FinishedRange | null> {
+    const client = await this.getRedisClient();
+    if (!client) return null;
+    const result = (await runQueuedashCommand(client, "queuedashRangeOffsets", [
+      this.queue.keys[status],
+      from === undefined ? "-inf" : String(Math.floor(from)),
+      to === undefined ? "+inf" : String(Math.floor(to)),
+    ])) as [number | string, number | string];
+    return { offset: Number(result[0]), count: Number(result[1]) };
+  }
+
+  async getRunAts(jobIds: readonly string[]): Promise<Map<string, Date>> {
+    const runAts = new Map<string, Date>();
+    if (jobIds.length === 0) return runAts;
+    const client = await this.getRedisClient();
+    if (!client) return runAts;
+    const scores = (await runQueuedashCommand(client, "queuedashScores", [
+      this.queue.keys.delayed,
+      ...jobIds,
+    ])) as Array<number | string | null>;
+    jobIds.forEach((jobId, index) => {
+      const score = scores[index];
+      if (score === null || score === undefined) return;
+      const dueAt = Math.floor(Number(score) / DELAYED_SCORE_FACTOR);
+      if (Number.isFinite(dueAt)) runAts.set(jobId, new Date(dueAt));
+    });
+    return runAts;
+  }
+
+  async updateJobData(
+    jobId: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    await job.updateData(data);
+  }
+
+  // BullMQ counts the delay from now: 0 makes the job due right away.
+  async changeJobDelay(jobId: string, delayMs: number): Promise<void> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    await job.changeDelay(delayMs);
+  }
+
+  async changeJobPriority(jobId: string, priority: number): Promise<void> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    await job.changePriority({ priority });
+  }
+
+  async removeJobDeduplication(jobId: string): Promise<boolean> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    const release = (job as unknown as BullMQJobEdits).removeDeduplicationKey;
+    if (!job.deduplicationId || typeof release !== "function") return false;
+    return release.call(job);
+  }
+
+  async getLimits(): Promise<QueueLimits> {
+    const limits = this.limitsQueue;
+    const [concurrency, rateLimit] = await Promise.all([
+      this.supports.concurrencyLimit ? limits.getGlobalConcurrency?.() : null,
+      this.supports.rateLimit ? limits.getGlobalRateLimit?.() : null,
+    ]);
+    const max = rateLimit ? Number(rateLimit.max) : Number.NaN;
+    const duration = rateLimit ? Number(rateLimit.duration) : Number.NaN;
+    const hasRateLimit = Number.isFinite(max) && Number.isFinite(duration);
+    // The limiter key counts jobs in the current window whether or not the
+    // queue has hit its limit, so only a count at the global max is "limited".
+    const ttl =
+      hasRateLimit && typeof limits.getRateLimitTtl === "function"
+        ? await limits.getRateLimitTtl(max)
+        : 0;
+    return {
+      concurrency:
+        concurrency === null || concurrency === undefined
+          ? null
+          : Number(concurrency),
+      rateLimit: hasRateLimit ? { max, duration } : null,
+      rateLimitedForMs: Math.max(0, Number(ttl) || 0),
+    };
+  }
+
+  async setConcurrencyLimit(concurrency: number | null): Promise<void> {
+    const limits = this.limitsQueue;
+    await (concurrency === null
+      ? limits.removeGlobalConcurrency?.()
+      : limits.setGlobalConcurrency?.(concurrency));
+  }
+
+  async setRateLimit(
+    limit: { max: number; duration: number } | null,
+  ): Promise<void> {
+    const limits = this.limitsQueue;
+    await (limit === null
+      ? limits.removeGlobalRateLimit?.()
+      : limits.setGlobalRateLimit?.(limit.max, limit.duration));
+  }
+
+  async clearRateLimit(): Promise<void> {
+    await this.limitsQueue.removeRateLimitKey?.();
   }
 
   async getWorkers(): Promise<WorkerInfo[] | null> {
@@ -743,6 +928,8 @@ export class BullMQAdapter extends QueueAdapter<
       processedBy: job.processedBy || undefined,
       attemptsStarted: job.attemptsStarted,
       stalledCounter: job.stalledCounter,
+      deduplicationId: job.deduplicationId || undefined,
+      priority: job.priority,
     };
   }
 
@@ -775,7 +962,7 @@ export class BullMQAdapter extends QueueAdapter<
     const ttl = String(SCHEDULER_LOCK_TTL_MS);
 
     while (
-      (await runSchedulerLockCommand(client, "queuedashAcquireSchedulerLock", [
+      (await runQueuedashCommand(client, "queuedashAcquireSchedulerLock", [
         lockKey,
         token,
         ttl,
@@ -793,7 +980,7 @@ export class BullMQAdapter extends QueueAdapter<
       renewalChain = renewalChain.then(async () => {
         if (renewalError) return;
         try {
-          const renewed = await runSchedulerLockCommand(
+          const renewed = await runQueuedashCommand(
             client,
             "queuedashExtendSchedulerLock",
             [lockKey, token, ttl],
@@ -821,7 +1008,7 @@ export class BullMQAdapter extends QueueAdapter<
 
     let releaseError: unknown;
     try {
-      const released = await runSchedulerLockCommand(
+      const released = await runQueuedashCommand(
         client,
         "queuedashReleaseSchedulerLock",
         [lockKey, token],

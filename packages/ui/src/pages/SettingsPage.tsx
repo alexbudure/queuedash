@@ -640,7 +640,7 @@ export const SettingsPage = () => {
           </h1>
           <p className={clsx("mt-1 text-sm", TEXT_MUTED)}>
             Dashboard overrides stay in this browser. Server policy is read-only
-            here and cannot be bypassed by local settings.
+            here, and local settings don't override it.
           </p>
         </div>
 
@@ -777,7 +777,7 @@ export const SettingsPage = () => {
 
             <PreferenceRow
               label="Overview sparklines"
-              hint="Draws each overview card's recent throughput"
+              hint="Draws each overview row's recent throughput"
               defaultLabel={getOptionLabel(
                 TOGGLE_OPTIONS,
                 defaultPreferences.showOverviewMetrics ? "on" : "off",

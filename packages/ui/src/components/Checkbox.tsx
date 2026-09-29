@@ -9,8 +9,10 @@ import { FOCUS_RING_DATA } from "../utils/styles";
 
 type CheckedState = boolean | "indeterminate";
 
+// Where nothing can hover (a touch screen), a box that waits for a hover
+// never shows, so there it is always drawn.
 export const ROW_SELECTION_CHECKBOX_CLASS_NAME =
-  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[focus-visible]:opacity-100";
+  "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[focus-visible]:opacity-100 [@media(hover:none)]:opacity-100";
 
 type CheckboxProps = Omit<
   AriaCheckboxProps,

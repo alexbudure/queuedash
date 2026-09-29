@@ -40,8 +40,9 @@ type QueueSummary = {
   failedCount: number | null;
 };
 
+// Hidden where nothing can hover: a touch screen has no ⌘ to press.
 const KBD_CLASS =
-  "rounded border border-gray-200 px-1 font-mono text-[10px] leading-4 text-gray-500 dark:border-slate-700 dark:text-slate-400";
+  "rounded border border-gray-200 px-1 font-mono text-[10px] leading-4 text-gray-500 [@media(hover:none)]:hidden dark:border-slate-700 dark:text-slate-400";
 
 const BrandLink = ({ onClick }: { onClick?: () => void }) => {
   const { branding } = useQueuedash();

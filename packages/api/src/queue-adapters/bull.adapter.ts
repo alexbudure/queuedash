@@ -6,11 +6,22 @@ import {
   type AdaptedJob,
   type JobCounts,
   type FeatureSupport,
+  type FinishedRange,
   JobNotFoundError,
   type JobPageMeta,
+  type JobTimeRange,
   pickJobOptions,
   type WorkerInfo,
 } from "./base.adapter";
+
+// Bull scores a delayed job by when it is due, times 0x1000, plus a counter
+// that keeps jobs due in the same millisecond in order.
+const DELAYED_SCORE_FACTOR = 0x1000;
+
+// The Redis keys Bull keeps for a queue, which its typings leave out.
+type BullQueueKeys = {
+  keys: Record<"completed" | "failed" | "delayed", string>;
+};
 
 // What a rerun keeps of the original's options. A copied jobId would make Bull
 // drop the rerun as a duplicate, and repeat and delay describe that job's
@@ -141,6 +152,12 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
     statuses: ["completed", "failed", "delayed", "active", "waiting", "paused"],
     groups: false,
     workers: true,
+    updateData: true,
+    changeDelay: false,
+    changePriority: false,
+    deduplication: false,
+    concurrencyLimit: false,
+    rateLimit: false,
   };
 
   constructor(
@@ -314,6 +331,49 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
 
   async getJobLogs(): Promise<string[] | null> {
     return null; // Bull doesn't support job logs
+  }
+
+  // Completed and failed are sorted sets scored by finish time, read highest
+  // first, so a time range is a run of consecutive jobs in that listing.
+  async getFinishedRange(
+    status: "completed" | "failed",
+    { from, to }: JobTimeRange,
+  ): Promise<FinishedRange | null> {
+    const key = (this.queue as unknown as BullQueueKeys).keys[status];
+    const min = from === undefined ? "-inf" : String(Math.floor(from));
+    const max = to === undefined ? "+inf" : String(Math.floor(to));
+    const results = await this.queue.client
+      .multi()
+      .zcount(key, to === undefined ? "+inf" : `(${max}`, "+inf")
+      .zcount(key, min, max)
+      .exec();
+    const [above, count] = (results ?? []).map(([, value]) => Number(value));
+    return { offset: to === undefined ? 0 : (above ?? 0), count: count ?? 0 };
+  }
+
+  async getRunAts(jobIds: readonly string[]): Promise<Map<string, Date>> {
+    const runAts = new Map<string, Date>();
+    if (jobIds.length === 0) return runAts;
+    const key = (this.queue as unknown as BullQueueKeys).keys.delayed;
+    const pipeline = this.queue.client.pipeline();
+    for (const jobId of jobIds) pipeline.zscore(key, jobId);
+    const results = (await pipeline.exec()) ?? [];
+    jobIds.forEach((jobId, index) => {
+      const score = results[index]?.[1];
+      if (score === null || score === undefined) return;
+      const dueAt = Math.floor(Number(score) / DELAYED_SCORE_FACTOR);
+      if (Number.isFinite(dueAt)) runAts.set(jobId, new Date(dueAt));
+    });
+    return runAts;
+  }
+
+  async updateJobData(
+    jobId: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const job = await this.findJob(jobId);
+    if (!job) throw new JobNotFoundError();
+    await job.update(data);
   }
 
   async getWorkers(): Promise<WorkerInfo[] | null> {

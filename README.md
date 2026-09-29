@@ -65,10 +65,10 @@ change, and which job data reaches their browser.
     <td width="50%" valign="top">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/search-dark.png">
-        <img src="assets/screenshots/search-light.png" alt="Completed jobs filtered by the text password-reset">
+        <img src="assets/screenshots/search-light.png" alt="Completed password-reset emails filtered to a half-hour window, with the date range picker open">
       </picture>
       <p><strong>Find the job you need</strong><br>
-      Press <kbd>/</kbd> to filter by text, or sort by date. The view lives in the URL, so you can share it. <kbd>⌘</kbd> <kbd>K</kbd> jumps to any queue, status, or page.</p>
+      Press <kbd>/</kbd> to filter by text, and pick a date range, like the half hour an outage lasted. The view lives in the URL, so you can share it. <kbd>⌘</kbd> <kbd>K</kbd> finds any job in any queue by its id or text.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -82,11 +82,11 @@ change, and which job data reaches their browser.
   <tr>
     <td width="50%" valign="top">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/duplicate-dark.png">
-        <img src="assets/screenshots/duplicate-light.png" alt="A failed email job duplicated, with the one line that changed marked">
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/fix-dark.png">
+        <img src="assets/screenshots/fix-light.png" alt="A failed email's data being edited, with the added userName line marked and Save and retry, in a flow its parent is waiting on">
       </picture>
-      <p><strong>Add and duplicate jobs</strong><br>
-      Add a job with its name, data, and options, or duplicate one to run it again with a change. Queuedash marks what you changed.</p>
+      <p><strong>Fix a job in place</strong><br>
+      Edit a failed job's data and retry that same job, so the flow waiting on it moves on. Move a delayed job, or duplicate one to run it again with a change.</p>
     </td>
     <td width="50%" valign="top">
       <picture>
@@ -95,6 +95,24 @@ change, and which job data reaches their browser.
       </picture>
       <p><strong>Manage schedulers</strong><br>
       See what each BullMQ scheduler runs and when it runs next. Add, edit, or remove them.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/types-dark.png">
+        <img src="assets/screenshots/types-light.png" alt="The Job types tab, listing each image job with its runs, failure rate, p50 and p95 run times, and last run">
+      </picture>
+      <p><strong>See each kind of job</strong><br>
+      The Job types tab shows how often each job ran, how often it failed, and its p50 and p95 run times. Click one for its jobs.</p>
+    </td>
+    <td width="50%" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/limits-dark.png">
+        <img src="assets/screenshots/limits-light.png" alt="The Workers panel while the queue is rate limited, with its concurrency and rate limit">
+      </picture>
+      <p><strong>Set a queue's limits</strong><br>
+      Cap concurrency and rate across every BullMQ worker from the Workers panel, and see when a queue is rate limited.</p>
     </td>
   </tr>
 </table>

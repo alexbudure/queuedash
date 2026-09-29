@@ -25,7 +25,9 @@ const ctx = {
     ],
   },
   privacy: {
-    redact: true,
+    // On, to show redaction at work; QUEUEDASH_DEV_REDACT=0 turns it off, which
+    // is what editing job data needs.
+    redact: process.env.QUEUEDASH_DEV_REDACT !== "0",
     expose: {
       // Hidden, to show the privacy settings at work; the README screenshots
       // run with QUEUEDASH_DEV_STACKTRACES=1 to show the job panel's traces.

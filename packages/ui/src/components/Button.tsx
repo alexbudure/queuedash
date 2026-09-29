@@ -63,8 +63,9 @@ export const Button = ({
         <kbd
           aria-hidden="true"
           className={clsx(
-            // A phone has no keyboard to press it on, and its footers are tight.
-            "rounded border px-1 font-mono text-[10px] leading-4 max-sm:hidden",
+            // A phone has no keyboard to press it on, and its footers are
+            // tight; nor has any touch screen, whatever its width.
+            "rounded border px-1 font-mono text-[10px] leading-4 max-sm:hidden [@media(hover:none)]:hidden",
             isLoading && !icon && "invisible",
             variant === "filled"
               ? "border-white/35 text-white/85 dark:border-white/30"
