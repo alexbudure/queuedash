@@ -1,5 +1,51 @@
 # @queuedash/client
 
+## 4.1.0
+
+### Minor Changes
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Add job has a name field now (BullMQ and Bull), with the names the queue already uses one click away. ⌘↵ (Ctrl+↵) adds from anywhere in the panel, and Add another keeps it open for the next one.
+
+  Rerun is now Duplicate: it opens Add job filled in from the job and marks what you changed. Add it untouched and it keeps the original's real data, even the parts the dashboard redacts. Bulk Rerun is still there.
+
+  API: `queue.addJob` takes an optional `name` (not on Bee-Queue or GroupMQ). Jobs have `rawName`, the name before any `jobName` display mapping.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - New Errors tab: failed jobs grouped by what went wrong. A group is the error type, its message with ids and numbers masked out, and the first line of your own code in the trace. Each one shows its job count, failures per hour over the last day, and when it was first and last seen. Open one to see its jobs and retry or remove them all at once. Works on all four libraries, only groups what the viewer is allowed to see, and only covers failed jobs Redis still has.
+
+  API: `job.errorGroups` returns the groups. `job.list`, `job.bulkRetryByFilter` and `job.bulkRemoveByFilter` take a group's fingerprint as `error`.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - A failed job's panel shows what broke and where. The error card has the type, the message, the line of your code that threw, and how many other jobs hit the same error in the last day, linked to its Errors group. A new Attempts section lists every attempt that kept a stack trace, newest first, with node_modules and Node internals folded away. BullMQ jobs also show which worker ran them, whether it's still connected, and how often they stalled.
+
+  Stack frames open in your editor: VS Code, Cursor, Windsurf, Zed, WebStorm, IntelliJ IDEA or a custom URL. The first time, it asks for your editor and how the workers' paths map to yours (`/app` → `/Users/you/code/app`). That's saved in your browser; change it in Settings › Code links.
+
+  API: `job.byId` returns `errorFingerprint`. BullMQ jobs have `processedBy`, `attemptsStarted` and `stalledCounter`. Bee-Queue stack traces are oldest first now, like everyone else's.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Jobs in a BullMQ flow get a Flow section in their panel: the parent, the children by status, and which ones need a look. Open flow shows the whole flow across queues on one timeline: what waited, what ran, what the parent is still waiting on, and the failure holding it up, with Retry for every failed job in it. Big flows load 50 children at a time. Children in queues you can't see are counted, never named.
+
+  API: `flow.links` returns a job's parent and first children, and `flow.tree` the whole flow from its top visible ancestor. Neither works while job ids are redacted.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - The Health strip shows run times: p50 and p95 for jobs that finished in the selected range, with a sparkline of the median. Like the rest of the strip, it counts whole minutes and only the completed jobs the queue still keeps. With five cells in a row, sparklines now show on screens 1536px and wider.
+
+  API: `job.runTimes` returns a queue's p50 and p95 over the last `minutes`. Bee-Queue doesn't record start times, so it has none.
+
+### Patch Changes
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - The dashboard script the Express, Fastify, Hono and Elysia adapters load is fully minified now, about 30% smaller. `@queuedash/client` also drops a CommonJS build nothing used, and stops installing React, which it already bundles.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - The JSON editors are CodeMirror now, bundled in. No more pulling Monaco (about 1 MB) from jsdelivr every time one opens, so they work offline, and they match each dashboard's light or dark theme. The client gets about 120 KB gzipped bigger.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Fonts ship inside `@queuedash/ui` instead of loading from Google Fonts, so viewers' IPs stop going to Google and the fonts work offline and under a strict CSP. Same Inter and JetBrains Mono, loaded from `dist/fonts/`, only the subsets a page needs. They use Queuedash-specific family names, so your app's own Inter is left alone.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Rerun keeps the job's name and run settings. It used to re-add only the data, as "Manual add" (unnamed on Bull), so workers that route by name couldn't handle it, and a job set to retry five times got one shot. Now it keeps attempts, backoff, priority, timeout, retention and the GroupMQ group, and drops the id, delay, schedule and flow parent, so it runs right away as a new job. `job.rerun` returns the new job.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Toasts look right again. The dashboard's CSS reset was overriding their styles, so they showed up as cramped strips with no padding and a heavy black icon. They now match menus and popovers in light and dark and stay clear of the panel's corner.
+
+  The "Discard your changes?" toast you get when closing Add job with unsaved edits is clickable again. The open panel was making everything outside it inert, toast included.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - Installing `@queuedash/ui` no longer drags in about 400 MB of packages. It listed 21 dependencies its build already bundles or never uses, like `monaco-editor`; now it only needs the React and React DOM you already have. The Docker image is about 270 MB lighter for the same reason.
+
+- [#111](https://github.com/alexbudure/queuedash/pull/111) [`3861450`](https://github.com/alexbudure/queuedash/commit/386145080337ccacf5e8dbbfdfa6011f097114a6) Thanks [@alexbudure](https://github.com/alexbudure)! - The Workers cell stops calling busy workers "last seen 15m ago". That number was Redis's idle time for the connection a worker waits on, which a busy worker never touches. It now shows what the workers are doing: "1 active job", "3 active jobs" or "idle". The Workers panel shows how long each worker has been connected instead.
+
 ## 4.0.1
 
 ### Patch Changes

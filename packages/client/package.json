@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/client",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "description": "Prebuilt browser entrypoint for Queuedash server adapters",
   "files": [
     "dist"
