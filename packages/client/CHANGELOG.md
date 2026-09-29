@@ -1,5 +1,39 @@
 # @queuedash/client
 
+## 4.2.0
+
+### Minor Changes
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - Filter the job list by date: Last 15 minutes up to Last 7 days, or any range. On a phone it's a sheet that tells you how many jobs you'll get. Finished jobs go by when they finished, delayed ones by when they're due, and the rest by when they were added. It stacks with the other filters, Retry all and Remove all act on exactly what's listed, and the range goes in the URL. For finished jobs on BullMQ and Bull it's one Redis call with an exact count, no scan limit.
+
+  API: `job.list` and the by-filter bulk actions take `from` and `to` (ms), or `fromOffset` and `toOffset` relative to when the request runs. Delayed jobs have `runAt`.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - Delayed jobs show when they'll run, and you can move them: 5 minutes, an hour, tomorrow morning or any time, with how that compares to the plan. You can also change the priority of a job that hasn't started and release a deduplication id so new jobs with it get in. Promote is called Run now. BullMQ only, on versions that have the methods.
+
+  API: `job.changeDelay`, `job.changePriority` and `job.removeDeduplication`, each with its access action. Jobs have `deduplicationId`, and BullMQ jobs their current `priority`.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - Fix a job's data in place. Job data has an Edit button, and a failed job gets Save and retry, which runs that same job again with the new data instead of adding a copy. That's what gets a stuck flow moving, since its parent waits on the job's id. BullMQ and Bull, and off while the server redacts or hides job data.
+
+  API: `job.updateData` saves data onto a job, and retries it with `retry: true`. `queue.byName` reports it in `supports.updateData`. New access action: `job.update`.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - ⌘K finds any job in any queue you can see, by id or by text in its name, error or data, and opens it. Off while job ids are redacted.
+
+  API: `job.find` searches every visible queue at once.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - New Job types tab: every kind of job in a queue, by name, with how often it ran, how often it failed, p50 and p95 run times and when it last ran. Click one for its jobs over the same window. BullMQ and Bull, from the finished jobs the queue still keeps.
+
+  API: `job.types` returns them for the last `minutes`. `job.list` and the by-filter bulk actions take a job `name`.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - The dashboard fits phones now. Job lists are two lines per job with how it ended up front, errors and flows are cards, the overview shows each queue's failures, and a job opens full screen with Retry at the top. The Health strip folds into a one-line summary, date and sort are icon buttons, and the bulk bar is one row.
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - Set a queue's global concurrency and rate limit from the Workers panel. They're stored in Redis, so every worker follows them. While the queue is rate limited, the Workers cell says so with the time left, and Clear now ends the window early. BullMQ only.
+
+  API: `queue.limits`, `queue.setConcurrency`, `queue.setRateLimit` and `queue.clearRateLimit`, each with its access action.
+
+### Patch Changes
+
+- [#113](https://github.com/alexbudure/queuedash/pull/113) [`5418e88`](https://github.com/alexbudure/queuedash/commit/5418e8811b839ba799efeb0deb57cf2852363773) Thanks [@alexbudure](https://github.com/alexbudure)! - A round of small fixes. Row checkboxes always show on touch screens, which also lose the ⌘K and ⌘↵ hints. The queue's subtitle wraps before a "·", never after. Empty lists don't get a bulk bar, and a "—" doesn't get a trend arrow. A masked "(size)" in an error stays with its brackets, and long job ids in the table shorten to 8 characters. The bulk bar says Retry all and Remove all.
+
 ## 4.1.0
 
 ### Minor Changes
