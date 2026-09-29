@@ -4,6 +4,6 @@
 "@queuedash/ui": patch
 ---
 
-Toasts look like the rest of the dashboard again. The dashboard's scoped CSS reset outranked the toast library's own styles, so every notification rendered as a cramped strip with no padding or border and a heavy black icon. They now use the same surface as menus and popovers in light and dark, with the status icons from the job list, and sit clear of the page panel's corner.
+Toasts look right again. The dashboard's CSS reset was overriding their styles, so they showed up as cramped strips with no padding and a heavy black icon. They now match menus and popovers in light and dark and stay clear of the panel's corner.
 
-The "Discard your changes?" toast that appears when you close Add job with unsaved edits can be clicked again. The open panel made everything outside it inert, including the toast, so Discard did nothing.
+The "Discard your changes?" toast you get when closing Add job with unsaved edits is clickable again. The open panel was making everything outside it inert, toast included.
