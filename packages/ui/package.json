@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/ui",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "The beautiful Queuedash React dashboard for Bull, BullMQ, Bee-Queue, and GroupMQ",
   "main": "./dist/main.js",
   "module": "./dist/main.mjs",

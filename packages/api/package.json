@@ -1,6 +1,6 @@
 {
   "name": "@queuedash/api",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Server adapters and queue APIs for the beautiful Queuedash dashboard",
   "scripts": {
     "build": "tsc && pnpm run typecheck:bullmq5 && vite build && pnpm run check:optional-peers",
