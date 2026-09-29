@@ -164,7 +164,9 @@ export const JobDataSection = ({
         rootType="object"
         // oxlint-disable-next-line jsx-a11y/no-autofocus -- Opened by pressing Edit, so focus follows the press.
         autoFocus
-        height="180px"
+        // Data that's already there sets the height; a short payload in a
+        // tall box read as missing lines.
+        height="120px"
         onValidationChange={setValidation}
         onSubmit={() => submit(false)}
       />
