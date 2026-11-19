@@ -1,6 +1,6 @@
 import type Bull from "bull";
-import { parse } from "redis-info";
 
+import { parseRedisInfo } from "../redis-info";
 import {
   QueueAdapter,
   type AdaptedJob,
@@ -232,11 +232,8 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
   }
 
   async getRedisInfo() {
-    const info = parse(await this.queue.client.info());
-    return {
-      ...info,
-      maxclients: (info as unknown as Record<string, string>).maxclients || "0",
-    };
+    const info = parseRedisInfo(await this.queue.client.info());
+    return { ...info, maxclients: info.maxclients || "0" };
   }
 
   async getJobs(

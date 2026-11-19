@@ -1,6 +1,6 @@
 import type { Job as GroupMQJob, Queue as GroupMQQueue } from "groupmq";
-import { parse } from "redis-info";
 
+import { parseRedisInfo } from "../redis-info";
 import {
   JobNotFoundError,
   QueueAdapter,
@@ -474,11 +474,8 @@ export class GroupMQAdapter extends QueueAdapter<
   }
 
   async getRedisInfo() {
-    const info = parse(await this.queue.redis.info());
-    return {
-      ...info,
-      maxclients: (info as unknown as Record<string, string>).maxclients || "0",
-    };
+    const info = parseRedisInfo(await this.queue.redis.info());
+    return { ...info, maxclients: info.maxclients || "0" };
   }
 
   async getJobs(

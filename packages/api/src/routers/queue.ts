@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
-import type { RedisInfo } from "redis-info";
 import { z } from "zod";
 
 import { assertQueueActionAllowed, resolveQueueAccess } from "../access";
@@ -14,6 +13,7 @@ import {
 } from "../presentation";
 import type { QueueAdapter, WorkerInfo } from "../queue-adapters/base.adapter";
 import { getQueueHealth } from "../queue-health";
+import type { RedisInfo } from "../redis-info";
 import {
   schedulerOptionsSchema,
   schedulerTemplateSchema,
@@ -40,11 +40,11 @@ const assertSafeAddJobOptions = (
   opts?: Record<string, unknown>,
 ): void => {
   if (!opts) return;
-  // Before any key is looked at: zod copies an unknown "__proto__" key into
-  // the options it returns by assignment, which makes it their prototype.
-  // Their keys then read as empty and pass the allowlist while BullMQ still
-  // reads `jobId` through the prototype; a jobId of "wait" turns an idle
-  // queue's wait list into a job hash, failing every later add.
+  // Before any key is looked at. A "__proto__" key is refused, not cleaned:
+  // copied by assignment it becomes the options' prototype, so their keys read
+  // as empty and pass the allowlist while BullMQ still reads `jobId` through
+  // it. A jobId of "wait" turns an idle queue's wait list into a job hash,
+  // failing every later add.
   if (
     Object.getPrototypeOf(opts) !== Object.prototype ||
     containsPrototypeKey(opts)
@@ -262,7 +262,18 @@ export const queueRouter = router({
         // Workers dispatch on it. Blank means the library's own default.
         name: z.string().trim().max(256).optional(),
         data: z.object({}).passthrough(),
-        opts: z.object({}).passthrough().optional(),
+        // Kept as sent, so assertSafeAddJobOptions sees a "__proto__" key and
+        // refuses the request. Parsing the options as an object hides it: zod
+        // 4.6 drops the key, and earlier versions made it the prototype.
+        opts: z
+          .custom<Record<string, unknown>>(
+            (value) =>
+              typeof value === "object" &&
+              value !== null &&
+              !Array.isArray(value),
+            { message: "Job options must be an object" },
+          )
+          .optional(),
       }),
     )
     .mutation(async ({ input: { queueName, name, data, opts }, ctx }) => {
@@ -352,7 +363,7 @@ export const queueRouter = router({
         queueInCtx.adapter.getRedisInfo().catch(() => null),
       ]);
 
-      const info: (RedisInfo & { maxclients: string }) | null = redisInfo && {
+      const info: RedisInfo | null = redisInfo && {
         ...redisInfo,
         maxclients: redisInfo.maxclients || "0",
       };
