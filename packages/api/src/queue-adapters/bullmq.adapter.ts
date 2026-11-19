@@ -5,8 +5,8 @@ import type {
   Job as BullMQJob,
   JobType as BullMQJobType,
 } from "bullmq";
-import { parse } from "redis-info";
 
+import { parseRedisInfo } from "../redis-info";
 import {
   QueueAdapter,
   type AdaptedJob,
@@ -415,11 +415,8 @@ export class BullMQAdapter extends QueueAdapter<
         "This BullMQ queue is not backed by Redis, so there is no server to report on",
       );
     }
-    const info = parse(await client.info());
-    return {
-      ...info,
-      maxclients: (info as unknown as Record<string, string>).maxclients || "0",
-    };
+    const info = parseRedisInfo(await client.info());
+    return { ...info, maxclients: info.maxclients || "0" };
   }
 
   async getJobs(
