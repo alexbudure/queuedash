@@ -435,7 +435,9 @@ instances behind a load balancer. Lookups by id, logs, and job actions are
 disabled in this mode.
 
 Data categories set to `false` are withheld before tRPC serialization. Hidden
-content is unavailable to the browser and job search.
+content is unavailable to the browser and job search. A job's `progress` is
+whatever the worker reported; when that isn't a number, it is withheld if
+`jobData` or `returnValues` is `false`, since it can carry the same payload.
 
 ### Search limits
 

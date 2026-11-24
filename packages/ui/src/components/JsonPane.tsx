@@ -45,6 +45,11 @@ export const JsonPane = ({
         theme={getJsonTreeTheme(isDark)}
         invertTheme={false}
         hideRoot
+        // A value like `"halfway"` is the root itself, so its label would be
+        // a lone colon.
+        labelRenderer={
+          data === null || typeof data !== "object" ? () => null : undefined
+        }
         shouldExpandNodeInitially={
           expand === "all" ? expandAll : expandTopTwoLevels
         }

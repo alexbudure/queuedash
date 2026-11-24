@@ -1046,6 +1046,13 @@ export const presentJob = (
         : withoutStacktraceOptions(job.opts)
       : {},
     returnValue: exposure.returnValues ? job.returnValue : undefined,
+    // Progress other than a number can carry the same payload as the job's
+    // data or result, so it is withheld whenever either of those is.
+    progress:
+      typeof job.progress === "number" ||
+      (exposure.jobData && exposure.returnValues)
+        ? job.progress
+        : undefined,
     // A failure reason can carry a whole stack (Bee-Queue reports its first
     // stored trace), so hidden traces leave only the message line.
     failedReason: exposure.stacktraces

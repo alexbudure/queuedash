@@ -293,7 +293,9 @@ Redaction happens on the server, before a job is sent to the browser.
 `redact: true` covers common secret names like `password`, `token`, and
 `authorization`. Pass an object instead to add your own keys and paths on top.
 Anything set to `false` under `expose` is never sent at all, so it can't be
-searched either. While `redact` is set, or scheduler data is hidden, schedulers
+searched either. Job progress a worker reports as anything but a number can
+carry the same payload, so it's hidden along with job data or return values.
+While `redact` is set, or scheduler data is hidden, schedulers
 can't be edited from the dashboard, because saving would write the redacted
 values back.
 
