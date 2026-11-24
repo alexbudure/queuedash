@@ -1,5 +1,6 @@
 import { faker } from "@faker-js/faker";
 import { TRPCError } from "@trpc/server";
+import type Bull from "bull";
 import type { Queue as BullMQQueue } from "bullmq";
 import { expect, onTestFinished, test, vi } from "vitest";
 
@@ -200,6 +201,53 @@ test("job has returnValue when worker returns data", async () => {
     });
   }
 });
+
+// Bee-Queue keeps reported progress out of Redis, and GroupMQ can't report any.
+test.runIf(type === "bull" || type === "bullmq")(
+  "job progress is whatever the worker reported, object or number",
+  async () => {
+    const { ctx, firstQueue } = await initRedisInstance();
+    const caller = appRouter.createCaller(ctx);
+    const queueName = firstQueue.queue.name;
+
+    // Delayed, so the queue's own worker leaves the job alone.
+    const reportProgress = async (progress: number | object) => {
+      if (firstQueue.type === "bull") {
+        const job = await (firstQueue.queue as Bull.Queue).add(
+          { index: 0 },
+          { delay: 60_000 },
+        );
+        await job.progress(progress);
+        return String(job.id);
+      }
+      const job = await (firstQueue.queue as BullMQQueue).add(
+        "progress",
+        { index: 0 },
+        { delay: 60_000 },
+      );
+      await job.updateProgress(progress);
+      return String(job.id);
+    };
+
+    const reported = { step: "billing", done: 2, of: 5 };
+    const objectJobId = await reportProgress(reported);
+    const numberJobId = await reportProgress(40);
+
+    const objectJob = await caller.job.byId({ queueName, jobId: objectJobId });
+    expect(objectJob?.progress).toEqual(reported);
+    const numberJob = await caller.job.byId({ queueName, jobId: numberJobId });
+    expect(numberJob?.progress).toBe(40);
+
+    const { jobs } = await caller.job.list({
+      queueName,
+      status: "delayed",
+      limit: 10,
+    });
+    expect(jobs.find((job) => job.id === objectJobId)?.progress).toEqual(
+      reported,
+    );
+  },
+);
 
 test("search is bounded and only matches server-presented data", async () => {
   const { ctx, firstQueue } = await initRedisInstance();

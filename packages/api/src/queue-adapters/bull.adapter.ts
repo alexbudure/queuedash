@@ -9,6 +9,7 @@ import {
   type FinishedRange,
   JobNotFoundError,
   type JobPageMeta,
+  type JobProgress,
   type JobTimeRange,
   pickJobOptions,
   type WorkerInfo,
@@ -409,11 +410,13 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         : this.getJobName(job.data, job.name);
 
     const jobWithRetry = job as Bull.Job & { retriedOn?: number };
-    const progressRaw =
+    // Bull stores progress as JSON, so `job.progress(value)` may have been
+    // handed an object rather than a number.
+    const progress = (
       typeof job.progress === "function"
         ? job.progress()
-        : (job as Bull.Job & { progress?: unknown }).progress;
-    const progress = typeof progressRaw === "number" ? progressRaw : undefined;
+        : (job as Bull.Job & { progress?: unknown }).progress
+    ) as JobProgress | null | undefined;
 
     return {
       id: job.id as string,
@@ -429,7 +432,7 @@ export class BullAdapter extends QueueAdapter<BullStatus, BullCleanableStatus> {
         ? new Date(jobWithRetry.retriedOn)
         : null,
       returnValue: job.returnvalue,
-      progress,
+      progress: progress ?? undefined,
       attemptsMade: job.attemptsMade,
       rawName: job.name,
     };

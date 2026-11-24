@@ -17,6 +17,10 @@ export type JobOptions = {
   };
 };
 
+// What a worker last reported. BullMQ and Bull take a number or any JSON value,
+// and the dashboard draws a bar only for a number.
+export type JobProgress = number | string | boolean | object;
+
 export type AdaptedJob = {
   id: string;
   name: string;
@@ -32,7 +36,7 @@ export type AdaptedJob = {
   retriedAt: Date | null;
   returnValue?: unknown;
   groupId?: string; // Group identifier for GroupMQ and BullMQ Pro
-  progress?: number; // Job progress (0-100)
+  progress?: JobProgress;
   attemptsMade?: number; // Number of attempts made
   // The name the job was added under, before a `jobName` display mapping:
   // what a worker dispatches on, so a copy of the job must keep it. Only for

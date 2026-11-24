@@ -919,7 +919,8 @@ export class BullMQAdapter extends QueueAdapter<
       retriedAt: null, // BullMQ doesn't track retry time
       returnValue: job.returnvalue,
       groupId,
-      progress: typeof job.progress === "number" ? job.progress : undefined,
+      // `job.updateProgress()` takes an object as well as a number.
+      progress: job.progress ?? undefined,
       attemptsMade: job.attemptsMade,
       rawName: job.name,
       processedBy: job.processedBy || undefined,

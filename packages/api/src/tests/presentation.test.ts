@@ -848,3 +848,37 @@ describe("identifiers and traces inside job options", () => {
     });
   });
 });
+
+describe("job progress", () => {
+  const withProgress = (progress: AdaptedJob["progress"]): AdaptedJob => ({
+    ...createJob(),
+    progress,
+  });
+  const reported = { step: "billing", customer: "person@example.com" };
+
+  it("withholds progress other than a number with job data or results", () => {
+    for (const expose of [{ jobData: false }, { returnValues: false }]) {
+      expect(presentJob(withProgress(reported), { expose }).progress).toBe(
+        undefined,
+      );
+      expect(presentJob(withProgress("billing"), { expose }).progress).toBe(
+        undefined,
+      );
+      expect(presentJob(withProgress(42), { expose }).progress).toBe(42);
+    }
+    expect(
+      presentJob(withProgress(reported), { expose: { logs: false } }).progress,
+    ).toEqual(reported);
+  });
+
+  it("redacts what a worker reported like the rest of the job", () => {
+    const job = presentJob(
+      withProgress({ step: "billing", token: "raw-secret" }),
+      { redact: { paths: ["progress.step"] } },
+    );
+    expect(job.progress).toEqual({
+      step: "[REDACTED]",
+      token: "[REDACTED]",
+    });
+  });
+});

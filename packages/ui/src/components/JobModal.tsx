@@ -321,6 +321,13 @@ const JobDetails = ({
     () => parseDataOrNull(job.returnValue),
     [job.returnValue],
   );
+  // A number draws the bar above. Anything else a worker reported, like
+  // `job.updateProgress({ step: "billing" })`, is shown as it was sent.
+  const reportedProgress = useMemo(
+    () =>
+      typeof job.progress === "number" ? null : parseDataOrNull(job.progress),
+    [job.progress],
+  );
   const parsedOpts = useMemo(() => {
     const opts = parseUnknownJson(job.opts);
     return opts && typeof opts === "object"
@@ -621,6 +628,12 @@ const JobDetails = ({
           data={parsedData}
           onJobLeft={onJobLeft}
         />
+      ) : null}
+
+      {reportedProgress !== null ? (
+        <DetailSection title="Progress">
+          <JsonPane data={reportedProgress} />
+        </DetailSection>
       ) : null}
 
       {parsedReturnValue !== null ? (
