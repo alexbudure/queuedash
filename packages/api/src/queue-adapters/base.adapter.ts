@@ -1,4 +1,4 @@
-import type { RedisInfo } from "redis-info";
+import type { RedisInfo } from "../redis-info";
 
 // Common job options shared across queue adapters
 export type JobOptions = {
@@ -255,7 +255,7 @@ export abstract class QueueAdapter<
   abstract resume(): Promise<void>;
   abstract empty(): Promise<void>;
   abstract clean(status: CleanableStatus, graceMs: number): Promise<void>;
-  abstract getRedisInfo(): Promise<RedisInfo & { maxclients: string }>;
+  abstract getRedisInfo(): Promise<RedisInfo>;
 
   // Job operations
   abstract getJobs(

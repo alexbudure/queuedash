@@ -8,8 +8,9 @@ RUN corepack enable
 
 # ---------------- deps: install full workspace graph ----------------
 FROM base AS deps
-# Copy root manifests
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+# Copy root manifests. The lockfile records .pnpmfile.cjs's checksum, so a
+# frozen install needs it too.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .pnpmfile.cjs ./
 
 # Copy the package.json of each workspace package the image installs, so pnpm
 # "sees" that part of the graph. The dashboard's JS and CSS come from unpkg at
