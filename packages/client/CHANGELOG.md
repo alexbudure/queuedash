@@ -1,5 +1,15 @@
 # @queuedash/client
 
+## 4.2.1
+
+### Patch Changes
+
+- [#116](https://github.com/alexbudure/queuedash/pull/116) [`e3759dc`](https://github.com/alexbudure/queuedash/commit/e3759dc190b9a9b01b602d39c7d6ec8154fccda1) Thanks [@alexbudure](https://github.com/alexbudure)! - The API no longer bundles its own zod and tRPC. It uses the copies your app installs, so `npm audit` sees them ([#115](https://github.com/alexbudure/queuedash/issues/115)). redis-info is gone too, and lodash with it: reading Redis INFO takes a few lines now. zod needs 4.6.6 or newer, which fixes a memory exhaustion advisory. The Elysia and Hono adapters still bundle their framework, now on patched versions. The API bundle is about a quarter smaller, and the dashboard's dependencies are refreshed too.
+
+- [#119](https://github.com/alexbudure/queuedash/pull/119) [`1afab5a`](https://github.com/alexbudure/queuedash/commit/1afab5a7064f4fd896a772eb0c695e1b0a1d68be) Thanks [@alexbudure](https://github.com/alexbudure)! - Job progress shows up when a worker reports an object, like `job.updateProgress({ step: "billing" })` ([#117](https://github.com/alexbudure/queuedash/issues/117)). Numbers still draw the bar, and anything else shows as JSON in the job details, next to the data. It's hidden along with job data or return values.
+
+  API: a job's `progress` is whatever the worker reported, not only a number.
+
 ## 4.2.0
 
 ### Minor Changes
